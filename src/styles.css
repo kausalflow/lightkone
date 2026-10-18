@@ -173,3 +173,4 @@ label.file input, label.button input { display: none; }
   .detail { position: fixed; inset: 0; z-index: 5; border: 0; }
 }
 .field input.check { width: 20px; height: 20px; margin: 2px 0; }
+.mcp-link input { margin-top: 6px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }

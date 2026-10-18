@@ -1005,6 +1005,65 @@ function AddPanel(props: { initial?: string; onClose(): void; onAdd(d: PaperDraf
   );
 }
 
+/** A personal MCP address for the library in this person's own bucket or repository. */
+function McpLink(props: { provider: string; config: Record<string, string> }) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const linkable = props.provider === "s3" || props.provider === "github";
+  const where = JSON.stringify(props);
+  useEffect(() => { setUrl(""); setNote(""); }, [where]);
+
+  async function make() {
+    setBusy(true);
+    setNote("");
+    try {
+      const r = await fetch("api/mcp-link", { method: "POST", headers: { "Content-Type": "application/json" }, body: where });
+      const body = await r.json().catch(() => ({ error: `The site answered ${r.status}.` }));
+      if (!r.ok || !body.url) throw new Error(body.error ?? `The site answered ${r.status}.`);
+      setUrl(body.url);
+    } catch (e) {
+      setNote((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!linkable) {
+    return (
+      <p class="muted small">
+        Claude on claude.ai, its apps and Claude Code can search and read your library, and add or tag papers, once the library is in an S3/R2
+        bucket or a GitHub repository. A library kept only in this browser can't be reached from outside it.
+      </p>
+    );
+  }
+  return (
+    <div>
+      <p class="muted small">
+        Claude on claude.ai, its apps and Claude Code can search and read your library, and add or tag papers. Make your own address, then add it
+        in Claude under Settings → Connectors → Add custom connector. It uses the storage set above.
+      </p>
+      {url ? (
+        <div class="mcp-link">
+          <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+          <div class="row">
+            <button type="button" onClick={() => navigator.clipboard.writeText(url).then(() => setNote("Copied."))}>Copy address</button>
+          </div>
+          <p class="muted small">
+            Treat it like a password: anyone with it can read and change your library. Your keys inside it are encrypted, and this site keeps no
+            copy. To cut it off, replace the {props.provider === "github" ? "GitHub token" : "bucket's access key"} above.
+          </p>
+        </div>
+      ) : (
+        <div class="row">
+          <button type="button" disabled={busy} onClick={make}>{busy ? "Checking your storage…" : "Make my AI app address"}</button>
+        </div>
+      )}
+      {note && <p class="message">{note}</p>}
+    </div>
+  );
+}
+
 function SettingsPanel(props: { settings: Settings; onSave(s: Settings): void; onClose(): void }) {
   const [draft, setDraft] = useState<Settings>({ ...props.settings });
   const providerId = draft["storage.provider"] || "browser";
@@ -1074,11 +1133,7 @@ function SettingsPanel(props: { settings: Settings; onSave(s: Settings): void; o
         <textarea rows={2} value={draft["plugins.urls"] ?? ""} placeholder="https://example.com/my-plugin.js" onInput={(e) => set("plugins.urls", e.currentTarget.value)} />
 
         <h3>Claude and other AI apps (MCP)</h3>
-        <p class="muted small">
-          Claude on claude.ai, its apps and Claude Code can search and read this library, and add or tag papers. With the library in an R2 bucket,
-          bind it to the site as <code>LIBRARY</code> and add a secret <code>MCP_TOKEN</code>, then add <code>{location.origin}/mcp/&lt;token&gt;</code> as
-          a custom connector in Claude. Steps are in docs/MCP.md.
-        </p>
+        <McpLink provider={providerId} config={storageConfig(draft, providerId)} />
 
         <h3>Backup</h3>
         <p class="muted small">Save these settings to a file, or load them on another device. With a passphrase, the file is encrypted.</p>
