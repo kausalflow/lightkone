@@ -3,6 +3,7 @@ import type { Paper } from "../src/core/types";
 import { matchPaperpilePdfs, PAPERPILE_DIR } from "../src/core/paperpile";
 import { annotationsToMarkdown, mergeRects, parseAnnotations, serializeAnnotations, type Highlight } from "../src/core/annotations";
 import { findOpenPdf } from "../src/core/openpdf";
+import { paperpileFile, pdfLocation } from "../src/core/filing";
 import { handle } from "../functions/api/pdf";
 
 const paper = (over: Partial<Paper>): Paper => ({
@@ -46,7 +47,7 @@ describe("Paperpile PDFs", () => {
       paper({ id: "rep", file: "All Papers/X/missing.pdf;All Papers/HINTON/Hinton et al. 2012 - Improving neural networks.pdf" }),
       paper({ id: "moved", file: "Other/Chen - Probability Cheatsheet v2.0.pdf" }),
       paper({ id: "amb", file: "Elsewhere/Same.pdf" }),
-      paper({ id: "has", file: "All Papers/HINTON/Hinton et al. 2012 - Improving neural networks.pdf", pdf: "lightkone/pdfs/has.pdf" }),
+      paper({ id: "has", file: "All Papers/HINTON/Hinton et al. 2012 - Improving neural networks.pdf", pdf: "Paperpile/All Papers/X/has.pdf" }),
     ];
     const m = matchPaperpilePdfs(papers, keys);
     expect(m.get("rep")).toBe(keys[0]);
@@ -134,5 +135,34 @@ describe("open PDFs", () => {
     expect((await handle(new Request("https://site/api/pdf?doi=nope&email=a@b.org"), f)).status).toBe(400);
     expect((await handle(new Request("https://site/api/pdf?doi=10.1234/x"), f)).status).toBe(400);
     expect((await handle(new Request("https://site/api/pdf?doi=10.5678/none&email=a@b.org"), f)).status).toBe(404);
+  });
+});
+
+describe("Paperpile file names", () => {
+  // Real pairs from a Paperpile library: BibTeX title and authors → the file Paperpile made.
+  const cases: [Partial<Paper>, string][] = [
+    [{ authors: ["Hinton, Geoffrey E", "Srivastava, Nitish", "Krizhevsky, Alex"], year: 2012, title: "Improving neural networks by preventing co-adaptation of feature detectors" },
+      "All Papers/HINTON/Hinton et al. 2012 - Improving neural networks by preventing co-adaptation of feature detectors.pdf"],
+    [{ authors: ["Wang, Sida", "Manning, Christopher"], year: 2013, title: "Fast dropout training" }, "All Papers/WANG/Wang and Manning 2013 - Fast dropout training.pdf"],
+    [{ authors: ["Murphy, Kevin P"], year: 2012, title: "Machine Learning: A Probabilistic Perspective" }, "All Papers/MURPHY/Murphy 2012 - Machine Learning - A Probabilistic Perspective.pdf"],
+    [{ authors: ["Wallace, Eric", "Wang, Yizhong", "Li, Sujian"], title: "Do NLP Models Know Numbers? Probing Numeracy in Embeddings" },
+      "All Papers/WALLACE/Wallace et al. - Do NLP Models Know Numbers - Probing Numeracy in Embeddings.pdf"],
+    [{ authors: ["Gazzaniga, Michael S"], year: 2012, title: "Shifting Gears: Seeking New Approaches for Mind/Brain Mechanisms" },
+      "All Papers/GAZZANIGA/Gazzaniga 2012 - Shifting Gears - Seeking New Approaches for Mind - Brain Mechanisms.pdf"],
+    [{ authors: ["Sjöstrand, Torbjörn", "Ask, Stefan", "Christiansen, Jesper R"], year: 2015, title: "An introduction to PYTHIA 8.2" },
+      "All Papers/SJÖSTRAND/Sjöstrand et al. 2015 - An introduction to PYTHIA 8.2.pdf"],
+    [{ authors: ["Haque, Mohammad"], year: 2011, title: "A Broadband Multi-hop Network for Earth-Mars Communication using Multi-purpose Interplanetary Relay Satellites and Linear-Circular Commutating Chain Topology" },
+      "All Papers/HAQUE/Haque 2011 - A Broadband Multi-hop Network for Earth-Mars Communication ... etary Relay Satellites and Linear-Circular Commutating Chain Topology.pdf"],
+    [{ authors: [], title: "People have the AI power" }, "All Papers/Other/People have the AI power - People have the AI power.pdf"],
+  ];
+  it.each(cases)("%#", (p, expected) => {
+    expect(paperpileFile({ authors: p.authors!, year: p.year, title: p.title! })).toBe(expected);
+  });
+
+  it("places a new PDF under Paperpile/ and avoids taken names", () => {
+    const a = paper({ id: "a", authors: ["Wang, Sida", "Manning, Christopher"], year: 2013, title: "Fast dropout training" });
+    const b = { ...a, id: "b", file: "All Papers/WANG/Wang and Manning 2013 - Fast dropout training.pdf" };
+    expect(pdfLocation(a, [a])).toEqual({ pdf: "Paperpile/All Papers/WANG/Wang and Manning 2013 - Fast dropout training.pdf", file: "All Papers/WANG/Wang and Manning 2013 - Fast dropout training.pdf" });
+    expect(pdfLocation(a, [a, b]).file).toBe("All Papers/WANG/Wang and Manning 2013 - Fast dropout training (2).pdf");
   });
 });

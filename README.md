@@ -40,8 +40,9 @@ Either import Paperpile's BibTeX export with **Add paper → Import a .bib file*
 or, if Paperpile already syncs BibTeX to a GitHub repository, choose GitHub
 storage, point it at that repository and set the `.bib` folder (for example
 `paperpile`). Lightkone then picks up every paper Paperpile adds until you
-switch over. Paperpile's `file` paths are kept. Copy its `All Papers` folder from
-Google Drive into your bucket once and every paper finds its PDF (see
+switch over. PDFs are filed exactly as Paperpile files them in Google Drive
+(`Paperpile/All Papers/HINTON/Hinton et al. 2012 - ....pdf`), so copy that folder
+into your bucket once and every paper finds its PDF (see
 [docs/STORAGE.md](docs/STORAGE.md#moving-pdfs-over-from-paperpile)).
 
 ## Search

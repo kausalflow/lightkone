@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ActionResult, Paper, PaperDraft, StorageAdapter } from "./core/types";
-import { Library, pdfPath } from "./core/library";
+import { Library } from "./core/library";
+import { pdfLocation } from "./core/filing";
 import { search, type SortBy } from "./core/search";
 import { libraryToBibtex, paperToBibtex } from "./core/bibtex";
 import { actions, allPlugins, importers, loadPluginFromUrl, lookups, storageProviders } from "./core/plugins";
@@ -167,9 +168,9 @@ export function App() {
         if (!quiet) setError(`No free PDF found for "${p.title}".`);
         return false;
       }
-      const path = pdfPath(p.id);
-      await storage.write(path, bytes, "application/pdf");
-      library.update(p.id, { pdf: path });
+      const { pdf, file } = pdfLocation(p, library.papers);
+      await storage.write(pdf, bytes, "application/pdf");
+      library.update(p.id, { pdf, file });
       scheduleSave();
       return true;
     } catch (e) {
@@ -309,6 +310,7 @@ export function App() {
         <Detail
           key={paper.id}
           paper={paper}
+          library={library.papers}
           storage={storage}
           result={result}
           onClose={() => setSelected(null)}
@@ -350,6 +352,7 @@ export function App() {
 
 function Detail(props: {
   paper: Paper;
+  library: Paper[];
   storage: StorageAdapter | null;
   result: ActionResult | null;
   onClose(): void;
@@ -371,9 +374,10 @@ function Detail(props: {
   async function attachPdf(file: File) {
     if (!storage) return;
     try {
-      const path = pdfPath(p.id);
-      await storage.write(path, new Uint8Array(await file.arrayBuffer()), "application/pdf");
-      props.onChange({ pdf: path });
+      // A replaced PDF keeps its place; a new one is filed the way Paperpile files it.
+      const where = p.pdf ? { pdf: p.pdf, file: p.file } : pdfLocation(p, props.library);
+      await storage.write(where.pdf, new Uint8Array(await file.arrayBuffer()), "application/pdf");
+      props.onChange(where);
     } catch (e) {
       props.onError(`Could not store the PDF: ${(e as Error).message}`);
     }

@@ -1,11 +1,12 @@
 import type { Paper } from "./types";
+import { PAPERPILE_DIR } from "./filing";
+export { PAPERPILE_DIR };
 
 // PDFs copied over from Paperpile's Google Drive folder (see docs/STORAGE.md)
-// sit under this folder in storage, with Paperpile's own paths:
-//   lightkone/paperpile/All Papers/H/Hinton et al. 2012 - Improving ....pdf
+// sit in storage with Paperpile's own paths:
+//   Paperpile/All Papers/HINTON/Hinton et al. 2012 - Improving ....pdf
 // Each paper's `file` field from Paperpile's BibTeX names its path, so the two
 // can be matched up without renaming anything.
-export const PAPERPILE_DIR = "lightkone/paperpile/";
 
 const norm = (s: string) => s.normalize("NFC").trim().replace(/\.pdf$/i, "").toLowerCase();
 const base = (s: string) => s.slice(s.lastIndexOf("/") + 1);

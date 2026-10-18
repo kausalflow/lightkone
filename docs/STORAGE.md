@@ -40,8 +40,12 @@ share one bucket.
 
 Paperpile keeps PDFs in your Google Drive under `Paperpile/All Papers`, and its
 BibTeX names each paper's file (`file = {All Papers/H/Hinton et al. 2012 - ....pdf}`).
-Copy that folder once into the bucket under `lightkone/paperpile/` and
-Lightkone links every paper to its PDF by that path. Nothing is renamed.
+Lightkone uses the same layout: PDFs live under `Paperpile/All Papers/` in your
+storage, named the way Paperpile names them
+(`HINTON/Hinton et al. 2012 - Improving neural networks ....pdf`), and each
+paper's `file` field holds that path. Copy the folder once into the bucket and
+every paper finds its PDF. Nothing is renamed, and the folder stays readable by
+Paperpile and by a future Google Drive storage plugin.
 
 1. Install [rclone](https://rclone.org/install/) on your computer.
 2. Connect Google Drive (read-only) and the bucket:
@@ -54,11 +58,11 @@ Lightkone links every paper to its PDF by that path. Nothing is renamed.
    ```
 
    The first command opens a browser to sign in to Google.
-3. Check the folder name, then copy (add the bucket folder, if you set one, before `lightkone/`):
+3. Check the folder name, then copy (add the bucket folder, if you set one, before `Paperpile/`):
 
    ```sh
    rclone lsd "gdrive:Paperpile"
-   rclone copy "gdrive:Paperpile/All Papers" "r2:<bucket>/lightkone/paperpile/All Papers" --progress --transfers 8
+   rclone copy "gdrive:Paperpile/All Papers" "r2:<bucket>/Paperpile/All Papers" --progress --transfers 8
    ```
 
    Running it again later only copies what is new.
@@ -66,7 +70,9 @@ Lightkone links every paper to its PDF by that path. Nothing is renamed.
    then reload. The status bar says how many PDFs were linked.
 
 Papers are matched by path first and by file name if the folder sits one level
-off. New PDFs that Lightkone downloads go to `lightkone/pdfs/<id>.pdf`.
+off. Paperpile can also file PDFs by its own folders (`All Papers/MLDS/...`);
+those match by file name. New PDFs that Lightkone downloads or you attach are
+filed by first author, Paperpile's default.
 
 ## GitHub repository
 
