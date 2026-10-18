@@ -1,6 +1,7 @@
 import type { BibTarget, LibraryFile, Paper, PaperDraft, StorageAdapter } from "./types";
 import { libraryToBibtex } from "./bibtex";
 import { foldersFromPaperpile } from "./folders";
+import { mergeLibraries } from "./merge";
 
 // The library is plain files in whatever storage the user picked:
 //   lightkone/library.json  the source of truth
@@ -31,10 +32,20 @@ export function makeKey(d: PaperDraft, taken: Set<string>): string {
   return key;
 }
 
+const parseFile = (raw: string): LibraryFile => {
+  const file = JSON.parse(raw) as LibraryFile;
+  if (file.format !== "lightkone-library") throw new Error("lightkone/library.json is not a Lightkone library.");
+  return file;
+};
+
 export class Library {
   papers: Paper[] = [];
   bibSync: BibTarget[] = [];
   private listeners = new Set<() => void>();
+  /** library.json as this device last read or wrote it: what a merge starts from. */
+  private base: string | null = null;
+  /** Saves and refreshes run one at a time. */
+  private queue: Promise<unknown> = Promise.resolve();
 
   constructor(public storage: StorageAdapter | null = null) {}
 
@@ -49,11 +60,12 @@ export class Library {
   async load(): Promise<{ loaded: number; seeded: number; foldered: number }> {
     this.papers = [];
     this.bibSync = [];
+    this.base = null;
     if (!this.storage) return { loaded: 0, seeded: 0, foldered: 0 };
     const raw = await this.storage.read(LIBRARY_PATH);
     if (raw) {
-      const file = JSON.parse(decoder.decode(raw)) as LibraryFile;
-      if (file.format !== "lightkone-library") throw new Error("lightkone/library.json is not a Lightkone library.");
+      this.base = decoder.decode(raw);
+      const file = parseFile(this.base);
       this.papers = file.papers;
       this.bibSync = file.bibSync ?? [];
     }
@@ -71,11 +83,49 @@ export class Library {
     return { loaded, seeded, foldered };
   }
 
-  async save(): Promise<void> {
-    if (!this.storage) return;
-    const file: LibraryFile = { format: "lightkone-library", version: 1, papers: this.papers, ...(this.bibSync.length ? { bibSync: this.bibSync } : {}) };
-    await this.storage.write(LIBRARY_PATH, JSON.stringify(file, null, 1), "application/json");
-    await this.storage.write(BIB_PATH, libraryToBibtex(this.papers), "application/x-bibtex");
+  private file(): LibraryFile {
+    return { format: "lightkone-library", version: 1, papers: this.papers, ...(this.bibSync.length ? { bibSync: this.bibSync } : {}) };
+  }
+
+  /**
+   * Take in what was saved elsewhere since this device last read or wrote,
+   * keeping this device's own changes. Returns how many papers changed.
+   */
+  private async catchUp(): Promise<number> {
+    const raw = await this.storage!.read(LIBRARY_PATH);
+    const now = raw && decoder.decode(raw);
+    if (!now || now === this.base) return 0;
+    const { file, fromThem } = mergeLibraries(this.base ? parseFile(this.base) : null, this.file(), parseFile(now));
+    this.papers = file.papers;
+    this.bibSync = file.bibSync ?? [];
+    this.base = now;
+    if (fromThem) this.emit();
+    return fromThem;
+  }
+
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn, fn);
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
+  /** Save, first merging in changes saved elsewhere. Returns how many papers took such changes. */
+  save(): Promise<number> {
+    return this.serial(async () => {
+      if (!this.storage) return 0;
+      const merged = await this.catchUp();
+      const text = JSON.stringify(this.file(), null, 1);
+      if (text === this.base) return merged;
+      await this.storage.write(LIBRARY_PATH, text, "application/json");
+      this.base = text;
+      await this.storage.write(BIB_PATH, libraryToBibtex(this.papers), "application/x-bibtex");
+      return merged;
+    });
+  }
+
+  /** Pick up changes saved elsewhere without writing. Returns how many papers changed. */
+  refresh(): Promise<number> {
+    return this.serial(async () => (this.storage ? this.catchUp() : 0));
   }
 
   findDuplicate(d: PaperDraft): Paper | undefined {
