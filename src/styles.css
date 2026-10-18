@@ -645,3 +645,13 @@ svg.map .node-label { font-size: 10px; fill: var(--text, currentColor); paint-or
 .missing-keys li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0; }
 .missing-keys button { text-align: left; white-space: normal; height: auto; max-width: 100%; }
 .manuscript-add { margin-top: 12px; }
+
+/* Search by equation */
+.eq-index { margin-top: 4px; }
+.eq-query { width: 100%; margin-top: 12px; font-family: var(--mono); font-size: 14px; }
+.eq-preview { margin: 8px 0; overflow-x: auto; color: var(--muted); }
+.eq-hits { list-style: none; padding: 0; margin: 8px 0 0; }
+.eq-hits li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.eq-math { overflow-x: auto; overflow-y: hidden; }
+.eq-math .katex-display { margin: 4px 0; }
+.eq-hits a { color: inherit; }
