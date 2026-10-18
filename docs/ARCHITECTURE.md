@@ -8,8 +8,16 @@ and every part that would need a server later sits behind a plugin interface.
 ```
 src/core/      types, BibTeX, library model, search, plugin registry, settings
 src/plugins/   built-in plugins (storage, lookups, related papers, Claude, Dullaby)
+src/reader/    the PDF reader (pdf.js) with highlights and notes
 src/app.tsx    the interface
+public/sw.js   service worker, so the installed app opens offline
 ```
+
+Remote storage is wrapped by `src/core/offline.ts`, which keeps a copy of what
+was last read (the library, notes and the 25 most recent PDFs) in the browser's
+Cache Storage and answers from it when there is no network. The web app
+manifest makes Lightkone installable and a share target (`?title=&text=&url=`);
+the bookmarklet sends `?add=` (`src/core/capture.ts`).
 
 ## Data
 
@@ -41,7 +49,10 @@ modules. See [PLUGINS.md](PLUGINS.md).
 
 The Claude plugin calls the Anthropic API from the browser with the user's own
 key, which is stored in that browser only. It sends the paper's metadata and,
-when the PDF is stored in Lightkone, the PDF itself.
+when the PDF is stored in Lightkone, the PDF itself. When adding a paper from a
+link without a DOI or from a description, it asks Claude to find the paper with
+the web search and fetch tools, then takes the record from Crossref or arXiv
+when Claude found an identifier.
 
 ## Security model
 

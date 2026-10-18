@@ -9,6 +9,8 @@ import { exportSettings, importSettings, loadSettings, persistStorage, pluginUrl
 import { matchPaperpilePdfs, PAPERPILE_DIR } from "./core/paperpile";
 import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf";
 import { Reader } from "./reader/Reader";
+import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
+import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
 
 const library = new Library();
 
@@ -55,6 +57,8 @@ export function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
+  // A paper shared to Lightkone, or sent by the bookmarklet, waiting for storage to open.
+  const [captured, setCaptured] = useState<string | null>(() => capturedInput(location.search));
 
   // Open storage whenever the chosen provider or its settings change.
   const providerId = settings["storage.provider"] || "browser";
@@ -71,7 +75,9 @@ export function App() {
       }
       const provider = storageProviders().find((p) => p.id === providerId) ?? storageProviders()[0];
       try {
-        const adapter = provider.create(storageConfig(settings, provider.id));
+        const remote = provider.create(storageConfig(settings, provider.id));
+        // This browser's own storage is already offline; others keep an offline copy.
+        const adapter = provider.id === "browser" ? remote : withOfflineCache(remote, browserCache());
         library.storage = adapter;
         setStatus(`Opening your library from ${provider.label}…`);
         const { loaded, seeded } = await library.load();
@@ -80,10 +86,17 @@ export function App() {
         setWhere(provider.label);
         const linked = await linkPaperpilePdfs(adapter);
         if (cancelled) return;
-        setSeededNote([seeded ? ` · ${seeded} new from .bib files` : "", linked ? ` · ${linked} PDF${linked > 1 ? "s" : ""} linked from Paperpile` : ""].join(""));
+        const offline = (adapter as Partial<OfflineStorage>).offline;
+        setSeededNote(
+          [
+            offline ? " · offline copy, changes won't save until you're back online" : "",
+            seeded ? ` · ${seeded} new from .bib files` : "",
+            linked ? ` · ${linked} PDF${linked > 1 ? "s" : ""} linked from Paperpile` : "",
+          ].join(""),
+        );
         if (seeded || linked) {
           scheduleSave();
-        } else if (!loaded && !library.papers.length) {
+        } else if (!loaded && !library.papers.length && !captured) {
           setPanel("add");
         }
       } catch (e) {
@@ -104,6 +117,15 @@ export function App() {
   }, [storageKey, settings["plugins.urls"]]);
 
   useEffect(() => library.onChange(() => setVersion((v) => v + 1)), []);
+
+  // Once storage is open, hand a captured paper to the Add panel and tidy the address bar.
+  useEffect(() => {
+    if (!captured || !storage) return;
+    setPanel("add");
+    const url = new URL(location.href);
+    CAPTURE_KEYS.forEach((k) => url.searchParams.delete(k));
+    history.replaceState(null, "", url);
+  }, [captured, storage]);
 
   function scheduleSave() {
     setSaveState("pending");
@@ -337,7 +359,8 @@ export function App() {
 
       {panel === "add" && (
         <AddPanel
-          onClose={() => setPanel(null)}
+          initial={captured ?? undefined}
+          onClose={() => { setPanel(null); setCaptured(null); }}
           onAdd={(drafts) => {
             const added = addDrafts(drafts);
             if (added.length === 1) setSelected(added[0].id);
@@ -495,14 +518,23 @@ function Detail(props: {
   );
 }
 
-function AddPanel(props: { onClose(): void; onAdd(d: PaperDraft[]): number; canAdd: boolean }) {
-  const [text, setText] = useState("");
+function AddPanel(props: { initial?: string; onClose(): void; onAdd(d: PaperDraft[]): number; canAdd: boolean }) {
+  const [text, setText] = useState(props.initial ?? "");
   const [message, setMessage] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
 
-  async function submit(e: Event) {
+  // Something shared to Lightkone is looked up straight away.
+  useEffect(() => {
+    if (props.initial && props.canAdd) add(props.initial);
+  }, [props.initial, props.canAdd]);
+
+  function submit(e: Event) {
     e.preventDefault();
-    const input = text.trim();
+    add(text);
+  }
+
+  async function add(raw: string) {
+    const input = raw.trim();
     if (!input) return;
     setWorking(true);
     setMessage(null);
@@ -546,7 +578,12 @@ function AddPanel(props: { onClose(): void; onAdd(d: PaperDraft[]): number; canA
     <div class="overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
       <form class="panel" onSubmit={submit}>
         <h2>Add papers</h2>
-        <p class="muted">Paste DOIs, arXiv ids or links (one per line), or BibTeX entries.</p>
+        <p class="muted">
+          Paste DOIs, arXiv ids or links (one per line), or BibTeX entries.
+          {lookups().some((l) => l.id === "claude-find")
+            ? " With a Claude key you can also paste any paper's page, or describe it: \"the 2017 transformer paper by Vaswani\"."
+            : ""}
+        </p>
         <textarea rows={6} value={text} autoFocus placeholder={"2106.09685\n10.1103/PhysRevLett.116.061102\n@article{...}"} onInput={(e) => setText(e.currentTarget.value)} />
         <div class="row">
           <button class="primary" type="submit" disabled={working || !props.canAdd}>{working ? "Looking up…" : "Add"}</button>
@@ -557,6 +594,13 @@ function AddPanel(props: { onClose(): void; onAdd(d: PaperDraft[]): number; canA
           <button type="button" class="ghost" onClick={props.onClose}>Close</button>
         </div>
         {message && <p class="message">{message}</p>}
+        <p class="muted small">
+          On your phone, install Lightkone (browser menu → Install app) and share a paper's page to it. On a computer, drag this button to
+          your bookmarks bar and click it on any paper's page:{" "}
+          <a class="bookmarklet" href={bookmarklet(location.origin + location.pathname)} onClick={(e) => e.preventDefault()}>
+            + Lightkone
+          </a>
+        </p>
       </form>
     </div>
   );

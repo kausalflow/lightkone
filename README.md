@@ -36,6 +36,20 @@ no setup. See [docs/STORAGE.md](docs/STORAGE.md) for R2, S3 and GitHub.
 Settings stay in this browser; **Settings → Backup** saves them to a file
 (encrypted if you give a passphrase) to restore here or on another device.
 
+## Adding papers from anywhere
+
+- **On Android**, open Lightkone in Chrome and choose **Install app**. It then
+  appears in the share menu: share a paper's page (or an arXiv or DOI link) to
+  Lightkone and it is added.
+- **On a computer**, drag the **+ Lightkone** link from the Add panel to the
+  bookmarks bar. On a paper's page it reads the citation tags most publishers
+  and arXiv provide and adds the paper.
+- **With a Claude key**, a link without a DOI, or a plain description ("the
+  2017 transformer paper by Vaswani"), is found by Claude with web search.
+
+The installed app opens offline with the library and the last 25 PDFs you
+opened.
+
 ## Moving from Paperpile
 
 Either import Paperpile's BibTeX export with **Add paper → Import a .bib file**,
