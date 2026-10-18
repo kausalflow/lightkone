@@ -5,3 +5,8 @@ import "./styles.css";
 
 registerBuiltins();
 render(<App />, document.getElementById("app")!);
+
+// The service worker lets the installed app open offline; only in built releases.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
