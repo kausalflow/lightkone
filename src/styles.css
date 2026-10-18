@@ -534,3 +534,20 @@ label.file input, label.button input { display: none; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 .mcp-link input { margin-top: 6px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+
+.cite-menu { position: relative; }
+.cite-menu > button { display: inline-flex; align-items: center; gap: 6px; }
+.cite-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(420px, calc(100vw - 32px));
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: var(--shadow-lg); padding: 4px;
+}
+.cite-option {
+  display: grid; grid-template-columns: 76px 1fr; gap: 10px; width: 100%; text-align: left; white-space: normal;
+  border: 0; background: none; box-shadow: none; padding: 8px 10px; border-radius: var(--r-sm); font-weight: 400; min-height: 0;
+}
+.cite-option:hover, .cite-option:focus-visible { background: var(--sunken); }
+.cite-label { font-weight: 600; font-size: 13px; }
+.cite-preview { font-size: 12.5px; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .cite-pop { position: fixed; left: 16px; right: 16px; top: 56px; width: auto; }
+}

@@ -4,6 +4,7 @@ import { Library } from "./core/library";
 import { pdfLocation } from "./core/filing";
 import { search, type SortBy } from "./core/search";
 import { libraryToBibtex, paperToBibtex } from "./core/bibtex";
+import { cite, CITE_STYLES, type CiteStyle } from "./core/cite";
 import { actions, allPlugins, importers, loadPluginFromUrl, lookups, storageProviders } from "./core/plugins";
 import { exportSettings, importSettings, loadSettings, persistStorage, pluginUrls, saveSettings, storageConfig, type Settings } from "./core/settings";
 import { matchPaperpilePdfs, PAPERPILE_DIR } from "./core/paperpile";
@@ -758,6 +759,7 @@ function Detail(props: {
           <Icon name="x" class="hide-phone" />
         </button>
         <span class="spacer" />
+        <CiteMenu paper={p} />
         <button class="icon-btn" title="Copy BibTeX" aria-label="Copy BibTeX" onClick={() => copy("bibtex", paperToBibtex(p))}>
           <Icon name={copied === "bibtex" ? "check" : "copy"} />
         </button>
@@ -1168,6 +1170,51 @@ function AddPanel(props: { initial?: string; onClose(): void; onAdd(d: PaperDraf
           </a>
         </p>
       </form>
+    </div>
+  );
+}
+
+const CITE_KEY = "lightkone.cite.style";
+
+/** Copy the paper as a formatted citation: a short line for a post, APA, Markdown, \cite or BibTeX. */
+function CiteMenu(props: { paper: Paper }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState<CiteStyle | null>(null);
+  const last = (() => { try { return localStorage.getItem(CITE_KEY) as CiteStyle | null; } catch { return null; } })();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", esc); };
+  }, [open]);
+
+  function copy(style: CiteStyle) {
+    navigator.clipboard?.writeText(cite(props.paper, style)).then(() => {
+      try { localStorage.setItem(CITE_KEY, style); } catch { /* private window */ }
+      setCopied(style);
+      setTimeout(() => { setCopied(null); setOpen(false); }, 900);
+    });
+  }
+
+  const styles = last ? [...CITE_STYLES].sort((a, b) => (b.id === last ? 1 : 0) - (a.id === last ? 1 : 0)) : CITE_STYLES;
+  return (
+    <div class="cite-menu" ref={ref}>
+      <button class="small" aria-haspopup="menu" aria-expanded={open} title="Copy a formatted citation" onClick={() => setOpen(!open)}>
+        <Icon name="copy" size={15} /> Cite
+      </button>
+      {open && (
+        <div class="cite-pop" role="menu">
+          {styles.map((s) => (
+            <button key={s.id} role="menuitem" class="cite-option" onClick={() => copy(s.id)}>
+              <span class="cite-label">{copied === s.id ? "Copied" : s.label}</span>
+              <span class="cite-preview">{cite(props.paper, s.id)}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
