@@ -14,7 +14,10 @@ plain files in storage you choose.
 - **Read and highlight.** A PDF reader that works on a phone, with highlights,
   notes, dark pages for night reading, and export to Markdown (Obsidian).
   Free PDFs are fetched when you add a paper: arXiv directly, others through
-  Unpaywall's open-access copies.
+  Unpaywall's open-access copies. Select a passage or an equation and tap
+  **Explain**: Claude explains it in the context of the whole paper (it sees the
+  PDF and a picture of the selection), takes follow-up questions, and can keep
+  the answer as the highlight's note.
 - **AI built in, with your own key.** Summaries and questions about a paper with
   Claude. When the PDF is stored, Claude reads the whole paper.
 - **Plugins.** Storage, lookups, importers and paper actions are all plugins,

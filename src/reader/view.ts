@@ -163,6 +163,24 @@ export class PdfView {
     return rects.length ? { page: Number(pageEl.dataset.page), rects, text } : null;
   }
 
+  /** A PNG (base64) of part of a drawn page, around the given boxes, so Claude sees equations as typeset. */
+  snapshot(page: number, rects: Rect[]): string | null {
+    const canvas = this.pages[page - 1]?.el.querySelector("canvas");
+    if (!canvas || !rects.length) return null;
+    const x0 = Math.max(0, Math.min(...rects.map((r) => r[0])) - 0.02);
+    const y0 = Math.max(0, Math.min(...rects.map((r) => r[1])) - 0.02);
+    const x1 = Math.min(1, Math.max(...rects.map((r) => r[0] + r[2])) + 0.02);
+    const y1 = Math.min(1, Math.max(...rects.map((r) => r[1] + r[3])) + 0.02);
+    const sw = (x1 - x0) * canvas.width;
+    const sh = (y1 - y0) * canvas.height;
+    const k = Math.min(1, 1400 / sw, 1400 / sh);
+    const out = document.createElement("canvas");
+    out.width = Math.max(1, Math.round(sw * k));
+    out.height = Math.max(1, Math.round(sh * k));
+    out.getContext("2d")!.drawImage(canvas, x0 * canvas.width, y0 * canvas.height, sw, sh, 0, 0, out.width, out.height);
+    return out.toDataURL("image/png").split(",")[1] ?? null;
+  }
+
   scrollTo(h: Highlight) {
     const s = this.pages[h.page - 1];
     if (!s) return;

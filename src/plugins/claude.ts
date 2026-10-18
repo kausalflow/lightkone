@@ -82,6 +82,72 @@ async function askClaude(p: Paper, ctx: ActionContext, instruction: string): Pro
   return response.stop_reason === "max_tokens" ? `${text}\n\n(The answer was cut off at the length limit.)` : text;
 }
 
+export interface ChatTurn {
+  role: "user" | "assistant";
+  text: string;
+  /** A picture of what was selected (base64 PNG), so equations arrive as typeset. */
+  image?: string;
+}
+
+const EXPLAIN =
+  SYSTEM +
+  " The researcher is reading the paper and has selected a passage, equation or figure. Explain it in the context of this paper: " +
+  "define the symbols, say where they come from in the paper, and give the step or idea that makes it work. " +
+  "Be brief unless asked for more. Write mathematics in LaTeX between $...$ or $$...$$.";
+
+/**
+ * A conversation about one paper, streamed. The PDF goes first and is cached,
+ * so follow-up questions do not pay for it again.
+ */
+export async function chatAboutPaper(
+  settings: Record<string, string>,
+  paper: Paper,
+  pdf: Uint8Array | null,
+  turns: ChatTurn[],
+  onText: (soFar: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const client = await clientFor(settings);
+  const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((t, i) => {
+    if (t.role === "assistant") return { role: "assistant", content: t.text };
+    const content: Anthropic.Beta.BetaContentBlockParam[] = [];
+    if (i === 0) {
+      if (pdf && pdf.length <= MAX_PDF_BYTES) {
+        content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: toBase64(pdf) }, cache_control: { type: "ephemeral" } });
+      }
+      content.push({ type: "text", text: describe(paper) });
+    }
+    if (t.image) content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: t.image } });
+    content.push({ type: "text", text: t.text });
+    return { role: "user", content };
+  });
+
+  const stream = client.beta.messages.stream(
+    {
+      model: settings["claude.model"] || DEFAULT_MODEL,
+      max_tokens: 8000,
+      system: EXPLAIN,
+      output_config: { effort: "low" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages,
+    },
+    { signal },
+  );
+  let text = "";
+  for await (const event of stream) {
+    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+      text += event.delta.text;
+      onText(text);
+    }
+  }
+  const final = await stream.finalMessage();
+  if (final.stop_reason === "refusal") {
+    throw new Error(`Claude declined this request${final.stop_details?.explanation ? `: ${final.stop_details.explanation}` : "."}`);
+  }
+  return text;
+}
+
 const FIND =
   "Identify the one research paper the researcher means, using web search and by fetching the page if they gave a link. " +
   "Reply with only a JSON object, no other text: " +
