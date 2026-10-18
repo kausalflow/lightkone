@@ -20,7 +20,7 @@ describe("duplicates", () => {
 
   it("keeps the copy with a PDF and gathers everything else into it", () => {
     const old = paper({ title: "T", added: "2020-01-01T00:00:00Z", tags: ["rg"], folders: ["Physics"], notes: "first", abstract: "abs" });
-    const withPdf = paper({ title: "T", added: "2024-01-01T00:00:00Z", pdf: "Paperpile/x.pdf", tags: ["ml"], notes: "second", starred: true, fields: { pages: "1-2" } });
+    const withPdf = paper({ title: "T", added: "2024-01-01T00:00:00Z", pdf: "papers/x.pdf", tags: ["ml"], notes: "second", starred: true, fields: { pages: "1-2" } });
     const keep = pickKeeper([old, withPdf]);
     expect(keep).toBe(withPdf);
     const patch = mergeInto(keep, [old]);

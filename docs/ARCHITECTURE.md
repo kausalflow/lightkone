@@ -27,7 +27,7 @@ The library is these files in the chosen storage:
 | --- | --- |
 | `lightkone/library.json` | Source of truth: every paper with its tags, notes and extra BibTeX fields |
 | `lightkone/library.bib` | Rewritten on every save, for LaTeX, Overleaf or any other tool |
-| `Paperpile/All Papers/<AUTHOR>/<Author> et al. <year> - <title>.pdf` | PDFs, in the same layout Paperpile uses in Google Drive. Each paper's `file` field (also in the `.bib`) is the path under `Paperpile/`, so the folder is interchangeable with Paperpile's |
+| `papers/All Papers/<AUTHOR>/<Author> et al. <year> - <title>.pdf` | PDFs, in the same layout Paperpile uses in Google Drive. Each paper's `file` field (also in the `.bib`) is the path under `papers/`, so Paperpile's `All Papers` folder can be copied in as it is. Libraries that kept PDFs under `Paperpile/` have them moved to `papers/` when they open |
 | `lightkone/annotations/<id>.json` | Highlights and notes on a paper's PDF |
 
 Because these are plain files, a library can always be read without Lightkone,

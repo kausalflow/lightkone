@@ -48,12 +48,13 @@ share one bucket.
 
 Paperpile keeps PDFs in your Google Drive under `Paperpile/All Papers`, and its
 BibTeX names each paper's file (`file = {All Papers/H/Hinton et al. 2012 - ....pdf}`).
-Lightkone uses the same layout: PDFs live under `Paperpile/All Papers/` in your
-storage, named the way Paperpile names them
+Lightkone uses the same layout under its own `papers/` folder: PDFs live in
+`papers/All Papers/`, named the way Paperpile names them
 (`HINTON/Hinton et al. 2012 - Improving neural networks ....pdf`), and each
-paper's `file` field holds that path. Copy the folder once into the bucket and
-every paper finds its PDF. Nothing is renamed, and the folder stays readable by
-Paperpile and by a future Google Drive storage plugin.
+paper's `file` field holds the path under `papers/`. Copy Paperpile's
+`All Papers` folder once into `papers/` in the bucket and every paper finds its
+PDF. Nothing is renamed. (Libraries that kept PDFs under `Paperpile/` have them
+moved to `papers/` the next time they open.)
 
 1. Install [rclone](https://rclone.org/install/) on your computer.
 2. Connect Google Drive (read-only) and the bucket:
@@ -66,11 +67,11 @@ Paperpile and by a future Google Drive storage plugin.
    ```
 
    The first command opens a browser to sign in to Google.
-3. Check the folder name, then copy (add the bucket folder, if you set one, before `Paperpile/`):
+3. Check the folder name, then copy (add the bucket folder, if you set one, before `papers/`):
 
    ```sh
    rclone lsd "gdrive:Paperpile"
-   rclone copy "gdrive:Paperpile/All Papers" "r2:<bucket>/Paperpile/All Papers" --progress --transfers 8
+   rclone copy "gdrive:Paperpile/All Papers" "r2:<bucket>/papers/All Papers" --progress --transfers 8
    ```
 
    Running it again later only copies what is new.

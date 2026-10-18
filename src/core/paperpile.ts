@@ -1,10 +1,10 @@
 import type { Paper } from "./types";
-import { PAPERPILE_DIR } from "./filing";
-export { PAPERPILE_DIR };
+import { PDF_DIR } from "./filing";
+export { PDF_DIR };
 
 // PDFs copied over from Paperpile's Google Drive folder (see docs/STORAGE.md)
 // sit in storage with Paperpile's own paths:
-//   Paperpile/All Papers/HINTON/Hinton et al. 2012 - Improving ....pdf
+//   papers/All Papers/HINTON/Hinton et al. 2012 - Improving ....pdf
 // Each paper's `file` field from Paperpile's BibTeX names its path, so the two
 // can be matched up without renaming anything.
 
@@ -13,7 +13,7 @@ const base = (s: string) => s.slice(s.lastIndexOf("/") + 1);
 
 /**
  * For papers with a Paperpile `file` path and no PDF yet, find the copied PDF.
- * `keys` are storage paths as listed under PAPERPILE_DIR. Returns paper id → storage path.
+ * `keys` are storage paths as listed under PDF_DIR. Returns paper id → storage path.
  * Paths match exactly first (ignoring case and a missing ".pdf"), then by file name alone,
  * in case the folder was copied one level higher or lower.
  */
@@ -21,7 +21,7 @@ export function matchPaperpilePdfs(papers: Paper[], keys: string[]): Map<string,
   const byPath = new Map<string, string>();
   const byName = new Map<string, string | null>();
   for (const k of keys) {
-    byPath.set(norm(k.startsWith(PAPERPILE_DIR) ? k.slice(PAPERPILE_DIR.length) : k), k);
+    byPath.set(norm(k.startsWith(PDF_DIR) ? k.slice(PDF_DIR.length) : k), k);
     const n = norm(base(k));
     byName.set(n, byName.has(n) ? null : k); // a name that appears twice is ambiguous
   }
