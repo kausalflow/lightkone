@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ActionResult, BibTarget, Paper, PaperDraft, StorageAdapter } from "./core/types";
 import { Library } from "./core/library";
 import { pdfLocation } from "./core/filing";
-import { search, type SortBy } from "./core/search";
+import { parseQuery, search, type SortBy } from "./core/search";
 import { libraryToBibtex, paperToBibtex } from "./core/bibtex";
 import { cite, CITE_STYLES, type CiteStyle } from "./core/cite";
+import { TextIndex } from "./core/textsearch";
 import { actions, allPlugins, importers, loadPluginFromUrl, lookups, storageProviders } from "./core/plugins";
 import { exportSettings, importSettings, loadSettings, persistStorage, pluginUrls, saveSettings, storageConfig, type Settings } from "./core/settings";
 import { matchPaperpilePdfs, PAPERPILE_DIR } from "./core/paperpile";
@@ -132,6 +133,31 @@ export function App() {
 
   useEffect(() => library.onChange(() => setVersion((v) => v + 1)), []);
 
+  // The text inside each PDF, for search: loaded once per library, then kept in this browser.
+  const [textVersion, setTextVersion] = useState(0);
+  const textIndex = useMemo(() => (storage ? new TextIndex(storage, storageKey) : null), [storage]);
+  useEffect(() => void textIndex?.load(() => setTextVersion((v) => v + 1)), [textIndex]);
+  const [indexing, setIndexing] = useState<AbortController | null>(null);
+  async function indexPdfs() {
+    if (!textIndex) return;
+    if (indexing) return indexing.abort();
+    const stop = new AbortController();
+    setIndexing(stop);
+    try {
+      const { extractText } = await import("./reader/view");
+      const n = await textIndex.indexPdfs(library.papers, extractText, (done, total) => {
+        setBusy(`Reading PDFs for search: ${done} of ${total}`);
+        if (done % 10 === 0) setTextVersion((v) => v + 1);
+      }, stop.signal);
+      setBusy(null);
+      setTextVersion((v) => v + 1);
+      if (!stop.signal.aborted) setError(null);
+    } finally {
+      setIndexing(null);
+      setBusy(null);
+    }
+  }
+
   // Once storage is open, hand a captured paper to the Add panel and tidy the address bar.
   useEffect(() => {
     if (!captured || !storage) return;
@@ -177,7 +203,12 @@ export function App() {
     return () => removeEventListener("beforeunload", warn);
   }, [saveState]);
 
-  const visible = useMemo(() => search(library.papers, query, sort), [version, query, sort]);
+  const words = useMemo(() => parseQuery(query).words, [query]);
+  const visible = useMemo(
+    () => search(library.papers, query, sort, textIndex ? (id, w) => textIndex.hit(id, w) !== null : undefined),
+    [version, query, sort, textVersion, textIndex],
+  );
+  const unindexed = useMemo(() => (textIndex && words.length ? textIndex.missing(library.papers).length : 0), [textIndex, textVersion, version, words.length > 0]);
   const tags = useMemo(() => library.tagCounts(), [version]);
   const tree = useMemo(() => folderTree(library.papers), [version]);
   const counts = useMemo(() => {
@@ -431,6 +462,12 @@ export function App() {
             </select>
           </div>
         </div>
+        {unindexed > 0 && (
+          <p class="text-note muted small">
+            {indexing ? "Reading your PDFs so their text can be searched." : `${unindexed} PDF${unindexed > 1 ? "s haven't" : " hasn't"} been read for search yet.`}{" "}
+            <button class="link" onClick={indexPdfs}>{indexing ? "Stop" : "Read them now"}</button>
+          </p>
+        )}
         <ul class="papers">
           {visible.slice(0, 500).map((p) => (
             <li key={p.id} class={p.id === selected ? "on" : ""} onClick={() => { setSelected(p.id); setResult(null); }}>
@@ -448,6 +485,10 @@ export function App() {
                 {p.year && <span>{p.year}</span>}
                 {p.venue && <span class="venue">{p.venue}</span>}
               </div>
+              {words.length > 0 && (() => {
+                const hit = textIndex?.hit(p.id, words);
+                return hit && <div class="snippet"><span class="page">p. {hit.page}</span> {hit.snippet}</div>;
+              })()}
               {(p.pdf || p.tags.length > 0) && (
                 <div class="chips">
                   {p.pdf && <span class="chip pdf">PDF</span>}
@@ -520,7 +561,13 @@ export function App() {
       )}
 
       {reading && storage && library.papers.find((p) => p.id === reading)?.pdf && (
-        <Reader paper={library.papers.find((p) => p.id === reading)!} storage={storage} onClose={() => setReading(null)} onError={setError} />
+        <Reader
+          paper={library.papers.find((p) => p.id === reading)!}
+          storage={storage}
+          onClose={() => setReading(null)}
+          onError={setError}
+          onText={(id, text) => textIndex?.add(id, text).then(() => setTextVersion((v) => v + 1))}
+        />
       )}
 
       {panel === "add" && (

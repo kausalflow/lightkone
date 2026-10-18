@@ -4,7 +4,8 @@ import type { Paper } from "./types";
 // somewhere; title and author hits rank higher. Supports filters:
 //   tag:"machine learning"  author:hinton  year:2019  year:2015-2020  has:pdf  has:abstract
 //   in:"Physics/QFT" (that folder and the ones inside it)  is:starred  is:recent  is:trash
-// Papers in the trash only show with is:trash.
+// Papers in the trash only show with is:trash. Words also match inside a
+// paper's full text when one is given, ranked below matches in its record.
 
 export interface Query {
   words: string[];
@@ -42,7 +43,10 @@ const inFolder = (p: Paper, f: string) => (p.folders ?? []).some((pf) => {
   return x === f || x.startsWith(`${f}/`);
 });
 
-function score(p: Paper, q: Query): number {
+/** Whether a paper's full text holds all the words (see textsearch.ts). */
+export type InText = (paperId: string, words: string[]) => boolean;
+
+function score(p: Paper, q: Query, inText?: InText): number {
   if (Boolean(p.trashed) !== q.is.includes("trash")) return 0;
   if (q.is.includes("starred") && !p.starred) return 0;
   if (q.is.includes("recent") && !p.opened) return 0;
@@ -63,7 +67,7 @@ function score(p: Paper, q: Query): number {
   let total = 0;
   for (const w of q.words) {
     const s = (title.includes(w) ? 5 : 0) + (authorText.includes(w) ? 4 : 0) + (rest.includes(w) ? 1 : 0);
-    if (!s) return 0;
+    if (!s) return inText?.(p.id, q.words) ? 0.5 : 0;
     total += s;
   }
   return total;
@@ -71,9 +75,9 @@ function score(p: Paper, q: Query): number {
 
 export type SortBy = "added" | "year" | "title" | "relevance" | "opened";
 
-export function search(papers: Paper[], input: string, sort: SortBy = "added"): Paper[] {
+export function search(papers: Paper[], input: string, sort: SortBy = "added", inText?: InText): Paper[] {
   const q = parseQuery(input);
-  const scored = papers.map((p) => [p, score(p, q)] as const).filter(([, s]) => s > 0);
+  const scored = papers.map((p) => [p, score(p, q, inText)] as const).filter(([, s]) => s > 0);
   const by: Record<SortBy, (a: Paper, b: Paper, sa: number, sb: number) => number> = {
     relevance: (a, b, sa, sb) => sb - sa || b.added.localeCompare(a.added),
     added: (a, b) => b.added.localeCompare(a.added),
