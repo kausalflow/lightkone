@@ -147,3 +147,4 @@ label.file input, label.button input { display: none; }
   .top-actions { margin-left: auto; }
   .detail { position: fixed; inset: 0; z-index: 5; border: 0; }
 }
+.field input.check { width: 20px; height: 20px; margin: 2px 0; }

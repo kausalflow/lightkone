@@ -36,6 +36,38 @@ AWS S3 and MinIO work the same way: use the regional endpoint
 IAM key limited to the bucket. A folder in the bucket lets several libraries
 share one bucket.
 
+## Moving PDFs over from Paperpile
+
+Paperpile keeps PDFs in your Google Drive under `Paperpile/All Papers`, and its
+BibTeX names each paper's file (`file = {All Papers/H/Hinton et al. 2012 - ....pdf}`).
+Copy that folder once into the bucket under `lightkone/paperpile/` and
+Lightkone links every paper to its PDF by that path. Nothing is renamed.
+
+1. Install [rclone](https://rclone.org/install/) on your computer.
+2. Connect Google Drive (read-only) and the bucket:
+
+   ```sh
+   rclone config create gdrive drive scope drive.readonly
+   rclone config create r2 s3 provider Cloudflare \
+     access_key_id <key id> secret_access_key <secret> \
+     endpoint https://<account-id>.r2.cloudflarestorage.com
+   ```
+
+   The first command opens a browser to sign in to Google.
+3. Check the folder name, then copy (add the bucket folder, if you set one, before `lightkone/`):
+
+   ```sh
+   rclone lsd "gdrive:Paperpile"
+   rclone copy "gdrive:Paperpile/All Papers" "r2:<bucket>/lightkone/paperpile/All Papers" --progress --transfers 8
+   ```
+
+   Running it again later only copies what is new.
+4. In Lightkone, import Paperpile's `.bib` files (**Add paper → Import a .bib file**),
+   then reload. The status bar says how many PDFs were linked.
+
+Papers are matched by path first and by file name if the folder sits one level
+off. New PDFs that Lightkone downloads go to `lightkone/pdfs/<id>.pdf`.
+
 ## GitHub repository
 
 1. Create a private repository (or reuse one).

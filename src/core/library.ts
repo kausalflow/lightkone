@@ -5,6 +5,7 @@ import { libraryToBibtex } from "./bibtex";
 //   lightkone/library.json  the source of truth
 //   lightkone/library.bib   written on every save, ready for LaTeX and Overleaf
 //   lightkone/pdfs/<id>.pdf PDFs kept by Lightkone itself
+//   lightkone/annotations/<id>.json  highlights and notes (core/annotations.ts)
 export const LIBRARY_PATH = "lightkone/library.json";
 export const BIB_PATH = "lightkone/library.bib";
 export const pdfPath = (id: string) => `lightkone/pdfs/${id}.pdf`;

@@ -5,6 +5,9 @@ import { search, type SortBy } from "./core/search";
 import { libraryToBibtex, paperToBibtex } from "./core/bibtex";
 import { actions, allPlugins, importers, loadPluginFromUrl, lookups, storageProviders } from "./core/plugins";
 import { loadSettings, pluginUrls, saveSettings, storageConfig, type Settings } from "./core/settings";
+import { matchPaperpilePdfs, PAPERPILE_DIR } from "./core/paperpile";
+import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf";
+import { Reader } from "./reader/Reader";
 
 const library = new Library();
 
@@ -15,6 +18,18 @@ function download(name: string, text: string, type = "application/x-bibtex") {
   const a = Object.assign(document.createElement("a"), { href: url, download: name });
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const pdfOptions = (s: Settings): OpenPdfOptions => ({ email: s["pdfs.email"]?.trim(), service: s["pdfs.service"]?.trim() || undefined });
+
+/** Point papers at PDFs copied from Paperpile's Drive folder. Returns how many were linked. */
+async function linkPaperpilePdfs(storage: StorageAdapter): Promise<number> {
+  const unlinked = library.papers.filter((p) => p.file && !p.pdf);
+  if (!unlinked.length) return 0;
+  const keys = await storage.list(PAPERPILE_DIR).catch(() => [] as string[]);
+  const found = matchPaperpilePdfs(unlinked, keys);
+  for (const [id, path] of found) library.update(id, { pdf: path });
+  return found.size;
 }
 
 const shortAuthors = (p: { authors?: string[] }) => {
@@ -33,6 +48,7 @@ export function App() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
+  const [reading, setReading] = useState<string | null>(null);
   const [panel, setPanel] = useState<"add" | "settings" | null>(null);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -61,8 +77,10 @@ export function App() {
         if (cancelled) return;
         setStorage(adapter);
         setWhere(provider.label);
-        setSeededNote(seeded ? ` · ${seeded} new from .bib files` : "");
-        if (seeded) {
+        const linked = await linkPaperpilePdfs(adapter);
+        if (cancelled) return;
+        setSeededNote([seeded ? ` · ${seeded} new from .bib files` : "", linked ? ` · ${linked} PDF${linked > 1 ? "s" : ""} linked from Paperpile` : ""].join(""));
+        if (seeded || linked) {
           scheduleSave();
         } else if (!loaded && !library.papers.length) {
           setPanel("add");
@@ -134,7 +152,32 @@ export function App() {
   function addDrafts(drafts: PaperDraft[]): Paper[] {
     const { added, updated } = library.merge(drafts);
     if (added.length || updated.length) scheduleSave();
+    // Fetch free PDFs in the background; a big .bib import is left alone.
+    if (settings["pdfs.auto"] !== "off" && added.length <= 20) added.forEach((p) => getPdf(p, true));
     return added;
+  }
+
+  /** Download a free PDF into storage. Quiet when it runs on its own. */
+  async function getPdf(p: Paper, quiet = false): Promise<boolean> {
+    if (!storage || p.pdf || !canFindOpenPdf(p, pdfOptions(settings))) return false;
+    if (!quiet) setBusy("Looking for a free PDF");
+    try {
+      const bytes = await findOpenPdf(p, pdfOptions(settings));
+      if (!bytes) {
+        if (!quiet) setError(`No free PDF found for "${p.title}".`);
+        return false;
+      }
+      const path = pdfPath(p.id);
+      await storage.write(path, bytes, "application/pdf");
+      library.update(p.id, { pdf: path });
+      scheduleSave();
+      return true;
+    } catch (e) {
+      if (!quiet) setError(`Could not get the PDF: ${(e as Error).message}`);
+      return false;
+    } finally {
+      if (!quiet) setBusy(null);
+    }
   }
 
   async function runAction(id: string, p: Paper) {
@@ -277,10 +320,16 @@ export function App() {
             scheduleSave();
           }}
           onAction={(id) => runAction(id, paper)}
+          onRead={() => setReading(paper.id)}
+          onGetPdf={canFindOpenPdf(paper, pdfOptions(settings)) ? () => getPdf(paper) : undefined}
           onAdd={(d) => addDrafts([d]).length > 0}
           onError={setError}
           scheduleSave={scheduleSave}
         />
+      )}
+
+      {reading && storage && library.papers.find((p) => p.id === reading)?.pdf && (
+        <Reader paper={library.papers.find((p) => p.id === reading)!} storage={storage} onClose={() => setReading(null)} onError={setError} />
       )}
 
       {panel === "add" && (
@@ -307,6 +356,8 @@ function Detail(props: {
   onChange(patch: Partial<Paper>): void;
   onRemove(): void;
   onAction(id: string): void;
+  onRead(): void;
+  onGetPdf?(): void;
   onAdd(d: PaperDraft): boolean;
   onError(msg: string): void;
   scheduleSave(): void;
@@ -368,7 +419,7 @@ function Detail(props: {
         {links.map(([label, href]) => (
           <a key={label} href={href} target="_blank" rel="noopener">{label}</a>
         ))}
-        {p.pdf && <button class="link" onClick={openPdf}>Open PDF</button>}
+        {p.pdf && <button class="link" onClick={openPdf}>PDF file</button>}
         <label class="link file">
           {p.pdf ? "Replace PDF" : "Attach PDF"}
           <input type="file" accept="application/pdf" onChange={(e) => e.currentTarget.files?.[0] && attachPdf(e.currentTarget.files[0])} />
@@ -376,6 +427,8 @@ function Detail(props: {
       </div>
 
       <div class="actions">
+        {p.pdf && <button class="primary" onClick={props.onRead}>Read</button>}
+        {!p.pdf && props.onGetPdf && <button onClick={props.onGetPdf}>Get free PDF</button>}
         {available.map((a) => (
           <button key={`${a.plugin}.${a.id}`} onClick={() => props.onAction(`${a.plugin}.${a.id}`)}>{a.label}</button>
         ))}
@@ -563,7 +616,9 @@ function FieldInput(props: { field: { name: string; label: string; type?: string
   return (
     <label class="field">
       <span>{f.label}</span>
-      {f.type === "textarea" ? (
+      {f.type === "checkbox" ? (
+        <input type="checkbox" class="check" checked={props.value !== "off"} onChange={(e) => props.onInput(e.currentTarget.checked ? "" : "off")} />
+      ) : f.type === "textarea" ? (
         <textarea value={props.value} placeholder={f.placeholder} onInput={(e) => props.onInput(e.currentTarget.value)} />
       ) : (
         f.type === "password" ? (
