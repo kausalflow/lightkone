@@ -19,6 +19,8 @@ import { FreshPanel } from "./FreshPanel";
 import { ManuscriptPanel } from "./ManuscriptPanel";
 import { EquationPanel } from "./EquationPanel";
 import { SharedPanel } from "./SharedPanel";
+import { CommandPalette, type Command } from "./CommandPalette";
+import { InfoPanel, type InfoPage } from "./InfoPanel";
 import { activeId, activeStorage, copyPapers, readInvite, sharedLibraries, type Invite } from "./core/shared";
 import type { ManuscriptReport } from "./core/manuscript";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
@@ -76,7 +78,8 @@ export function App() {
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | null>(null);
+  const [infoPage, setInfoPage] = useState<InfoPage>("how");
   const [readingPage, setReadingPage] = useState(0);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -386,6 +389,18 @@ export function App() {
     return () => removeEventListener("keydown", onKey);
   }, [visible, selected, panel, tidying, syncing, reading]);
 
+  // Ctrl/⌘ K opens the command palette from anywhere but the reader.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "k" || reading) return;
+      e.preventDefault();
+      setSideOpen(false);
+      setPanel((p) => (p === "palette" ? null : "palette"));
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, [reading]);
+
   function updateSettings(next: Settings) {
     setSettings(next);
     saveSettings(next);
@@ -450,6 +465,49 @@ export function App() {
     }
   }
 
+  const about = (page: InfoPage) => () => {
+    setSideOpen(false);
+    setInfoPage(page);
+    setPanel("info");
+  };
+  const go = (p: NonNullable<typeof panel>) => () => {
+    setSideOpen(false);
+    setPanel(p);
+  };
+  // The tools, by group: listed in the sidebar and found by the command palette.
+  const hasPapers = library.papers.length > 0;
+  const tools: Tool[] = [
+    { id: "fresh", group: "Discover", label: "New on arXiv", icon: "sparkle", hint: "Each day's arXiv preprints near your library", show: Boolean(storage && hasPapers), run: go("fresh") },
+    { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: go("map") },
+    { id: "equation", group: "Discover", label: "Search by equation", icon: "sigma", hint: "Find the papers that use an equation", show: Boolean(storage && library.papers.some((p) => p.arxiv)), run: go("equation") },
+    { id: "writing", group: "Write", label: "Writing helpers", icon: "book", hint: "What to cite for a sentence; a .bib for a manuscript", show: hasPapers, run: go("writing") },
+    { id: "manuscript", group: "Write", label: "Watch my manuscript", icon: "sync", hint: "Keep a LaTeX manuscript's .bib in step with what it cites", show: Boolean(storage), run: go("manuscript") },
+    { id: "obsidian", group: "Write", label: "Export to Obsidian", icon: "file", hint: "Highlights and notes as Markdown notes", show: Boolean(storage), run: go("obsidian") },
+    { id: "tidy", group: "Organize", label: "Tidy up", icon: "broom", hint: "Duplicates, published versions of preprints", show: Boolean(storage), run: () => { setTidying(true); setSideOpen(false); } },
+    { id: "shared", group: "Organize", label: "Shared libraries", icon: "users", hint: "Libraries shared with a group", show: true, run: go("shared") },
+  ].filter((t) => t.show) as Tool[];
+  const commands: Command[] = [
+    ...(storage && !readOnly ? [{ id: "add", group: "Actions", label: "Add paper", icon: "plus", keywords: "new import arxiv doi bibtex", run: () => setPanel("add") } as Command] : []),
+    ...(hasPapers ? [{ id: "ask", group: "Actions", label: "Ask your library", icon: "sparkle", keywords: "question claude ai", run: () => setPanel("ask") } as Command] : []),
+    { id: "search", group: "Actions", label: "Search the library", icon: "search", keywords: "find filter", run: () => setTimeout(() => searchRef.current?.focus()) },
+    ...(visible.length ? [{ id: "bib", group: "Actions", label: "Export papers in view as .bib", icon: "download", keywords: "bibtex download", run: () => download("library.bib", libraryToBibtex(visible)) } as Command] : []),
+    { id: "settings", group: "Actions", label: "Settings", icon: "settings", keywords: "storage key preferences claude openalex", run: () => setPanel("settings") },
+    { id: "about:how", group: "About", label: "How Lightkone works", icon: "info", keywords: "about storage server", run: about("how") },
+    { id: "about:data", group: "About", label: "Your data: what is processed where", icon: "info", keywords: "privacy about", run: about("data") },
+    { id: "about:keys", group: "About", label: "Keyboard shortcuts", icon: "info", keywords: "keys help", run: about("keys") },
+    ...tools.map((t) => ({ id: t.id, group: t.group, label: t.label, icon: t.icon, hint: t.hint, run: t.run })),
+    ...(
+      [
+        ["", "All papers", "library"],
+        ["is:starred", "Starred", "star"],
+        ["is:recent", "Recently read", "clock"],
+        ...(counts.trash ? [["is:trash", "Trash", "trash"]] : []),
+      ] as [string, string, IconName][]
+    ).map(([q, label, icon]) => ({ id: `view:${q}`, group: "Go to", label, icon, run: () => pick(q) })),
+    ...allFolders(library.papers.filter((p) => !p.trashed)).map((f) => ({ id: `in:${f}`, group: "Folders", label: f, icon: "folder" as IconName, onlyWhenTyped: true, run: () => pick(`in:"${f}"`) })),
+    ...tags.map(([t, n]) => ({ id: `tag:${t}`, group: "Tags", label: t, icon: "tag" as IconName, hint: `${n} ${n === 1 ? "paper" : "papers"}`, onlyWhenTyped: true, run: () => pick(`tag:"${t}"`) })),
+  ];
+
   const saveLabel = { idle: "", pending: "Unsaved", saving: "Saving…", saved: "Saved", merged: "Synced", error: "Not saved" }[saveState];
   const view = viewTitle(query);
 
@@ -484,6 +542,9 @@ export function App() {
               {saveLabel}
             </span>
           )}
+          <button class="icon-btn" onClick={() => setPanel("palette")} title={`Find a tool, folder, tag or paper (${MOD}K)`} aria-label="Commands">
+            <Icon name="command" />
+          </button>
           <button class="ask-btn" onClick={() => setPanel("ask")} disabled={!library.papers.length} title="Ask a question across your library">
             <Icon name="sparkle" />
             <span class="label">Ask</span>
@@ -540,53 +601,13 @@ export function App() {
               </button>
             ),
           )}
-          {storage && (
-            <button class="tag" title="Duplicates, published versions of preprints" onClick={() => { setTidying(true); setSideOpen(false); }}>
-              <Icon name="broom" />
-              <span class="name">Tidy up</span>
-            </button>
-          )}
-          {storage && library.papers.length > 0 && (
-            <button class="tag" title="Each day's arXiv preprints near your library" onClick={() => { setPanel("fresh"); setSideOpen(false); }}>
-              <Icon name="sparkle" />
-              <span class="name">New on arXiv</span>
-            </button>
-          )}
-          {storage && library.papers.length > 0 && (
-            <button class="tag" title="Which of your papers cite which, and what they cite that you don't have" onClick={() => { setPanel("map"); setSideOpen(false); }}>
-              <Icon name="link" />
-              <span class="name">Citation map</span>
-            </button>
-          )}
-          {storage && library.papers.some((p) => p.arxiv) && (
-            <button class="tag" title="Find the papers that use an equation" onClick={() => { setPanel("equation"); setSideOpen(false); }}>
-              <Icon name="search" />
-              <span class="name">Search by equation</span>
-            </button>
-          )}
-          {library.papers.length > 0 && (
-            <button class="tag" title="Find what to cite for a sentence; a .bib for a manuscript" onClick={() => { setPanel("writing"); setSideOpen(false); }}>
-              <Icon name="book" />
-              <span class="name">Writing helpers</span>
-            </button>
-          )}
-          {storage && (
-            <button class="tag" title="Keep a LaTeX manuscript's .bib in step with what it cites" onClick={() => { setPanel("manuscript"); setSideOpen(false); }}>
-              <Icon name="sync" />
-              <span class="name">Watch my manuscript</span>
-            </button>
-          )}
-          <button class="tag" title="Libraries shared with a group" onClick={() => { setPanel("shared"); setSideOpen(false); }}>
-            <Icon name="folder" />
-            <span class="name">Shared libraries</span>
-          </button>
-          {storage && (
-            <button class="tag" title="Highlights and notes as Markdown notes" onClick={() => { setPanel("obsidian"); setSideOpen(false); }}>
-              <Icon name="file" />
-              <span class="name">Export to Obsidian</span>
-            </button>
-          )}
         </nav>
+        <button class="tag find-tool" onClick={() => { setSideOpen(false); setPanel("palette"); }} title="Find any tool, folder, tag or paper">
+          <Icon name="command" />
+          <span class="name">Find a tool…</span>
+          <kbd class="hide-phone">{MOD}K</kbd>
+        </button>
+        <ToolGroups tools={tools} />
         <h3>Folders</h3>
         {!tree.length && <p class="muted small hint">Put a paper in a folder from its details; folders can nest, like "Physics/QFT".</p>}
         <FolderList nodes={tree} query={query} onPick={pick} />
@@ -611,8 +632,15 @@ export function App() {
           </button>
         )}
         <footer class="side-foot">
-          <Icon name="cloud" size={15} />
-          <span>{where ? `${where}${seededNote}${bibNote}` : status}</span>
+          <div class="side-status">
+            <Icon name="cloud" size={15} />
+            <span>{where ? `${where}${seededNote}${bibNote}` : status}</span>
+          </div>
+          <nav class="side-links" aria-label="About">
+            <button class="link" onClick={about("how")}>How it works</button>
+            <button class="link" onClick={about("data")}>Your data</button>
+            <button class="link" onClick={about("keys")}>Shortcuts</button>
+          </nav>
         </footer>
       </aside>
 
@@ -908,6 +936,18 @@ export function App() {
           onClose={() => { setInvite(null); setPanel(null); }}
         />
       )}
+      {panel === "palette" && (
+        <CommandPalette
+          commands={commands}
+          papers={library.papers}
+          onOpenPaper={(id) => {
+            setSelected(id);
+            setResult(null);
+          }}
+          onClose={() => setPanel((p) => (p === "palette" ? null : p))}
+        />
+      )}
+      {panel === "info" && <InfoPanel page={infoPage} onClose={() => setPanel(null)} />}
       {panel === "settings" && <SettingsPanel settings={settings} onSave={updateSettings} onClose={() => setPanel(null)} />}
     </div>
   );
@@ -961,6 +1001,71 @@ function ThemeButton() {
       <Icon name={darkNow ? "moon" : "sun"} />
       {theme === "" && <span class="auto-dot" />}
     </button>
+  );
+}
+
+const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl ";
+
+interface Tool {
+  id: string;
+  group: "Discover" | "Write" | "Organize";
+  label: string;
+  icon: IconName;
+  hint: string;
+  show?: boolean;
+  run(): void;
+}
+
+const GROUPS_KEY = "lightkone.toolgroups.open";
+
+/** The tools in the sidebar, under headings that fold; which are open is remembered on this device. */
+function ToolGroups(props: { tools: Tool[] }) {
+  const [open, setOpen] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(GROUPS_KEY) ?? "[]"));
+    } catch {
+      return new Set();
+    }
+  });
+  function toggle(g: string) {
+    const next = new Set(open);
+    next.has(g) ? next.delete(g) : next.add(g);
+    setOpen(next);
+    try {
+      localStorage.setItem(GROUPS_KEY, JSON.stringify([...next]));
+    } catch {
+      // fine for this visit
+    }
+  }
+  const groups = [...new Set(props.tools.map((t) => t.group))];
+  return (
+    <div class="tool-groups">
+      {groups.map((g) => {
+        const items = props.tools.filter((t) => t.group === g);
+        const on = open.has(g);
+        return (
+          <div key={g} class="tool-group">
+            <button class="group-head" aria-expanded={on} onClick={() => toggle(g)} title={on ? undefined : items.map((t) => t.label).join(", ")}>
+              <span class={`twisty ${on ? "open" : ""}`}>
+                <Icon name="chevron" size={14} />
+              </span>
+              <span class="name">{g}</span>
+              {!on && <span class="peek">{items.map((t) => t.label).join(" · ")}</span>}
+            </button>
+            {on && (
+              <nav class="nav">
+                {items.map((t) => (
+                  <button key={t.id} class="tag" title={t.hint} onClick={t.run}>
+                    <Icon name={t.icon} />
+                    <span class="name">{t.label}</span>
+                  </button>
+                ))}
+              </nav>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
