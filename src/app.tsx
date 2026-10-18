@@ -16,6 +16,9 @@ import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
 import { defaultBibPath, papersInFolder, runBibSync } from "./core/bibsync";
 import { githubStorage } from "./plugins/storage-github";
+import { crossref } from "./plugins/lookup";
+import { findDuplicates, findPublished, mergeInto, pickKeeper, type Published } from "./core/tidy";
+import { annotationsPath } from "./core/annotations";
 
 const library = new Library();
 
@@ -54,6 +57,7 @@ export function App() {
   const [seededNote, setSeededNote] = useState("");
   const [bibNote, setBibNote] = useState("");
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [tidying, setTidying] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortBy>("added");
@@ -315,6 +319,11 @@ export function App() {
             </button>
           ),
         )}
+        {storage && (
+          <button class="tag tidy" onClick={() => { setTidying(true); setSideOpen(false); }}>
+            Tidy up <span>duplicates, published versions</span>
+          </button>
+        )}
         <h3>Folders</h3>
         {!tree.length && <p class="muted small">Put a paper in a folder from its details; folders can nest, like "Physics/QFT".</p>}
         <FolderList nodes={tree} query={query} onPick={pick} />
@@ -455,6 +464,35 @@ export function App() {
             return added.length;
           }}
           canAdd={Boolean(storage)}
+        />
+      )}
+      {tidying && storage && (
+        <TidyPanel
+          papers={library.papers}
+          version={version}
+          onMerge={async (group) => {
+            const keep = pickKeeper(group);
+            const others = group.filter((p) => p !== keep);
+            // Highlights belong to a paper id: bring them over when the keeper has none.
+            if (!(await storage.read(annotationsPath(keep.id)).catch(() => null))) {
+              for (const o of others) {
+                const notes = await storage.read(annotationsPath(o.id)).catch(() => null);
+                if (notes) {
+                  await storage.write(annotationsPath(keep.id), new TextDecoder().decode(notes).replace(o.id, keep.id), "application/json");
+                  break;
+                }
+              }
+            }
+            library.update(keep.id, mergeInto(keep, others));
+            const now = new Date().toISOString();
+            others.forEach((o) => library.update(o.id, { trashed: now }));
+            scheduleSave();
+          }}
+          onUpdate={(items) => {
+            items.forEach(({ paper: p, patch }) => library.update(p.id, patch));
+            scheduleSave();
+          }}
+          onClose={() => setTidying(false)}
         />
       )}
       {syncing !== null && (
@@ -698,6 +736,126 @@ function Detail(props: {
         <button class="link danger" onClick={props.onRemove}>{p.trashed ? "Delete for good" : "Move to trash"}</button>
       </p>
     </section>
+  );
+}
+
+function TidyPanel(props: {
+  papers: Paper[];
+  version: number;
+  onMerge(group: Paper[]): Promise<void>;
+  onUpdate(items: Published[]): void;
+  onClose(): void;
+}) {
+  const groups = useMemo(() => findDuplicates(props.papers), [props.version]);
+  const preprints = props.papers.filter((p) => !p.trashed && p.arxiv && (!p.doi || /^10\.48550\//i.test(p.doi))).length;
+  const [merging, setMerging] = useState(false);
+  const [progress, setProgress] = useState<[number, number] | null>(null);
+  const [published, setPublished] = useState<Published[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [updated, setUpdated] = useState(0);
+  function update(items: Published[]) {
+    props.onUpdate(items);
+    setUpdated(updated + items.length);
+    setPublished(published!.filter((x) => !items.includes(x)));
+  }
+
+  async function mergeAll(gs: Paper[][]) {
+    setMerging(true);
+    for (const g of gs) await props.onMerge(g);
+    setMerging(false);
+  }
+
+  async function check() {
+    setError(null);
+    setProgress([0, preprints]);
+    try {
+      setPublished(await findPublished(props.papers, crossref, (d, n) => setProgress([d, n])));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  const label = (p: Paper) => `${shortAuthors(p)}${p.year ? ` ${p.year}` : ""}${p.venue ? ` · ${p.venue}` : ""}${p.pdf ? " · PDF" : ""}`;
+
+  return (
+    <div class="overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
+      <div class="panel wide tidy-panel">
+        <h2>Tidy up</h2>
+
+        <h3>Duplicates</h3>
+        {!groups.length ? (
+          <p class="muted">No duplicates found.</p>
+        ) : (
+          <>
+            <p class="muted small">
+              The same paper entered more than once: same DOI, arXiv id or title. Merging keeps the copy with a PDF (or the oldest) and brings over the
+              others' tags, folders, notes and missing details; the rest go to the trash.
+            </p>
+            <button class="primary" disabled={merging} onClick={() => mergeAll(groups)}>
+              {merging ? "Merging…" : `Merge all ${groups.length}`}
+            </button>
+            <ul class="dupes">
+              {groups.slice(0, 100).map((g) => {
+                const keep = pickKeeper(g);
+                return (
+                  <li key={g.map((p) => p.id).join()}>
+                    {g.map((p) => (
+                      <div key={p.id} class={p === keep ? "keep" : ""}>
+                        <span class="title">{p.title}</span>
+                        <span class="meta"> {label(p)}{p === keep ? " · keep" : ""}</span>
+                      </div>
+                    ))}
+                    <button class="small" disabled={merging} onClick={() => props.onMerge(g)}>Merge</button>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+
+        <h3>Published versions</h3>
+        <p class="muted small">
+          {preprints
+            ? `${preprints} arXiv preprint${preprints > 1 ? "s" : ""} without a journal DOI. Lightkone can look up which have been published (arXiv and Semantic Scholar, then Crossref) and add the journal, DOI, volume and pages. Citation keys stay the same.`
+            : published ? "" : "No arXiv preprints without a journal DOI."}
+        </p>
+        {preprints > 0 && !published && (
+          <button class="primary" disabled={!!progress} onClick={check}>
+            {progress ? `Checking ${progress[0]} of ${progress[1]}…` : `Check ${preprints} preprint${preprints > 1 ? "s" : ""}`}
+          </button>
+        )}
+        {error && <p class="message">{error}</p>}
+        {published && (
+          <>
+            {updated > 0 && <p class="message">Updated {updated} paper{updated > 1 ? "s" : ""} to the published version.</p>}
+            {published.length > 0 && <p>{published.length} published:</p>}
+            {!published.length && !updated && <p>None of them has a published version yet.</p>}
+            {published.length > 0 && (
+              <>
+                <button class="primary" onClick={() => update(published)}>Update all {published.length}</button>
+                <ul class="dupes">
+                  {published.map((x) => (
+                    <li key={x.paper.id}>
+                      <div>
+                        <span class="title">{x.paper.title}</span>
+                        <span class="meta"> → {[x.patch.venue, x.patch.year, x.patch.doi].filter(Boolean).join(" · ")}</span>
+                      </div>
+                      <button class="small" onClick={() => update([x])}>Update</button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        )}
+
+        <div class="row">
+          <button class="ghost" onClick={props.onClose}>Close</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
