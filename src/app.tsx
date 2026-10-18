@@ -13,6 +13,7 @@ import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf
 import { Reader } from "./reader/Reader";
 import { AskPanel } from "./AskPanel";
 import { ObsidianPanel } from "./ObsidianPanel";
+import { WritingPanel } from "./WritingPanel";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
 import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
 import { allFolders, cleanFolder, folderTree, type FolderNode } from "./core/folders";
@@ -68,7 +69,7 @@ export function App() {
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | null>(null);
   const [readingPage, setReadingPage] = useState(0);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -159,6 +160,19 @@ export function App() {
       setIndexing(null);
       setBusy(null);
     }
+  }
+
+  /** Open a paper at a page from a panel; the panel waits underneath the reader. */
+  function openAt(id: string, page: number) {
+    const p = library.papers.find((x) => x.id === id);
+    if (!p) return;
+    setSelected(id);
+    if (p.pdf && storage) {
+      library.update(id, { opened: new Date().toISOString() });
+      scheduleSave();
+      setReadingPage(page);
+      setReading(id);
+    } else setPanel(null);
   }
 
   // A link from an exported note, ?open=<paper id>&page=<n>, opens that paper at that page.
@@ -418,6 +432,12 @@ export function App() {
               <span class="name">Tidy up</span>
             </button>
           )}
+          {library.papers.length > 0 && (
+            <button class="tag" title="Find what to cite for a sentence; a .bib for a manuscript" onClick={() => { setPanel("writing"); setSideOpen(false); }}>
+              <Icon name="book" />
+              <span class="name">Writing helpers</span>
+            </button>
+          )}
           {storage && (
             <button class="tag" title="Highlights and notes as Markdown notes" onClick={() => { setPanel("obsidian"); setSideOpen(false); }}>
               <Icon name="file" />
@@ -613,19 +633,13 @@ export function App() {
           settings={settings}
           hidden={Boolean(reading)}
           onIndex={() => { if (!indexing) indexPdfs(); }}
-          onOpen={(id, page) => {
-            const p = library.papers.find((x) => x.id === id);
-            if (!p) return;
-            setSelected(id);
-            if (p.pdf && storage) {
-              library.update(id, { opened: new Date().toISOString() });
-              scheduleSave();
-              setReadingPage(page);
-              setReading(id); // the conversation waits underneath the reader
-            } else setPanel(null);
-          }}
+          onOpen={openAt}
           onClose={() => setPanel(null)}
         />
+      )}
+
+      {panel === "writing" && (
+        <WritingPanel papers={library.papers} texts={textIndex?.texts ?? new Map()} settings={settings} hidden={Boolean(reading)} onOpen={openAt} onClose={() => setPanel(null)} />
       )}
 
       {panel === "obsidian" && storage && (
