@@ -18,6 +18,8 @@ import { CitationMap } from "./CitationMap";
 import { FreshPanel } from "./FreshPanel";
 import { ManuscriptPanel } from "./ManuscriptPanel";
 import { EquationPanel } from "./EquationPanel";
+import { SharedPanel } from "./SharedPanel";
+import { activeId, activeStorage, copyPapers, readInvite, sharedLibraries, type Invite } from "./core/shared";
 import type { ManuscriptReport } from "./core/manuscript";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
 import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
@@ -74,7 +76,7 @@ export function App() {
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | null>(null);
   const [readingPage, setReadingPage] = useState(0);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -82,12 +84,19 @@ export function App() {
   const saveTimer = useRef<number | undefined>(undefined);
   const [manuscriptReports, setManuscriptReports] = useState<Map<string, ManuscriptReport>>(new Map());
   const [checking, setChecking] = useState(false);
+  // An invite to a shared library, from a link's ?join=.
+  const [invite, setInvite] = useState<Invite | null>(() => readInvite(location.search));
+  // A shared library whose owner gave this person read access only.
+  const [readOnly, setReadOnly] = useState(false);
+  const readOnlyRef = useRef(false);
   // A paper shared to Lightkone, or sent by the bookmarklet, waiting for storage to open.
   const [captured, setCaptured] = useState<string | null>(() => capturedInput(location.search));
 
   // Open storage whenever the chosen provider or its settings change.
   const providerId = settings["storage.provider"] || "browser";
-  const storageKey = JSON.stringify(storageConfig(settings, providerId)) + providerId;
+  // One's own library, or the shared library open now.
+  const active = activeStorage(settings);
+  const storageKey = JSON.stringify(active.config) + active.providerId + (active.shared?.id ?? "");
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -98,17 +107,20 @@ export function App() {
           setError(`Could not load the plugin at ${url}: ${(e as Error).message}`);
         }
       }
-      const provider = storageProviders().find((p) => p.id === providerId) ?? storageProviders()[0];
+      const provider = storageProviders().find((p) => p.id === active.providerId) ?? storageProviders()[0];
       try {
-        const remote = provider.create(storageConfig(settings, provider.id));
-        // This browser's own storage is already offline; others keep an offline copy.
-        const adapter = provider.id === "browser" ? remote : withOfflineCache(remote, browserCache());
+        const remote = provider.create(active.config);
+        // This browser's own storage is already offline; others keep an offline copy, one per library.
+        const adapter = provider.id === "browser" ? remote : withOfflineCache(remote, browserCache(active.shared ? `lightkone-offline-${active.shared.id}` : undefined));
         library.storage = adapter;
-        setStatus(`Opening your library from ${provider.label}…`);
+        setStatus(active.shared ? `Opening ${active.shared.name}…` : `Opening your library from ${provider.label}…`);
         const { loaded, seeded, foldered } = await library.load();
         if (cancelled) return;
+        readOnlyRef.current = (await adapter.access?.()) === "read";
+        if (cancelled) return;
+        setReadOnly(readOnlyRef.current);
         setStorage(adapter);
-        setWhere(provider.label);
+        setWhere(active.shared ? `${active.shared.name} (shared${readOnlyRef.current ? ", read only" : ""})` : provider.label);
         const linked = await linkPaperpilePdfs(adapter);
         if (cancelled) return;
         const offline = (adapter as Partial<OfflineStorage>).offline;
@@ -125,7 +137,7 @@ export function App() {
         } else if (library.bibSync.some((t) => t.tex !== undefined) && syncToken()) {
           // A manuscript may have changed since: bring its .bib in step.
           syncBibs();
-        } else if (!loaded && !library.papers.length && !captured) {
+        } else if (!loaded && !library.papers.length && !captured && !invite) {
           setPanel("add");
         }
       } catch (e) {
@@ -135,8 +147,8 @@ export function App() {
         setStorage(null);
         setWhere(null);
         setStatus("Not connected");
-        setError(`Could not open ${provider.label}: ${(e as Error).message}`);
-        setPanel("settings");
+        setError(`Could not open ${active.shared ? active.shared.name : provider.label}: ${(e as Error).message}`);
+        setPanel(active.shared ? "shared" : "settings");
       }
       setVersion((v) => v + 1);
     })();
@@ -215,6 +227,10 @@ export function App() {
   }, [captured, storage]);
 
   function scheduleSave() {
+    if (readOnlyRef.current) {
+      setError("You can read this shared library but not change it. Its owner can give you write access where it lives.");
+      return;
+    }
     setSaveState("pending");
     clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(async () => {
@@ -240,6 +256,39 @@ export function App() {
     if (r.manuscripts.size) setManuscriptReports((old) => new Map([...old, ...r.manuscripts]));
     if (r.errors.length) setError(`BibTeX sync failed for ${r.errors.join("; ")}`);
     if (r.written.length) setBibNote(` · .bib synced to ${r.written.join(", ")}`);
+  }
+
+  // A link to join a shared library opens the panel to join it, then leaves the address.
+  useEffect(() => {
+    if (!invite) return;
+    setPanel("shared");
+    const url = new URL(location.href);
+    url.searchParams.delete("join");
+    history.replaceState(null, "", url);
+  }, []);
+
+  /** Where each library lives, to copy papers between them. */
+  const otherLibraries = () => [
+    ...(active.shared ? [{ id: "", name: "My library" }] : []),
+    ...sharedLibraries(settings).filter((l) => l.id !== active.shared?.id).map((l) => ({ id: l.id, name: l.name })),
+  ];
+  async function copyTo(target: string, papers: Paper[]) {
+    if (!storage) return;
+    const l = sharedLibraries(settings).find((x) => x.id === target);
+    const pid = l ? l.provider : providerId;
+    const provider = storageProviders().find((p) => p.id === pid);
+    if (!provider) return setError("That library's storage is not available here.");
+    setBusy(`Copying to ${l ? l.name : "your library"}`);
+    try {
+      const to = provider.create(l ? l.config : storageConfig(settings, pid));
+      if ((await to.access?.()) === "read") throw new Error("you can only read that library");
+      const n = await copyPapers(papers, storage, to, l ? settings["profile.name"]?.trim() || undefined : undefined);
+      setBibNote(` · ${n ? `copied to ${l ? l.name : "your library"}` : "already there"}`);
+    } catch (e) {
+      setError(`Could not copy: ${(e as Error).message}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   // Coming back to the tab, take in what was saved on another device or by Claude meanwhile.
@@ -328,7 +377,13 @@ export function App() {
   }
 
   function addDrafts(drafts: PaperDraft[]): Paper[] {
-    const { added, updated } = library.merge(drafts);
+    if (readOnlyRef.current) {
+      scheduleSave();
+      return [];
+    }
+    // In a shared library, papers say who added them.
+    const by = active.shared && settings["profile.name"]?.trim();
+    const { added, updated } = library.merge(by ? drafts.map((d) => ({ by, ...d })) : drafts);
     if (added.length || updated.length) scheduleSave();
     // Fetch free PDFs in the background; a big .bib import is left alone.
     if (settings["pdfs.auto"] !== "off" && added.length <= 20) added.forEach((p) => getPdf(p, true));
@@ -417,7 +472,7 @@ export function App() {
             <Icon name="sparkle" />
             <span class="label">Ask</span>
           </button>
-          <button class="primary add" onClick={() => setPanel("add")} disabled={!storage}>
+          <button class="primary add" onClick={() => setPanel("add")} disabled={!storage || readOnly} title={readOnly ? "This shared library is read only for you" : undefined}>
             <Icon name="plus" />
             <span class="label">Add paper</span>
           </button>
@@ -433,6 +488,25 @@ export function App() {
 
       {sideOpen && <div class="side-backdrop" onClick={() => setSideOpen(false)} />}
       <aside class={`side ${sideOpen ? "open" : ""}`}>
+        {sharedLibraries(settings).length > 0 && (
+          <label class="library-switch">
+            <span class="sr-only">Library</span>
+            <select
+              value={activeId(settings)}
+              onChange={(e) => {
+                const v = e.currentTarget.value;
+                if (v === "manage") return setPanel("shared");
+                setSelected(null);
+                setQuery("");
+                updateSettings({ ...settings, "libraries.active": v });
+              }}
+            >
+              <option value="">My library</option>
+              {sharedLibraries(settings).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              <option value="manage">Shared libraries…</option>
+            </select>
+          </label>
+        )}
         <nav class="nav">
           {(
             [
@@ -486,6 +560,10 @@ export function App() {
               <span class="name">Watch my manuscript</span>
             </button>
           )}
+          <button class="tag" title="Libraries shared with a group" onClick={() => { setPanel("shared"); setSideOpen(false); }}>
+            <Icon name="folder" />
+            <span class="name">Shared libraries</span>
+          </button>
           {storage && (
             <button class="tag" title="Highlights and notes as Markdown notes" onClick={() => { setPanel("obsidian"); setSideOpen(false); }}>
               <Icon name="file" />
@@ -659,6 +737,8 @@ export function App() {
           onAdd={(d) => addDrafts([d]).length > 0}
           onError={setError}
           scheduleSave={scheduleSave}
+          others={otherLibraries()}
+          onCopyTo={(id) => copyTo(id, [paper])}
         />
       )}
 
@@ -798,6 +878,20 @@ export function App() {
           onSettings={() => { setSyncing(null); setPanel("settings"); }}
         />
       )}
+      {panel === "shared" && (
+        <SharedPanel
+          settings={settings}
+          invite={invite}
+          activeId={activeId(settings)}
+          onName={(name) => updateSettings({ ...settings, "profile.name": name })}
+          onSave={(next) => {
+            setInvite(null);
+            setSelected(null);
+            updateSettings(next);
+          }}
+          onClose={() => { setInvite(null); setPanel(null); }}
+        />
+      )}
       {panel === "settings" && <SettingsPanel settings={settings} onSave={updateSettings} onClose={() => setPanel(null)} />}
     </div>
   );
@@ -915,6 +1009,9 @@ function Detail(props: {
   onAdd(d: PaperDraft): boolean;
   onError(msg: string): void;
   scheduleSave(): void;
+  /** Other libraries this paper can be copied to. */
+  others: { id: string; name: string }[];
+  onCopyTo(libraryId: string): void;
 }) {
   const { paper: p, storage } = props;
   const [tagText, setTagText] = useState(p.tags.join(", "));
@@ -991,7 +1088,7 @@ function Detail(props: {
             In the trash. <button class="link" onClick={() => props.onChange({ trashed: undefined })}>Restore</button>
           </p>
         )}
-        <p class="eyebrow">{[p.venue, p.year].filter(Boolean).join(" · ") || p.type}</p>
+        <p class="eyebrow">{[p.venue, p.year].filter(Boolean).join(" · ") || p.type}{p.by ? ` · added by ${p.by}` : ""}</p>
         <h2>{p.title}</h2>
         <p class="authors">
           {showAllAuthors || p.authors.length <= 12 ? p.authors.join("; ") : `${p.authors.slice(0, 10).join("; ")}; `}
@@ -1014,6 +1111,21 @@ function Detail(props: {
             <button class="primary" onClick={props.onGetPdf}>
               <Icon name="download" /> Get free PDF
             </button>
+          )}
+          {props.others.length > 0 && (
+            <select
+              class="copy-to"
+              value=""
+              aria-label="Copy to another library"
+              onChange={(e) => {
+                const v = e.currentTarget.value;
+                e.currentTarget.value = "";
+                if (v !== "-") props.onCopyTo(v);
+              }}
+            >
+              <option value="-">Copy to…</option>
+              {props.others.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
           )}
           {available.map((a) => {
             const icon = actionIcon(a.plugin);
