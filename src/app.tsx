@@ -19,6 +19,7 @@ import { githubStorage } from "./plugins/storage-github";
 import { crossref } from "./plugins/lookup";
 import { findDuplicates, findPublished, mergeInto, pickKeeper, type Published } from "./core/tidy";
 import { annotationsPath } from "./core/annotations";
+import { Icon, type IconName } from "./icons";
 
 const library = new Library();
 
@@ -201,6 +202,32 @@ export function App() {
     return matchingTags.filter(([t]) => top.has(t));
   }, [matchingTags, allTags, tagFilter]);
   const paper = library.papers.find((p) => p.id === selected) ?? null;
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Keys: "/" searches, j and k move through the list, Escape closes the paper.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (panel || tidying || syncing !== null || reading || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (t.closest("input, textarea, select, [contenteditable]")) return;
+      if (e.key === "/") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      } else if (e.key === "Escape" && selected) {
+        setSelected(null);
+      } else if (e.key === "j" || e.key === "k") {
+        const shown = visible.slice(0, 500);
+        if (!shown.length) return;
+        const i = shown.findIndex((p) => p.id === selected);
+        const next = shown[Math.max(0, Math.min(shown.length - 1, i < 0 ? 0 : i + (e.key === "j" ? 1 : -1)))];
+        setSelected(next.id);
+        setResult(null);
+        document.querySelector(`.papers li:nth-child(${shown.indexOf(next) + 1})`)?.scrollIntoView({ block: "nearest" });
+      }
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, [visible, selected, panel, tidying, syncing, reading]);
 
   function updateSettings(next: Settings) {
     setSettings(next);
@@ -260,100 +287,120 @@ export function App() {
     }
   }
 
-  const saveLabel = { idle: "", pending: "Unsaved changes", saving: "Saving…", saved: "Saved", error: "Not saved" }[saveState];
+  const saveLabel = { idle: "", pending: "Unsaved", saving: "Saving…", saved: "Saved", error: "Not saved" }[saveState];
+  const view = viewTitle(query);
 
   return (
     <div class={`app ${paper ? "has-detail" : ""}`}>
       <header class="top">
+        <button class="icon-btn browse" onClick={() => setSideOpen(!sideOpen)} aria-expanded={sideOpen} aria-label="Folders and tags">
+          <Icon name="menu" />
+        </button>
         <div class="brand">
           <img class="logo" src="./icon.svg" alt="" />
           <span>Lightkone</span>
         </div>
-        <input
-          class="search"
-          type="search"
-          placeholder='Search titles, authors, abstracts… or tag:"…" author:… year:2019-2021'
-          value={query}
-          onInput={(e) => setQuery(e.currentTarget.value)}
-        />
+        <label class="search">
+          <Icon name="search" />
+          <input
+            ref={searchRef}
+            type="search"
+            placeholder='Search, or tag:"…" author:… year:2019-2021'
+            aria-label="Search the library"
+            value={query}
+            onInput={(e) => setQuery(e.currentTarget.value)}
+            onKeyDown={(e) => e.key === "Escape" && (setQuery(""), e.currentTarget.blur())}
+          />
+          {!query && <kbd>/</kbd>}
+        </label>
         <div class="top-actions">
-          <button class="browse" onClick={() => setSideOpen(!sideOpen)} aria-expanded={sideOpen}>
-            Browse
+          {saveLabel && (
+            <span class={`save ${saveState}`} role="status">
+              {saveState === "saved" && <Icon name="check" size={14} />}
+              {saveLabel}
+            </span>
+          )}
+          <button class="primary add" onClick={() => setPanel("add")} disabled={!storage}>
+            <Icon name="plus" />
+            <span class="label">Add paper</span>
           </button>
-          <button class="primary" onClick={() => setPanel("add")} disabled={!storage}>
-            Add paper
+          <button class="icon-btn hide-phone" onClick={() => download("library.bib", libraryToBibtex(visible))} disabled={!visible.length} title="Export the papers in view as BibTeX" aria-label="Export .bib">
+            <Icon name="download" />
           </button>
-          <button onClick={() => download("library.bib", libraryToBibtex(visible))} disabled={!visible.length} title="Export the papers in view as BibTeX">
-            Export .bib
-          </button>
-          <button class="ghost" onClick={() => setPanel("settings")}>
-            Settings
+          <ThemeButton />
+          <button class="icon-btn" onClick={() => setPanel("settings")} title="Settings" aria-label="Settings">
+            <Icon name="settings" />
           </button>
         </div>
       </header>
 
-      <div class="statusbar">
-        <span>{where ? `${counts.all} papers · ${where}${seededNote}${bibNote}` : status}</span>
-        {saveLabel && <span class={`save ${saveState}`}>{saveLabel}</span>}
-        {busy && <span class="busy">{busy}…</span>}
-      </div>
-      {error && (
-        <div class="error" role="alert">
-          {error} <button class="link" onClick={() => setError(null)}>Dismiss</button>
-        </div>
-      )}
-
       {sideOpen && <div class="side-backdrop" onClick={() => setSideOpen(false)} />}
       <aside class={`side ${sideOpen ? "open" : ""}`}>
-        {(
-          [
-            ["", "All papers", counts.all],
-            ["is:starred", "★ Starred", counts.starred],
-            ["is:recent", "Recently read", counts.recent],
-            ["is:trash", "Trash", counts.trash],
-          ] as const
-        ).map(([q, label, n]) =>
-          q === "is:trash" && !n && query !== q ? null : (
-            <button key={label} class={`tag ${query === q ? "on" : ""}`} onClick={() => pick(q)}>
-              {label} <span>{n}</span>
+        <nav class="nav">
+          {(
+            [
+              ["", "All papers", counts.all, "library"],
+              ["is:starred", "Starred", counts.starred, "star"],
+              ["is:recent", "Recently read", counts.recent, "clock"],
+              ["is:trash", "Trash", counts.trash, "trash"],
+            ] as const
+          ).map(([q, label, n, icon]) =>
+            q === "is:trash" && !n && query !== q ? null : (
+              <button key={label} class={`tag ${query === q ? "on" : ""}`} onClick={() => pick(q)}>
+                <Icon name={icon} />
+                <span class="name">{label}</span>
+                <span class="count">{n}</span>
+              </button>
+            ),
+          )}
+          {storage && (
+            <button class="tag" title="Duplicates, published versions of preprints" onClick={() => { setTidying(true); setSideOpen(false); }}>
+              <Icon name="broom" />
+              <span class="name">Tidy up</span>
             </button>
-          ),
-        )}
-        {storage && (
-          <button class="tag tidy" onClick={() => { setTidying(true); setSideOpen(false); }}>
-            Tidy up <span>duplicates, published versions</span>
-          </button>
-        )}
+          )}
+        </nav>
         <h3>Folders</h3>
-        {!tree.length && <p class="muted small">Put a paper in a folder from its details; folders can nest, like "Physics/QFT".</p>}
+        {!tree.length && <p class="muted small hint">Put a paper in a folder from its details; folders can nest, like "Physics/QFT".</p>}
         <FolderList nodes={tree} query={query} onPick={pick} />
         <h3>Tags</h3>
-        {tags.length === 0 && <p class="muted small">Tags from your papers show here.</p>}
+        {tags.length === 0 && <p class="muted small hint">Tags from your papers show here.</p>}
         {tags.length > 30 && (
           <input class="tag-filter" placeholder={`Filter ${tags.length} tags`} value={tagFilter} onInput={(e) => setTagFilter(e.currentTarget.value)} />
         )}
-        {shownTags.map(([t, n]) => {
-          const q = `tag:"${t}"`;
-          return (
-            <button key={t} class={`tag ${query === q ? "on" : ""}`} onClick={() => pick(query === q ? "" : q)}>
-              {t} <span>{n}</span>
-            </button>
-          );
-        })}
+        <div class="tag-cloud">
+          {shownTags.map(([t, n]) => {
+            const q = `tag:"${t}"`;
+            return (
+              <button key={t} class={`pill ${query === q ? "on" : ""}`} onClick={() => pick(query === q ? "" : q)}>
+                {t} <span>{n}</span>
+              </button>
+            );
+          })}
+        </div>
         {shownTags.length < matchingTags.length && (
           <button class="link small more" onClick={() => setAllTags(true)}>
             Show all {matchingTags.length} tags
           </button>
         )}
+        <footer class="side-foot">
+          <Icon name="cloud" size={15} />
+          <span>{where ? `${where}${seededNote}${bibNote}` : status}</span>
+        </footer>
       </aside>
 
       <main class="list">
         <div class="list-head">
-          <span>
-            {visible.length} {visible.length === 1 ? "paper" : "papers"}
+          <div class="view">
+            <h1>{view}</h1>
+            <span class="muted">
+              {visible.length} {visible.length === 1 ? "paper" : "papers"}
+            </span>
+          </div>
+          <div class="list-tools">
             {query === "is:trash" && visible.length > 0 && (
               <button
-                class="link danger small empty-trash"
+                class="small danger-btn"
                 onClick={() => {
                   if (!confirm(`Delete ${visible.length} paper${visible.length > 1 ? "s" : ""} in the trash for good? Their PDFs stay in storage.`)) return;
                   visible.forEach((p) => library.remove(p.id));
@@ -364,28 +411,26 @@ export function App() {
                 Empty trash
               </button>
             )}
-          </span>
-          {storage && (query === "" || /^in:"[^"]+"$/.test(query)) && (
-            <button
-              class="link small"
-              title="Keep a .bib of these papers in a GitHub repository, for Overleaf"
-              onClick={() => setSyncing(query ? query.slice(4, -1) : "")}
-            >
-              {library.bibSync.some((t) => t.folder === (query ? query.slice(4, -1) : "")) ? "Syncing .bib" : "Sync .bib"}
-            </button>
-          )}
-          <label>
-            Sort{" "}
-            <select value={sort} onChange={(e) => setSort(e.currentTarget.value as SortBy)}>
+            {storage && (query === "" || /^in:"[^"]+"$/.test(query)) && (
+              <button
+                class="small"
+                title="Keep a .bib of these papers in a GitHub repository, for Overleaf"
+                onClick={() => setSyncing(query ? query.slice(4, -1) : "")}
+              >
+                <Icon name="sync" size={15} />
+                {library.bibSync.some((t) => t.folder === (query ? query.slice(4, -1) : "")) ? "Syncing .bib" : "Sync .bib"}
+              </button>
+            )}
+            <select value={sort} aria-label="Sort" onChange={(e) => setSort(e.currentTarget.value as SortBy)}>
               <option value="added">Recently added</option>
               <option value="year">Year</option>
               <option value="title">Title</option>
               <option value="relevance">Relevance</option>
               <option value="opened">Recently read</option>
             </select>
-          </label>
+          </div>
         </div>
-        <ul>
+        <ul class="papers">
           {visible.slice(0, 500).map((p) => (
             <li key={p.id} class={p.id === selected ? "on" : ""} onClick={() => { setSelected(p.id); setResult(null); }}>
               <button
@@ -394,16 +439,17 @@ export function App() {
                 aria-pressed={Boolean(p.starred)}
                 onClick={(e) => { e.stopPropagation(); library.update(p.id, { starred: !p.starred || undefined }); scheduleSave(); }}
               >
-                {p.starred ? "★" : "☆"}
+                <Icon name="star" filled={Boolean(p.starred)} />
               </button>
               <div class="title">{p.title}</div>
               <div class="meta">
-                {shortAuthors(p)}
-                {p.year ? ` · ${p.year}` : ""}
-                {p.venue ? ` · ${p.venue}` : ""}
+                <span>{shortAuthors(p)}</span>
+                {p.year && <span>{p.year}</span>}
+                {p.venue && <span class="venue">{p.venue}</span>}
               </div>
-              {p.tags.length > 0 && (
+              {(p.pdf || p.tags.length > 0) && (
                 <div class="chips">
+                  {p.pdf && <span class="chip pdf">PDF</span>}
                   {p.tags.slice(0, 4).map((t) => (
                     <span class="chip" key={t}>{t}</span>
                   ))}
@@ -414,9 +460,31 @@ export function App() {
         </ul>
         {visible.length > 500 && <p class="muted center">Showing the first 500. Search or pick a tag to narrow it down.</p>}
         {!visible.length && storage && (
-          <p class="muted center">{library.papers.length ? "Nothing matches that search." : "Your library is empty. Add a paper to start."}</p>
+          <div class="empty">
+            <Icon name={library.papers.length ? "search" : "library"} size={32} />
+            <p>{library.papers.length ? "Nothing matches that search." : "Your library is empty."}</p>
+            {!library.papers.length && (
+              <button class="primary" onClick={() => setPanel("add")}>
+                <Icon name="plus" /> Add your first paper
+              </button>
+            )}
+          </div>
         )}
       </main>
+
+      {(error || busy) && (
+        <div class="toasts">
+          {busy && <div class="toast busy">{busy}…</div>}
+          {error && (
+            <div class="toast error" role="alert">
+              <span>{error}</span>
+              <button class="icon-btn" aria-label="Dismiss" onClick={() => setError(null)}>
+                <Icon name="x" size={16} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {paper && (
         <Detail
@@ -516,6 +584,57 @@ export function App() {
   );
 }
 
+/** A heading for what the list shows. */
+function viewTitle(query: string): string {
+  const q = query.trim();
+  const fixed: Record<string, string> = { "": "All papers", "is:starred": "Starred", "is:recent": "Recently read", "is:trash": "Trash" };
+  if (q in fixed) return fixed[q];
+  const folder = /^in:"([^"]+)"$/.exec(q);
+  if (folder) return folder[1].split("/").join(" / ");
+  const tag = /^tag:"([^"]+)"$/.exec(q);
+  if (tag) return `#${tag[1]}`;
+  return "Search results";
+}
+
+const THEME_KEY = "lightkone.theme";
+type Theme = "" | "light" | "dark";
+function applyTheme(t: Theme) {
+  if (t) document.documentElement.dataset.theme = t;
+  else delete document.documentElement.dataset.theme;
+}
+try {
+  applyTheme((localStorage.getItem(THEME_KEY) as Theme) || "");
+} catch {
+  // follow the system
+}
+
+/** Cycles between following the system, light and dark; remembered on this device. */
+function ThemeButton() {
+  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme) || "");
+  const next: Theme = theme === "" ? "light" : theme === "light" ? "dark" : "";
+  const label = { "": "Theme: follows your system", light: "Theme: light", dark: "Theme: dark" }[theme];
+  const darkNow = theme === "dark" || (theme === "" && matchMedia("(prefers-color-scheme: dark)").matches);
+  return (
+    <button
+      class="icon-btn"
+      title={`${label}. Click for ${next || "system"}.`}
+      aria-label={label}
+      onClick={() => {
+        setTheme(next);
+        applyTheme(next);
+        try {
+          localStorage.setItem(THEME_KEY, next);
+        } catch {
+          // fine for this visit
+        }
+      }}
+    >
+      <Icon name={darkNow ? "moon" : "sun"} />
+      {theme === "" && <span class="auto-dot" />}
+    </button>
+  );
+}
+
 const OPEN_KEY = "lightkone.folders.open";
 
 /** The folder tree in the sidebar; which folders are open is remembered on this device. */
@@ -542,16 +661,18 @@ function FolderList(props: { nodes: FolderNode[]; query: string; onPick(q: strin
       const q = `in:"${n.path}"`;
       return (
         <div key={n.path}>
-          <div class="folder" style={{ paddingLeft: `${depth * 12}px` }}>
+          <div class="folder" style={{ paddingLeft: `${depth * 14}px` }}>
             {n.children.length ? (
-              <button class="ghost twisty" aria-label={open.has(n.path) ? "Close folder" : "Open folder"} aria-expanded={open.has(n.path)} onClick={() => toggle(n.path)}>
-                {open.has(n.path) ? "▾" : "▸"}
+              <button class={`ghost twisty ${open.has(n.path) ? "open" : ""}`} aria-label={open.has(n.path) ? "Close folder" : "Open folder"} aria-expanded={open.has(n.path)} onClick={() => toggle(n.path)}>
+                <Icon name="chevron" size={14} />
               </button>
             ) : (
               <span class="twisty" />
             )}
             <button class={`tag ${props.query === q ? "on" : ""}`} onClick={() => props.onPick(props.query === q ? "" : q)}>
-              {n.name} <span>{n.count}</span>
+              <Icon name="folder" />
+              <span class="name">{n.name}</span>
+              <span class="count">{n.count}</span>
             </button>
           </div>
           {open.has(n.path) && render(n.children, depth + 1)}
@@ -620,121 +741,167 @@ function Detail(props: {
     links.push(["Find PDF in Google Drive", `https://drive.google.com/drive/search?q=${encodeURIComponent(name)}`]);
   }
   const available = actions().filter((a) => !a.available || a.available(p));
+  const actionIcon = (plugin: string): IconName | null => ({ claude: "sparkle", dullaby: "moon", related: "link" } as Record<string, IconName>)[plugin] ?? null;
+  const [copied, setCopied] = useState<string | null>(null);
+  function copy(what: string, text: string) {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(what);
+      setTimeout(() => setCopied(null), 1500);
+    });
+  }
 
   return (
     <section class="detail" aria-label="Paper details">
-      <button class="close ghost" onClick={props.onClose} aria-label="Close">×</button>
-      {p.trashed && (
-        <p class="message">
-          In the trash. <button class="link" onClick={() => props.onChange({ trashed: undefined })}>Restore</button>
-        </p>
-      )}
-      <h2>
-        <button class={`star big ${p.starred ? "on" : ""}`} aria-label={p.starred ? "Unstar" : "Star"} aria-pressed={Boolean(p.starred)} onClick={() => props.onChange({ starred: !p.starred || undefined })}>
-          {p.starred ? "★" : "☆"}
-        </button>{" "}
-        {p.title}
-      </h2>
-      <p class="authors">
-        {showAllAuthors || p.authors.length <= 12 ? p.authors.join("; ") : `${p.authors.slice(0, 10).join("; ")}; `}
-        {!showAllAuthors && p.authors.length > 12 && (
-          <button class="link" onClick={() => setShowAllAuthors(true)}>and {p.authors.length - 10} more</button>
-        )}
-      </p>
-      <p class="muted">
-        {[p.venue, p.year].filter(Boolean).join(" · ")}
-        {" · "}
-        <button class="link mono" title="Copy citation key" onClick={() => navigator.clipboard?.writeText(p.key)}>
-          {p.key}
+      <div class="detail-bar">
+        <button class="icon-btn" onClick={props.onClose} aria-label="Close" title="Close (Esc)">
+          <Icon name="back" class="phone-only" />
+          <Icon name="x" class="hide-phone" />
         </button>
-      </p>
-
-      <div class="links">
-        {links.map(([label, href]) => (
-          <a key={label} href={href} target="_blank" rel="noopener">{label}</a>
-        ))}
-        {p.pdf && <button class="link" onClick={openPdf}>PDF file</button>}
-        <label class="link file">
-          {p.pdf ? "Replace PDF" : "Attach PDF"}
-          <input type="file" accept="application/pdf" onChange={(e) => e.currentTarget.files?.[0] && attachPdf(e.currentTarget.files[0])} />
-        </label>
+        <span class="spacer" />
+        <button class="icon-btn" title="Copy BibTeX" aria-label="Copy BibTeX" onClick={() => copy("bibtex", paperToBibtex(p))}>
+          <Icon name={copied === "bibtex" ? "check" : "copy"} />
+        </button>
+        <button class={`icon-btn star ${p.starred ? "on" : ""}`} aria-label={p.starred ? "Unstar" : "Star"} aria-pressed={Boolean(p.starred)} onClick={() => props.onChange({ starred: !p.starred || undefined })}>
+          <Icon name="star" filled={Boolean(p.starred)} />
+        </button>
       </div>
+      <div class="detail-body">
+        {p.trashed && (
+          <p class="notice">
+            In the trash. <button class="link" onClick={() => props.onChange({ trashed: undefined })}>Restore</button>
+          </p>
+        )}
+        <p class="eyebrow">{[p.venue, p.year].filter(Boolean).join(" · ") || p.type}</p>
+        <h2>{p.title}</h2>
+        <p class="authors">
+          {showAllAuthors || p.authors.length <= 12 ? p.authors.join("; ") : `${p.authors.slice(0, 10).join("; ")}; `}
+          {!showAllAuthors && p.authors.length > 12 && (
+            <button class="link" onClick={() => setShowAllAuthors(true)}>and {p.authors.length - 10} more</button>
+          )}
+        </p>
+        <button class="cite-key" title="Copy citation key" onClick={() => copy("key", p.key)}>
+          <span class="mono">{p.key}</span>
+          <Icon name={copied === "key" ? "check" : "copy"} size={14} />
+        </button>
 
-      <div class="actions">
-        {p.pdf && <button class="primary" onClick={props.onRead}>Read</button>}
-        {!p.pdf && props.onGetPdf && <button onClick={props.onGetPdf}>Get free PDF</button>}
-        {available.map((a) => (
-          <button key={`${a.plugin}.${a.id}`} onClick={() => props.onAction(`${a.plugin}.${a.id}`)}>{a.label}</button>
-        ))}
-        <button onClick={() => navigator.clipboard?.writeText(paperToBibtex(p))}>Copy BibTeX</button>
-      </div>
-
-      {props.result && props.result.kind === "text" && (
-        <div class="result">
-          <h3>{props.result.title}</h3>
-          <div class="prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(props.result.text, math) }} />
+        <div class="actions">
+          {p.pdf && (
+            <button class="primary" onClick={props.onRead}>
+              <Icon name="book" /> Read
+            </button>
+          )}
+          {!p.pdf && props.onGetPdf && (
+            <button class="primary" onClick={props.onGetPdf}>
+              <Icon name="download" /> Get free PDF
+            </button>
+          )}
+          {available.map((a) => {
+            const icon = actionIcon(a.plugin);
+            return (
+              <button key={`${a.plugin}.${a.id}`} onClick={() => props.onAction(`${a.plugin}.${a.id}`)}>
+                {icon && <Icon name={icon} />} {a.label}
+              </button>
+            );
+          })}
         </div>
-      )}
-      {props.result && props.result.kind === "papers" && (
-        <div class="result">
-          <h3>Related papers</h3>
-          {!props.result.papers.length && <p class="muted">Nothing found for this one.</p>}
-          <ul class="related">
-            {props.result.papers.map((d) => (
-              <li key={d.title}>
-                <div class="title">{d.title}</div>
-                <div class="meta">{shortAuthors(d)}{d.year ? ` · ${d.year}` : ""}</div>
-                <button
-                  class="small"
-                  disabled={addedTitles.has(d.title)}
-                  onClick={() => {
-                    props.onAdd(d);
-                    setAddedTitles(new Set([...addedTitles, d.title]));
-                  }}
-                >
-                  {addedTitles.has(d.title) ? "In library" : "Add"}
-                </button>
-              </li>
-            ))}
-          </ul>
+
+        <div class="links">
+          {links.map(([label, href]) => (
+            <a key={label} class="pill" href={href} target="_blank" rel="noopener">
+              <Icon name="link" size={14} /> {label}
+            </a>
+          ))}
+          {p.pdf && (
+            <button class="pill" onClick={openPdf}>
+              <Icon name="file" size={14} /> PDF file
+            </button>
+          )}
+          <label class="pill file">
+            <Icon name="upload" size={14} /> {p.pdf ? "Replace PDF" : "Attach PDF"}
+            <input type="file" accept="application/pdf" onChange={(e) => e.currentTarget.files?.[0] && attachPdf(e.currentTarget.files[0])} />
+          </label>
         </div>
-      )}
 
-      {p.abstract && (
-        <>
-          <h3>Abstract</h3>
-          <p class="abstract">{p.abstract}</p>
-        </>
-      )}
+        {props.result && props.result.kind === "text" && (
+          <div class="result">
+            <h3><Icon name="sparkle" size={14} /> {props.result.title}</h3>
+            <div class="prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(props.result.text, math) }} />
+          </div>
+        )}
+        {props.result && props.result.kind === "papers" && (
+          <div class="result">
+            <h3><Icon name="link" size={14} /> Related papers</h3>
+            {!props.result.papers.length && <p class="muted">Nothing found for this one.</p>}
+            <ul class="related">
+              {props.result.papers.map((d) => (
+                <li key={d.title}>
+                  <div class="title">{d.title}</div>
+                  <div class="meta">{shortAuthors(d)}{d.year ? ` · ${d.year}` : ""}</div>
+                  <button
+                    class="small"
+                    disabled={addedTitles.has(d.title)}
+                    onClick={() => {
+                      props.onAdd(d);
+                      setAddedTitles(new Set([...addedTitles, d.title]));
+                    }}
+                  >
+                    {addedTitles.has(d.title) ? "In library" : "Add"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-      <h3>Folders</h3>
-      <div class="chips folders">
-        {(p.folders ?? []).map((f) => (
-          <span class="chip" key={f}>
-            {f}
-            <button class="link" aria-label={`Take out of ${f}`} onClick={() => props.onChange({ folders: (p.folders ?? []).filter((x) => x !== f) })}>×</button>
-          </span>
-        ))}
+        {p.abstract && (
+          <section class="block">
+            <h3>Abstract</h3>
+            <div class="abstract" dangerouslySetInnerHTML={{ __html: renderMarkdown(p.abstract, math) }} />
+          </section>
+        )}
+
+        <section class="block">
+          <h3>Folders</h3>
+          {(p.folders ?? []).length > 0 && (
+            <div class="chips folders">
+              {(p.folders ?? []).map((f) => (
+                <span class="chip" key={f}>
+                  <Icon name="folder" size={13} />
+                  {f}
+                  <button class="link" aria-label={`Take out of ${f}`} onClick={() => props.onChange({ folders: (p.folders ?? []).filter((x) => x !== f) })}>
+                    <Icon name="x" size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <form class="add-folder" onSubmit={(e) => { e.preventDefault(); addFolder(); }}>
+            <input list="known-folders" value={folderText} placeholder="Add to folder, e.g. Physics/QFT" onInput={(e) => setFolderText(e.currentTarget.value)} />
+            <datalist id="known-folders">{known.map((f) => <option key={f} value={f} />)}</datalist>
+            <button type="submit" disabled={!cleanFolder(folderText)}>Add</button>
+          </form>
+        </section>
+
+        <section class="block">
+          <h3>Tags</h3>
+          <input
+            value={tagText}
+            placeholder="comma, separated, tags"
+            onInput={(e) => setTagText(e.currentTarget.value)}
+            onBlur={() => props.onChange({ tags: [...new Set(tagText.split(",").map((t) => t.trim()).filter(Boolean))] })}
+          />
+        </section>
+        <section class="block">
+          <h3>Notes</h3>
+          <textarea rows={5} value={notes} placeholder="Your notes on this paper" onInput={(e) => setNotes(e.currentTarget.value)} onBlur={() => notes !== (p.notes ?? "") && props.onChange({ notes })} />
+        </section>
+
+        <p class="remove">
+          <button class="link danger" onClick={props.onRemove}>
+            <Icon name="trash" size={15} /> {p.trashed ? "Delete for good" : "Move to trash"}
+          </button>
+        </p>
       </div>
-      <form class="row add-folder" onSubmit={(e) => { e.preventDefault(); addFolder(); }}>
-        <input list="known-folders" value={folderText} placeholder="Add to folder, e.g. Physics/QFT" onInput={(e) => setFolderText(e.currentTarget.value)} />
-        <datalist id="known-folders">{known.map((f) => <option key={f} value={f} />)}</datalist>
-        <button type="submit" disabled={!cleanFolder(folderText)}>Add</button>
-      </form>
-
-      <h3>Tags</h3>
-      <input
-        value={tagText}
-        placeholder="comma, separated, tags"
-        onInput={(e) => setTagText(e.currentTarget.value)}
-        onBlur={() => props.onChange({ tags: [...new Set(tagText.split(",").map((t) => t.trim()).filter(Boolean))] })}
-      />
-      <h3>Notes</h3>
-      <textarea rows={5} value={notes} onInput={(e) => setNotes(e.currentTarget.value)} onBlur={() => notes !== (p.notes ?? "") && props.onChange({ notes })} />
-
-      <p class="remove">
-        <button class="link danger" onClick={props.onRemove}>{p.trashed ? "Delete for good" : "Move to trash"}</button>
-      </p>
     </section>
   );
 }

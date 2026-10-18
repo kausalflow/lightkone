@@ -12,6 +12,7 @@ import {
 import { PdfView, type Selected } from "./view";
 import { Explain, type Subject } from "./Explain";
 import { joinPages, textPath } from "../core/fulltext";
+import { Icon } from "../icons";
 import "./reader.css";
 
 const decoder = new TextDecoder();
@@ -170,13 +171,21 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; onClose()
   return (
     <div class={`reader ${dark ? "dark" : ""}`} role="dialog" aria-label={`Reading ${paper.title}`}>
       <header class="reader-bar">
-        <button class="ghost" onClick={props.onClose} aria-label="Close reader">←</button>
+        <button class="icon-btn" onClick={props.onClose} aria-label="Close reader" title="Close reader">
+          <Icon name="back" />
+        </button>
         <span class="reader-title">{paper.title}</span>
-        <button class="ghost" onClick={() => view.current?.setZoom((view.current?.zoom ?? 1) - 0.25)} aria-label="Zoom out">−</button>
-        <button class="ghost" onClick={() => view.current?.setZoom((view.current?.zoom ?? 1) + 0.25)} aria-label="Zoom in">+</button>
-        <button class="ghost" onClick={toggleDark} title="Dark pages for reading at night" aria-pressed={dark}>Dark</button>
-        <button class="ghost" onClick={() => setList(!list)} aria-pressed={list}>
-          Notes{highlights.length ? ` ${highlights.length}` : ""}
+        <button class="icon-btn" onClick={() => view.current?.setZoom((view.current?.zoom ?? 1) - 0.25)} aria-label="Zoom out" title="Zoom out">
+          <Icon name="minus" />
+        </button>
+        <button class="icon-btn" onClick={() => view.current?.setZoom((view.current?.zoom ?? 1) + 0.25)} aria-label="Zoom in" title="Zoom in">
+          <Icon name="plus" />
+        </button>
+        <button class={`icon-btn ${dark ? "pressed" : ""}`} onClick={toggleDark} title="Dark pages for reading at night" aria-label="Dark pages" aria-pressed={dark}>
+          <Icon name="moon" />
+        </button>
+        <button class={`ghost notes-btn ${list ? "pressed" : ""}`} onClick={() => setList(!list)} aria-pressed={list}>
+          Notes{highlights.length ? <span class="badge">{highlights.length}</span> : ""}
         </button>
       </header>
 
