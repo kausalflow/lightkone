@@ -16,12 +16,14 @@ import { ObsidianPanel } from "./ObsidianPanel";
 import { WritingPanel } from "./WritingPanel";
 import { CitationMap } from "./CitationMap";
 import { FreshPanel } from "./FreshPanel";
+import { ManuscriptPanel } from "./ManuscriptPanel";
+import type { ManuscriptReport } from "./core/manuscript";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
 import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
 import { allFolders, cleanFolder, folderTree, type FolderNode } from "./core/folders";
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
-import { defaultBibPath, papersInFolder, runBibSync } from "./core/bibsync";
+import { defaultBibPath, folderTargets, papersInFolder, runBibSync } from "./core/bibsync";
 import { githubStorage } from "./plugins/storage-github";
 import { crossref } from "./plugins/lookup";
 import { findDuplicates, findPublished, mergeInto, pickKeeper, type Published } from "./core/tidy";
@@ -71,12 +73,14 @@ export function App() {
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | null>(null);
   const [readingPage, setReadingPage] = useState(0);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
+  const [manuscriptReports, setManuscriptReports] = useState<Map<string, ManuscriptReport>>(new Map());
+  const [checking, setChecking] = useState(false);
   // A paper shared to Lightkone, or sent by the bookmarklet, waiting for storage to open.
   const [captured, setCaptured] = useState<string | null>(() => capturedInput(location.search));
 
@@ -117,6 +121,9 @@ export function App() {
         );
         if (seeded || linked || foldered) {
           scheduleSave();
+        } else if (library.bibSync.some((t) => t.tex !== undefined) && syncToken()) {
+          // A manuscript may have changed since: bring its .bib in step.
+          syncBibs();
         } else if (!loaded && !library.papers.length && !captured) {
           setPanel("add");
         }
@@ -227,7 +234,9 @@ export function App() {
     const token = syncToken();
     if (!token) return setError("BibTeX sync needs a GitHub token: add one under Settings → BibTeX sync to GitHub.");
     const api = settings["storage.github.api"] || undefined;
-    const r = await runBibSync(library.bibSync, library.papers, (t) => githubStorage({ repo: t.repo, branch: t.branch, token, api }));
+    setChecking(true);
+    const r = await runBibSync(library.bibSync, library.papers, (t) => githubStorage({ repo: t.repo, branch: t.branch, token, api })).finally(() => setChecking(false));
+    if (r.manuscripts.size) setManuscriptReports((old) => new Map([...old, ...r.manuscripts]));
     if (r.errors.length) setError(`BibTeX sync failed for ${r.errors.join("; ")}`);
     if (r.written.length) setBibNote(` · .bib synced to ${r.written.join(", ")}`);
   }
@@ -238,6 +247,7 @@ export function App() {
     const check = () => {
       if (document.visibilityState !== "visible") return;
       library.refresh().then((n) => n && setSaveState((s) => (s === "pending" || s === "saving" ? s : "merged")), () => {});
+      if (library.bibSync.some((t) => t.tex !== undefined) && syncToken()) syncBibs();
     };
     document.addEventListener("visibilitychange", check);
     return () => document.removeEventListener("visibilitychange", check);
@@ -464,6 +474,12 @@ export function App() {
             </button>
           )}
           {storage && (
+            <button class="tag" title="Keep a LaTeX manuscript's .bib in step with what it cites" onClick={() => { setPanel("manuscript"); setSideOpen(false); }}>
+              <Icon name="sync" />
+              <span class="name">Watch my manuscript</span>
+            </button>
+          )}
+          {storage && (
             <button class="tag" title="Highlights and notes as Markdown notes" onClick={() => { setPanel("obsidian"); setSideOpen(false); }}>
               <Icon name="file" />
               <span class="name">Export to Obsidian</span>
@@ -528,7 +544,7 @@ export function App() {
                 onClick={() => setSyncing(query ? query.slice(4, -1) : "")}
               >
                 <Icon name="sync" size={15} />
-                {library.bibSync.some((t) => t.folder === (query ? query.slice(4, -1) : "")) ? "Syncing .bib" : "Sync .bib"}
+                {folderTargets(library.bibSync, query ? query.slice(4, -1) : "").length ? "Syncing .bib" : "Sync .bib"}
               </button>
             )}
             <select value={sort} aria-label="Sort" onChange={(e) => setSort(e.currentTarget.value as SortBy)}>
@@ -687,6 +703,25 @@ export function App() {
         />
       )}
 
+      {panel === "manuscript" && storage && (
+        <ManuscriptPanel
+          manuscripts={library.bibSync.filter((t) => t.tex !== undefined)}
+          reports={manuscriptReports}
+          papers={library.papers}
+          hasToken={Boolean(syncToken())}
+          defaultRepo=""
+          checking={checking}
+          hidden={Boolean(reading)}
+          onSave={(manuscripts) => {
+            library.bibSync = [...library.bibSync.filter((t) => t.tex === undefined), ...manuscripts];
+            scheduleSave();
+          }}
+          onCheck={syncBibs}
+          onSettings={() => setPanel("settings")}
+          onClose={() => setPanel(null)}
+        />
+      )}
+
       {panel === "writing" && (
         <WritingPanel papers={library.papers} texts={textIndex?.texts ?? new Map()} settings={settings} hidden={Boolean(reading)} onOpen={openAt} onClose={() => setPanel(null)} />
       )}
@@ -740,11 +775,11 @@ export function App() {
         <BibSyncPanel
           folder={syncing}
           count={papersInFolder(library.papers, syncing).length}
-          targets={library.bibSync.filter((t) => t.folder === syncing)}
+          targets={folderTargets(library.bibSync, syncing)}
           hasToken={Boolean(syncToken())}
           defaultRepo={providerId === "github" ? settings["storage.github.repo"] ?? "" : ""}
           onSave={(targets) => {
-            library.bibSync = [...library.bibSync.filter((t) => t.folder !== syncing), ...targets];
+            library.bibSync = [...library.bibSync.filter((t) => !folderTargets([t], syncing).length), ...targets];
             scheduleSave();
             setSyncing(null);
           }}

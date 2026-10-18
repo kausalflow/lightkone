@@ -1,5 +1,6 @@
 import type { BibTarget, Paper, StorageAdapter } from "./types";
 import { libraryToBibtex } from "./bibtex";
+import { syncManuscript, type ManuscriptReport } from "./manuscript";
 
 // Keeps .bib files in GitHub repositories up to date: one folder's papers (or
 // the whole library) per file. Point Overleaf, or a paper's own repository, at
@@ -9,6 +10,9 @@ import { libraryToBibtex } from "./bibtex";
 const fold = (s: string) => s.toLowerCase();
 
 /** Papers in a folder or any folder inside it; "" is the whole library. Never the trash. */
+/** A folder's own sync targets, not the manuscripts watched. */
+export const folderTargets = (targets: BibTarget[], folder: string) => targets.filter((t) => t.tex === undefined && t.folder === folder);
+
 export function papersInFolder(papers: Paper[], folder: string): Paper[] {
   const f = fold(folder);
   return papers.filter(
@@ -29,16 +33,27 @@ export interface SyncResult {
   written: string[];
   unchanged: number;
   errors: string[];
+  /** What each watched manuscript cites, by "repo/path" of its .bib. */
+  manuscripts: Map<string, ManuscriptReport>;
 }
+
+export const targetId = (t: BibTarget) => `${t.repo}/${t.path}`;
 
 /** Write each target whose content changed. `open` makes storage for a repository. */
 export async function runBibSync(targets: BibTarget[], papers: Paper[], open: (t: BibTarget) => StorageAdapter): Promise<SyncResult> {
-  const result: SyncResult = { written: [], unchanged: 0, errors: [] };
+  const result: SyncResult = { written: [], unchanged: 0, errors: [], manuscripts: new Map() };
   const decoder = new TextDecoder();
   for (const t of targets) {
     const where = `${t.repo}/${t.path}`;
     try {
       const repo = open(t);
+      if (t.tex !== undefined) {
+        const { report, written } = await syncManuscript(t, papers, repo);
+        result.manuscripts.set(where, report);
+        if (written) result.written.push(where);
+        else result.unchanged++;
+        continue;
+      }
       const text = bibFor(papers, t.folder);
       const current = await repo.read(t.path);
       if (current && decoder.decode(current) === text) {
