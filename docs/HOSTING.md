@@ -37,6 +37,15 @@ site. It fetches only URLs Unpaywall returns for that DOI. arXiv PDFs do not
 need it. On other hosts, either run the same function elsewhere and set its URL
 under **Settings → PDFs**, or go without DOI downloads.
 
+## The published-version service
+
+`functions/api/published.ts` (at `/api/published?arxiv=<ids>`) tells **Tidy
+up** which arXiv preprints have been published: first from the DOI and journal
+reference authors added on arXiv, then from Semantic Scholar. Semantic
+Scholar limits anonymous requests; for steadier results, request a free key at
+https://www.semanticscholar.org/product/api and add it to the Pages project as
+the secret `S2_API_KEY`.
+
 ## Other hosts
 
 Copy `dist/` to any static host (GitHub Pages, Netlify, S3 + CloudFront, an

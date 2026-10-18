@@ -84,6 +84,14 @@ Paperpile land in the folders their PDFs were filed under in Google Drive
 author folders Paperpile makes are not folders of yours and are skipped. On a
 phone, **Browse** opens the folders and tags.
 
+## Tidying up
+
+**Tidy up** in the sidebar finds the same paper entered twice (same DOI, arXiv
+id or title) and merges each group into the copy with a PDF, keeping every
+tag, folder and note; the others go to the trash. It also checks your arXiv
+preprints for published versions and fills in the journal, DOI, volume and
+pages, keeping citation keys as they are.
+
 ## LaTeX and Overleaf
 
 `lightkone/library.bib` is rewritten on every save. To keep a folder's papers
