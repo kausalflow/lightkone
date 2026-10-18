@@ -6,11 +6,15 @@ plain files in storage you choose.
 
 - **Your storage, open files.** The library is `lightkone/library.json` plus a
   `library.bib` that is rewritten on every save, so LaTeX and Overleaf can use it
-  directly. PDFs sit next to it. Storage is a plugin: this browser, any
+  directly. PDFs and highlights sit next to it. Storage is a plugin: this browser, any
   S3-compatible bucket (Cloudflare R2, AWS S3, MinIO), or a private GitHub repo.
 - **Add papers the quick way.** Paste DOIs, arXiv ids or links, or BibTeX, or
   import a `.bib` file. Metadata comes from Crossref, Semantic Scholar and
   OpenAlex.
+- **Read and highlight.** A PDF reader that works on a phone, with highlights,
+  notes, dark pages for night reading, and export to Markdown (Obsidian).
+  Free PDFs are fetched when you add a paper: arXiv directly, others through
+  Unpaywall's open-access copies.
 - **AI built in, with your own key.** Summaries and questions about a paper with
   Claude. When the PDF is stored, Claude reads the whole paper.
 - **Plugins.** Storage, lookups, importers and paper actions are all plugins,
@@ -36,8 +40,10 @@ Either import Paperpile's BibTeX export with **Add paper → Import a .bib file*
 or, if Paperpile already syncs BibTeX to a GitHub repository, choose GitHub
 storage, point it at that repository and set the `.bib` folder (for example
 `paperpile`). Lightkone then picks up every paper Paperpile adds until you
-switch over. Paperpile's `file` paths are kept, and each paper gets a link that
-finds its PDF in Google Drive.
+switch over. PDFs are filed exactly as Paperpile files them in Google Drive
+(`Paperpile/All Papers/HINTON/Hinton et al. 2012 - ....pdf`), so copy that folder
+into your bucket once and every paper finds its PDF (see
+[docs/STORAGE.md](docs/STORAGE.md#moving-pdfs-over-from-paperpile)).
 
 ## Search
 

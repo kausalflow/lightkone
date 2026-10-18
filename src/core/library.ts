@@ -4,10 +4,10 @@ import { libraryToBibtex } from "./bibtex";
 // The library is plain files in whatever storage the user picked:
 //   lightkone/library.json  the source of truth
 //   lightkone/library.bib   written on every save, ready for LaTeX and Overleaf
-//   lightkone/pdfs/<id>.pdf PDFs kept by Lightkone itself
+//   Paperpile/All Papers/...  PDFs, filed the way Paperpile files them (core/filing.ts)
+//   lightkone/annotations/<id>.json  highlights and notes (core/annotations.ts)
 export const LIBRARY_PATH = "lightkone/library.json";
 export const BIB_PATH = "lightkone/library.bib";
-export const pdfPath = (id: string) => `lightkone/pdfs/${id}.pdf`;
 
 const decoder = new TextDecoder();
 

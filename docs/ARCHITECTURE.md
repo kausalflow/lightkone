@@ -13,13 +13,14 @@ src/app.tsx    the interface
 
 ## Data
 
-The library is three kinds of file in the chosen storage:
+The library is these files in the chosen storage:
 
 | Path | What |
 | --- | --- |
 | `lightkone/library.json` | Source of truth: every paper with its tags, notes and extra BibTeX fields |
 | `lightkone/library.bib` | Rewritten on every save, for LaTeX, Overleaf or any other tool |
-| `lightkone/pdfs/<id>.pdf` | PDFs attached in Lightkone |
+| `Paperpile/All Papers/<AUTHOR>/<Author> et al. <year> - <title>.pdf` | PDFs, in the same layout Paperpile uses in Google Drive. Each paper's `file` field (also in the `.bib`) is the path under `Paperpile/`, so the folder is interchangeable with Paperpile's |
+| `lightkone/annotations/<id>.json` | Highlights and notes on a paper's PDF |
 
 Because these are plain files, a library can always be read without Lightkone,
 moved between backends by copying a folder, and versioned (GitHub storage

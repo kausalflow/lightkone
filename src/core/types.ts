@@ -50,7 +50,8 @@ export interface StorageAdapter {
 export interface Field {
   name: string;
   label: string;
-  type?: "text" | "password" | "textarea";
+  /** A checkbox stores "off" when unticked; it is on by default. */
+  type?: "text" | "password" | "textarea" | "checkbox";
   placeholder?: string;
   help?: string;
 }

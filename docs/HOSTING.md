@@ -21,11 +21,21 @@ The first run creates the Pages project; the app is then at
 
 For a custom domain, set `PAGES_DOMAIN`, then point DNS at Pages:
 
-- DNS on Cloudflare: Pages adds the record itself.
-- DNS elsewhere: add a `CNAME` from the domain to `<project>.pages.dev`.
+add a `CNAME` from the domain to `<project>.pages.dev` (proxied, if the zone is
+on Cloudflare). The deploy token only manages Pages, so it cannot add the record.
 
 If storage is an S3/R2 bucket, add the site's address to the bucket's CORS
 rule (see [STORAGE.md](STORAGE.md)).
+
+## The PDF service
+
+`functions/api/pdf.ts` is a Cloudflare Pages Function, deployed with the site
+at `/api/pdf`. Given a DOI and a contact email it asks
+[Unpaywall](https://unpaywall.org) for a legal open-access copy and passes the
+PDF through, because publishers do not let browsers download from another
+site. It fetches only URLs Unpaywall returns for that DOI. arXiv PDFs do not
+need it. On other hosts, either run the same function elsewhere and set its URL
+under **Settings → PDFs**, or go without DOI downloads.
 
 ## Other hosts
 
