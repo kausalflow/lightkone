@@ -72,6 +72,13 @@ export function githubStorage(cfg: GitHubConfig): StorageAdapter {
       const items = (await r.json()) as { path: string; type: string }[];
       return items.filter((i) => i.type === "file" && i.path.startsWith(prefix)).map((i) => i.path);
     },
+    async listAll(prefix) {
+      const r = await fetch(`${api}/repos/${cfg.repo}/git/trees/${encodeURIComponent(cfg.branch || "HEAD")}?recursive=1`, { headers: headers(), ...fresh });
+      if (r.status === 404 || r.status === 409) return []; // no such branch, or an empty repository
+      if (!r.ok) throw new Error(`GitHub ${r.status} listing ${cfg.repo}`);
+      const items = ((await r.json()).tree ?? []) as { path: string; type: string }[];
+      return items.filter((i) => i.type === "blob" && i.path.startsWith(prefix)).map((i) => i.path);
+    },
     async remove(path) {
       const sha = await shaOf(path);
       if (!sha) return;

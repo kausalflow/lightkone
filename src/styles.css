@@ -637,3 +637,11 @@ svg.map .node-label { font-size: 10px; fill: var(--text, currentColor); paint-or
 .fresh-item a.button { color: var(--text); }
 .fresh-item .near a { color: inherit; }
 .fresh-item .abstract { font-size: 15px; }
+
+/* Watch my manuscript */
+.manuscript h3 { margin-top: 18px; }
+.manuscript p { margin: 6px 0; }
+.missing-keys { list-style: none; padding: 0; margin: 6px 0; }
+.missing-keys li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0; }
+.missing-keys button { text-align: left; white-space: normal; height: auto; max-width: 100%; }
+.manuscript-add { margin-top: 12px; }

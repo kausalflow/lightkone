@@ -52,6 +52,14 @@ export interface BibTarget {
   repo: string;
   path: string;
   branch?: string;
+  /**
+   * A manuscript to watch: the folder of the repository holding its .tex files
+   * ("" for the top). The .bib then holds exactly the papers they cite, and
+   * `folder` is not used.
+   */
+  tex?: string;
+  /** Keys the manuscript cites that are not library keys, matched by hand: cited key to paper id. */
+  aliases?: Record<string, string>;
 }
 
 /** A place a library lives. Paths are relative to the adapter's root. */
@@ -59,6 +67,8 @@ export interface StorageAdapter {
   read(path: string): Promise<Uint8Array | null>;
   write(path: string, data: Uint8Array | string, contentType?: string): Promise<void>;
   list(prefix: string): Promise<string[]>;
+  /** Every file under a prefix, in subfolders too. */
+  listAll?(prefix: string): Promise<string[]>;
   remove?(path: string): Promise<void>;
   /** Extra papers the backend already holds in another format (e.g. Paperpile's .bib sync). */
   seed?(): Promise<PaperDraft[]>;
