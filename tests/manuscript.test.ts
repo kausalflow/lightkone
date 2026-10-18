@@ -71,4 +71,22 @@ describe("watch my manuscript", () => {
     expect(r.manuscripts.get("me/paper/paper/refs.bib")?.inBib).toBe(1);
     expect(folderTargets([folder, target], "")).toEqual([folder]);
   });
+
+  it("reads the .tex files again only when the folder changed", async () => {
+    const repo = memory({ "ms/main.tex": "\\cite{Planck2018}" });
+    let version = "v1";
+    let reads = 0;
+    const read = repo.read;
+    repo.read = async (p: string) => (p.endsWith(".tex") && reads++, read(p));
+    (repo as StorageAdapter).stamp = async () => version;
+    const t: BibTarget = { folder: "", repo: "me/stamped", path: "ms/refs.bib", tex: "ms" };
+    await syncManuscript(t, library, repo);
+    await syncManuscript(t, [...library, paper("9", { key: "New" })], repo);
+    expect(reads).toBe(1);
+    repo.files["ms/main.tex"] = "\\cite{Planck2018,Riess1998-ab}";
+    version = "v2";
+    const r = await syncManuscript(t, library, repo);
+    expect(reads).toBe(2);
+    expect(r.report.inBib).toBe(2);
+  });
 });

@@ -71,6 +71,8 @@ export interface StorageAdapter {
   list(prefix: string): Promise<string[]>;
   /** Whether this device may change what is stored: "read" when the owner gave read access only. */
   access?(): Promise<"read" | "write">;
+  /** A version of everything under a folder, which changes whenever anything in it does. */
+  stamp?(folder: string): Promise<string | null>;
   /** Every file under a prefix, in subfolders too. */
   listAll?(prefix: string): Promise<string[]>;
   remove?(path: string): Promise<void>;

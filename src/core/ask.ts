@@ -47,6 +47,17 @@ export function chunks(text: string, size = 1400): { page: number; text: string 
 
 const about = (p: Paper) => [p.title, p.abstract, p.notes].filter(Boolean).join("\n\n");
 
+// Each paper's text in lower case, kept between questions; made again only when the paper or its text changes.
+const lowered = new Map<string, { own: string; full: string | undefined; low: string }>();
+function lowerOf(p: Paper, full: string | undefined): string {
+  const own = about(p);
+  const hit = lowered.get(p.id);
+  if (hit && hit.own === own && hit.full === full) return hit.low;
+  const low = `${own}\n${full ?? ""}`.toLowerCase();
+  lowered.set(p.id, { own, full, low });
+  return low;
+}
+
 /**
  * The passages to answer a question from, best first. Papers are ranked by how
  * often the rarer words of the question occur in them; the best of them are cut
@@ -57,7 +68,7 @@ export function retrieve(papers: Paper[], texts: Map<string, string>, question: 
   const words = terms(question);
   if (!words.length) return [];
   const live = papers.filter((p) => !p.trashed);
-  const lowered = new Map(live.map((p) => [p.id, `${about(p)}\n${texts.get(p.id) ?? ""}`.toLowerCase()]));
+  const lowered = new Map(live.map((p) => [p.id, lowerOf(p, texts.get(p.id))]));
 
   // A word found in few papers says more than one found in all of them.
   const idf = new Map(words.map((w) => {

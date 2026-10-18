@@ -87,14 +87,28 @@ export function manuscriptBib(papers: Paper[], tex: string[], target: BibTarget,
   return { text: header + list.map(([, e]) => e.trim()).join("\n\n") + "\n", report: { keys, inBib: list.length, missing: stillMissing, kept } };
 }
 
+// The .tex files last read for each manuscript, by the version of its folder, so
+// a check after a library change reads only the .bib unless the paper changed.
+const lastRead = new Map<string, { stamp: string; texFiles: string[]; tex: string[] }>();
+
 /** Read the manuscript, and write its .bib if it changed. Returns what it found and whether it wrote. */
 export async function syncManuscript(target: BibTarget, papers: Paper[], repo: StorageAdapter): Promise<{ report: ManuscriptReport; written: boolean }> {
   const decoder = new TextDecoder();
-  const texFiles = await texFilesIn(repo, target.tex ?? "");
-  const tex: string[] = [];
-  for (const f of texFiles) {
-    const bytes = await repo.read(f);
-    if (bytes) tex.push(decoder.decode(bytes));
+  const id = `${target.repo}/${target.branch ?? ""}/${target.tex ?? ""}`;
+  const stamp = (await repo.stamp?.(target.tex ?? "").catch(() => null)) ?? null;
+  const last = lastRead.get(id);
+  let texFiles: string[];
+  let tex: string[];
+  if (stamp && last?.stamp === stamp) {
+    ({ texFiles, tex } = last);
+  } else {
+    texFiles = await texFilesIn(repo, target.tex ?? "");
+    tex = [];
+    for (const f of texFiles) {
+      const bytes = await repo.read(f);
+      if (bytes) tex.push(decoder.decode(bytes));
+    }
+    if (stamp) lastRead.set(id, { stamp, texFiles, tex });
   }
   const raw = await repo.read(target.path);
   const current = raw ? decoder.decode(raw) : null;

@@ -78,6 +78,15 @@ export function githubStorage(cfg: GitHubConfig): StorageAdapter {
       const perms = (await r.json()).permissions;
       return perms && !perms.push ? "read" : "write";
     },
+    async stamp(folder) {
+      // A folder's tree id in git changes exactly when something inside it does.
+      const r = await fetch(`${api}/repos/${cfg.repo}/git/trees/${encodeURIComponent(cfg.branch || "HEAD")}${folder ? "?recursive=1" : ""}`, { headers: headers(), ...fresh });
+      if (!r.ok) return null;
+      const data = await r.json();
+      if (!folder) return data.sha ?? null;
+      const dir = folder.replace(/^\/+|\/+$/g, "");
+      return ((data.tree ?? []) as { path: string; type: string; sha: string }[]).find((i) => i.type === "tree" && i.path === dir)?.sha ?? null;
+    },
     async listAll(prefix) {
       const r = await fetch(`${api}/repos/${cfg.repo}/git/trees/${encodeURIComponent(cfg.branch || "HEAD")}?recursive=1`, { headers: headers(), ...fresh });
       if (r.status === 404 || r.status === 409) return []; // no such branch, or an empty repository
