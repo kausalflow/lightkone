@@ -15,6 +15,8 @@ export interface GitHubConfig {
 }
 
 const encoder = new TextEncoder();
+// Always fresh in the browser. The server's fetch has no HTTP cache and may not accept the option.
+const fresh: RequestInit = typeof window === "undefined" ? {} : { cache: "no-store" };
 
 function toBase64(bytes: Uint8Array): string {
   let s = "";
@@ -33,10 +35,12 @@ export function githubStorage(cfg: GitHubConfig): StorageAdapter {
     Authorization: `Bearer ${cfg.token}`,
     Accept: accept,
     "X-GitHub-Api-Version": "2022-11-28",
+    // GitHub refuses requests without one; browsers add their own.
+    ...(typeof window === "undefined" ? { "User-Agent": "Lightkone" } : {}),
   });
   const shaOf = async (path: string): Promise<string | undefined> => {
     // The object media type returns metadata only for large files, which is all we need.
-    const r = await fetch(contents(path) + ref, { headers: headers("application/vnd.github.object+json"), cache: "no-store" });
+    const r = await fetch(contents(path) + ref, { headers: headers("application/vnd.github.object+json"), ...fresh });
     if (r.status === 404) return undefined;
     if (!r.ok) throw new Error(`GitHub ${r.status} reading ${path}`);
     return (await r.json()).sha;
@@ -44,7 +48,7 @@ export function githubStorage(cfg: GitHubConfig): StorageAdapter {
 
   const adapter: StorageAdapter = {
     async read(path) {
-      const r = await fetch(contents(path) + ref, { headers: headers("application/vnd.github.raw+json"), cache: "no-store" });
+      const r = await fetch(contents(path) + ref, { headers: headers("application/vnd.github.raw+json"), ...fresh });
       if (r.status === 404) return null;
       if (!r.ok) throw new Error(`GitHub ${r.status} reading ${path}`);
       return new Uint8Array(await r.arrayBuffer());
@@ -62,7 +66,7 @@ export function githubStorage(cfg: GitHubConfig): StorageAdapter {
     },
     async list(prefix) {
       const dir = prefix.replace(/\/[^/]*$/, "");
-      const r = await fetch(contents(dir) + ref, { headers: headers(), cache: "no-store" });
+      const r = await fetch(contents(dir) + ref, { headers: headers(), ...fresh });
       if (r.status === 404) return [];
       if (!r.ok) throw new Error(`GitHub ${r.status} listing ${dir}`);
       const items = (await r.json()) as { path: string; type: string }[];

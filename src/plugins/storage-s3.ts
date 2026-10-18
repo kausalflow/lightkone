@@ -15,6 +15,19 @@ export interface S3Config {
   prefix?: string;
 }
 
+const unescapeXml = (s: string) =>
+  s.replace(/&(lt|gt|quot|apos|amp|#\d+|#x[0-9a-f]+);/gi, (_, e: string) =>
+    e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ({ lt: "<", gt: ">", quot: '"', apos: "'", amp: "&" } as Record<string, string>)[e.toLowerCase()],
+  );
+
+/** Keys and the continuation token from a ListObjectsV2 reply. Plain text parsing, so it also runs on the server, which has no DOMParser. */
+export function parseListing(xml: string): { keys: string[]; next: string | null } {
+  const keys = [...xml.matchAll(/<Contents>[\s\S]*?<Key>([\s\S]*?)<\/Key>/g)].map((m) => unescapeXml(m[1]));
+  const truncated = /<IsTruncated>\s*true\s*<\/IsTruncated>/.test(xml);
+  const next = xml.match(/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/)?.[1];
+  return { keys, next: truncated && next ? unescapeXml(next) : null };
+}
+
 export function s3Storage(cfg: S3Config): StorageAdapter {
   if (!cfg.endpoint || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
     throw new Error("S3 storage needs an endpoint, a bucket, an access key id and a secret.");
@@ -49,9 +62,9 @@ export function s3Storage(cfg: S3Config): StorageAdapter {
         if (token) q.set("continuation-token", token);
         const r = await client.fetch(`${root}?${q}`);
         if (!r.ok) throw new Error(`Storage list failed (${r.status})`);
-        const xml = new DOMParser().parseFromString(await r.text(), "application/xml");
-        xml.querySelectorAll("Contents > Key").forEach((k) => keys.push((k.textContent ?? "").slice(prefix ? prefix.length + 1 : 0)));
-        token = xml.querySelector("IsTruncated")?.textContent === "true" ? xml.querySelector("NextContinuationToken")?.textContent ?? null : null;
+        const page = parseListing(await r.text());
+        keys.push(...page.keys.map((k) => k.slice(prefix ? prefix.length + 1 : 0)));
+        token = page.next;
       } while (token);
       return keys;
     },

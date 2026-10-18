@@ -1,8 +1,12 @@
 // Lightkone's MCP server at /mcp/<token>, as a Cloudflare Pages Function.
-// It reads and writes the library in the R2 bucket bound as LIBRARY; the
-// secret MCP_TOKEN in the address is the key (see docs/MCP.md).
+// Two kinds of address (see docs/MCP.md):
+// - a personal address made in Settings, which carries that person's own
+//   storage settings encrypted (src/mcp/link.ts), for anyone using the site;
+// - the host's own: MCP_TOKEN, over the R2 bucket bound as LIBRARY.
 
 import { handleHttp } from "../../src/mcp/server";
+import { openLink, storageFor } from "../../src/mcp/link";
+import { linkSecret } from "../api/mcp-link";
 import type { StorageAdapter } from "../../src/core/types";
 
 interface R2Object {
@@ -16,6 +20,7 @@ interface R2Bucket {
 interface Env {
   LIBRARY?: R2Bucket;
   MCP_TOKEN?: string;
+  MCP_SECRET?: string;
 }
 
 function r2Storage(bucket: R2Bucket): StorageAdapter {
@@ -49,6 +54,9 @@ function same(a: string, b: string): boolean {
 }
 
 export const onRequest = async ({ request, env, params }: { request: Request; env: Env; params: { token: string } }) => {
+  const secret = linkSecret(env);
+  const linked = secret ? await openLink(String(params.token), secret) : null;
+  if (linked) return handleHttp(request, storageFor(linked));
   if (!env.MCP_TOKEN || env.MCP_TOKEN.length < 24 || !same(String(params.token), env.MCP_TOKEN)) return new Response("Not found", { status: 404 });
   if (!env.LIBRARY) return new Response("Bind the library's R2 bucket to this Pages project as LIBRARY (see docs/MCP.md).", { status: 500 });
   return handleHttp(request, r2Storage(env.LIBRARY));

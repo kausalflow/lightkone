@@ -17,35 +17,56 @@ Claude Code) can work with your library:
 The full text is extracted from the PDF the first time you open a paper in
 Lightkone's reader and saved as `lightkone/text/<id>.txt` next to it.
 
-## Setting it up on Cloudflare Pages
+## Your own address
 
-The server reads the library straight from your R2 bucket, so the Pages
-project needs the bucket and a secret token.
+Anyone using the site can connect their own library, as long as it lives in
+an S3/R2 bucket or a GitHub repository:
 
-1. Make a long random token, for example with `openssl rand -hex 24`.
-2. In Cloudflare, open **Workers & Pages → lightkone → Settings**:
-   - **Variables and Secrets → Add**: type **Secret**, name `MCP_TOKEN`, value
-     the token.
-   - **Bindings → Add → R2 bucket**: variable name `LIBRARY`, your library's
-     bucket.
-3. Redeploy: **Deployments →** the latest one **→ Retry deployment** (or merge
-   anything to `main`).
+1. In Lightkone, open **Settings**, set up your storage and save.
+2. Under **Claude and other AI apps**, press **Make my AI app address**. The
+   site tries your storage once and gives you an address
+   `https://<site>/mcp/u1.…`.
+3. Add it as a connector (below).
 
-Your MCP address is `https://<your site>/mcp/<token>`.
+The address carries your storage settings, encrypted with a key that only the
+server has. The site keeps no accounts and no copy of anyone's keys: each
+request decrypts the address and talks to your storage directly. Anyone who
+has the address can read and change your library, so keep it private. To cut
+an address off, replace the access key or token in your storage settings and
+make a new address.
+
+A library kept only in the browser can't be reached this way.
+
+## For whoever hosts the site
+
+Personal addresses need one secret on the Pages project. In Cloudflare, open
+**Workers & Pages → lightkone → Settings → Variables and Secrets → Add**: type
+**Secret**, name `MCP_SECRET`, value a long random string (for example from
+`openssl rand -hex 32`), then redeploy. If `MCP_SECRET` is not set, the site
+uses `MCP_TOKEN` instead. Changing the secret turns off every address made with
+it, so set it once and leave it.
+
+### The host's own library, without the app's settings
+
+The host can also serve one library straight from an R2 bucket bound to the
+project:
+
+- **Variables and Secrets → Add**: Secret `MCP_TOKEN`, a long random token.
+- **Bindings → Add → R2 bucket**: variable name `LIBRARY`, the library's
+  bucket.
+
+That library's address is `https://<site>/mcp/<MCP_TOKEN>`. Personal addresses
+work without either of these.
 
 ## Connecting
 
 - **claude.ai and the Claude apps:** Settings → Connectors → **Add custom
   connector**, paste the address.
-- **Claude Code:** `claude mcp add --transport http lightkone https://<your site>/mcp/<token>`
-
-The address is the key: anyone who has it can read and change your library.
-Keep it private, and to revoke it change `MCP_TOKEN` and redeploy.
+- **Claude Code:** `claude mcp add --transport http lightkone <address>`
 
 ## Notes
 
 - Changes made through MCP appear in the app the next time it opens the
   library. If the app and an AI app save at the same moment, the later save
   wins; Phase 5 adds version checks.
-- Libraries kept in a GitHub repository or only in a browser are not reachable
-  by the server.
+- GitHub-backed libraries commit each change through MCP, like the app does.

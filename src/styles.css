@@ -533,3 +533,4 @@ label.file input, label.button input { display: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+.mcp-link input { margin-top: 6px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
