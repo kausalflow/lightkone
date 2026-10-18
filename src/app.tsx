@@ -674,6 +674,13 @@ function SettingsPanel(props: { settings: Settings; onSave(s: Settings): void; o
         </p>
         <textarea rows={2} value={draft["plugins.urls"] ?? ""} placeholder="https://example.com/my-plugin.js" onInput={(e) => set("plugins.urls", e.currentTarget.value)} />
 
+        <h3>Claude and other AI apps (MCP)</h3>
+        <p class="muted small">
+          Claude on claude.ai, its apps and Claude Code can search and read this library, and add or tag papers. With the library in an R2 bucket,
+          bind it to the site as <code>LIBRARY</code> and add a secret <code>MCP_TOKEN</code>, then add <code>{location.origin}/mcp/&lt;token&gt;</code> as
+          a custom connector in Claude. Steps are in docs/MCP.md.
+        </p>
+
         <h3>Backup</h3>
         <p class="muted small">Save these settings to a file, or load them on another device. With a passphrase, the file is encrypted.</p>
         <label class="field">

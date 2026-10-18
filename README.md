@@ -20,6 +20,9 @@ plain files in storage you choose.
   the answer as the highlight's note.
 - **AI built in, with your own key.** Summaries and questions about a paper with
   Claude. When the PDF is stored, Claude reads the whole paper.
+- **Your library in Claude (MCP).** Connect Claude, Claude Code or any MCP app
+  to search your library, read papers and your highlights, and add or tag
+  papers. See [docs/MCP.md](docs/MCP.md).
 - **Plugins.** Storage, lookups, importers and paper actions are all plugins,
   including the built-in ones. Load your own from a URL.
 - **Cheap to run.** A static site with no server. One person or a small team can

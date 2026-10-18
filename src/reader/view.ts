@@ -163,6 +163,17 @@ export class PdfView {
     return rects.length ? { page: Number(pageEl.dataset.page), rects, text } : null;
   }
 
+  /** The text of every page, as pdf.js reads it. */
+  async allText(): Promise<string[]> {
+    if (!this.doc) return [];
+    const pages: string[] = [];
+    for (let n = 1; n <= this.doc.numPages; n++) {
+      const content = await (await this.doc.getPage(n)).getTextContent();
+      pages.push(content.items.map((i) => ("str" in i ? i.str + (i.hasEOL ? "\n" : "") : "")).join(""));
+    }
+    return pages;
+  }
+
   /** A PNG (base64) of part of a drawn page, around the given boxes, so Claude sees equations as typeset. */
   snapshot(page: number, rects: Rect[]): string | null {
     const canvas = this.pages[page - 1]?.el.querySelector("canvas");
