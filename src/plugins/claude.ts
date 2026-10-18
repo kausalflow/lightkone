@@ -148,6 +148,69 @@ export async function chatAboutPaper(
   return text;
 }
 
+const LIBRARY =
+  SYSTEM +
+  " Answer the researcher's question from the numbered sources, which are passages from papers in their library " +
+  "(the page of the PDF, or the paper's title and abstract). Cite every claim with the number of its source in square brackets, " +
+  "like [3] or [2, 5], right after the claim. Use only what the sources say; when they do not answer the question, or only " +
+  "part of it, say so plainly rather than filling in from memory. Compare papers where they agree or differ. " +
+  "Write mathematics in LaTeX between $...$ or $$...$$.";
+
+export interface LibraryTurn {
+  role: "user" | "assistant";
+  text: string;
+  /** New sources found for this question, numbered after the earlier ones. */
+  sources?: string;
+}
+
+/**
+ * A conversation with the whole library, streamed. Each question brings the
+ * passages found for it; the first ones are cached, so follow-ups cost less.
+ */
+export async function askLibrary(
+  settings: Record<string, string>,
+  turns: LibraryTurn[],
+  onText: (soFar: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const client = await clientFor(settings);
+  const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((t, i) =>
+    t.role === "assistant"
+      ? { role: "assistant", content: t.text }
+      : {
+          role: "user",
+          content: t.sources
+            ? [{ type: "text", text: `<sources>\n${t.sources}\n</sources>`, ...(i === 0 ? { cache_control: { type: "ephemeral" as const } } : {}) }, { type: "text", text: t.text }]
+            : t.text,
+        },
+  );
+  const stream = client.beta.messages.stream(
+    {
+      model: settings["claude.model"] || DEFAULT_MODEL,
+      max_tokens: 16000,
+      system: LIBRARY,
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages,
+    },
+    { signal },
+  );
+  let text = "";
+  for await (const event of stream) {
+    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+      text += event.delta.text;
+      onText(text);
+    }
+  }
+  const final = await stream.finalMessage();
+  if (final.stop_reason === "refusal") {
+    throw new Error(`Claude declined this request${final.stop_details?.explanation ? `: ${final.stop_details.explanation}` : "."}`);
+  }
+  return final.stop_reason === "max_tokens" ? `${text}\n\n(The answer was cut off at the length limit.)` : text;
+}
+
 const FIND =
   "Identify the one research paper the researcher means, using web search and by fetching the page if they gave a link. " +
   "Reply with only a JSON object, no other text: " +
