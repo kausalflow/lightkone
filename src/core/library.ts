@@ -1,4 +1,4 @@
-import type { LibraryFile, Paper, PaperDraft, StorageAdapter } from "./types";
+import type { BibTarget, LibraryFile, Paper, PaperDraft, StorageAdapter } from "./types";
 import { libraryToBibtex } from "./bibtex";
 import { foldersFromPaperpile } from "./folders";
 
@@ -33,6 +33,7 @@ export function makeKey(d: PaperDraft, taken: Set<string>): string {
 
 export class Library {
   papers: Paper[] = [];
+  bibSync: BibTarget[] = [];
   private listeners = new Set<() => void>();
 
   constructor(public storage: StorageAdapter | null = null) {}
@@ -47,12 +48,14 @@ export class Library {
 
   async load(): Promise<{ loaded: number; seeded: number; foldered: number }> {
     this.papers = [];
+    this.bibSync = [];
     if (!this.storage) return { loaded: 0, seeded: 0, foldered: 0 };
     const raw = await this.storage.read(LIBRARY_PATH);
     if (raw) {
       const file = JSON.parse(decoder.decode(raw)) as LibraryFile;
       if (file.format !== "lightkone-library") throw new Error("lightkone/library.json is not a Lightkone library.");
       this.papers = file.papers;
+      this.bibSync = file.bibSync ?? [];
     }
     const loaded = this.papers.length;
     let seeded = 0;
@@ -70,7 +73,7 @@ export class Library {
 
   async save(): Promise<void> {
     if (!this.storage) return;
-    const file: LibraryFile = { format: "lightkone-library", version: 1, papers: this.papers };
+    const file: LibraryFile = { format: "lightkone-library", version: 1, papers: this.papers, ...(this.bibSync.length ? { bibSync: this.bibSync } : {}) };
     await this.storage.write(LIBRARY_PATH, JSON.stringify(file, null, 1), "application/json");
     await this.storage.write(BIB_PATH, libraryToBibtex(this.papers), "application/x-bibtex");
   }

@@ -42,6 +42,16 @@ export interface LibraryFile {
   format: "lightkone-library";
   version: 1;
   papers: Paper[];
+  /** .bib files kept up to date in GitHub repositories, e.g. for Overleaf. */
+  bibSync?: BibTarget[];
+}
+
+/** One folder's papers (or the whole library, folder "") written as a .bib file to a GitHub repository. */
+export interface BibTarget {
+  folder: string;
+  repo: string;
+  path: string;
+  branch?: string;
 }
 
 /** A place a library lives. Paths are relative to the adapter's root. */
