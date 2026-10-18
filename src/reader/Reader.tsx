@@ -24,7 +24,7 @@ function download(name: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function Reader(props: { paper: Paper; storage: StorageAdapter; onClose(): void; onError(msg: string): void }) {
+export function Reader(props: { paper: Paper; storage: StorageAdapter; onClose(): void; onError(msg: string): void; onText?(paperId: string, text: string): void }) {
   const { paper, storage } = props;
   const pagesRef = useRef<HTMLDivElement>(null);
   const view = useRef<PdfView | null>(null);
@@ -69,7 +69,12 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; onClose()
         // Keep the text next to the PDF once, for search and for AI tools reading the library.
         if (!(await storage.read(textPath(paper.id)).catch(() => null))) {
           v.allText()
-            .then((pages) => (pages.some((s) => s.trim()) ? storage.write(textPath(paper.id), joinPages(pages), "text/plain; charset=utf-8") : undefined))
+            .then(async (pages) => {
+              if (!pages.some((s) => s.trim())) return;
+              const text = joinPages(pages);
+              await storage.write(textPath(paper.id), text, "text/plain; charset=utf-8");
+              props.onText?.(paper.id, text);
+            })
             .catch(() => {}); // closed meanwhile, or offline: next time
         }
       } catch (e) {

@@ -18,6 +18,23 @@ async function loadPdfjs() {
   return pdfjs;
 }
 
+/** The text of every page of a PDF, without drawing it. */
+export async function extractText(bytes: Uint8Array): Promise<string[]> {
+  const lib = await loadPdfjs();
+  const task = lib.getDocument({ data: bytes.slice() });
+  const doc = await task.promise;
+  try {
+    const pages: string[] = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      const content = await (await doc.getPage(n)).getTextContent();
+      pages.push(content.items.map((i) => ("str" in i ? i.str + (i.hasEOL ? "\n" : "") : "")).join(""));
+    }
+    return pages;
+  } finally {
+    await task.destroy();
+  }
+}
+
 interface PageSlot {
   n: number;
   el: HTMLDivElement;
