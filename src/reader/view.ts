@@ -209,6 +209,11 @@ export class PdfView {
     return out.toDataURL("image/png").split(",")[1] ?? null;
   }
 
+  scrollToPage(page: number) {
+    const s = this.pages[page - 1];
+    if (s) this.root.scrollTop = s.el.offsetTop - 8;
+  }
+
   scrollTo(h: Highlight) {
     const s = this.pages[h.page - 1];
     if (!s) return;

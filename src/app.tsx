@@ -11,6 +11,7 @@ import { exportSettings, importSettings, loadSettings, persistStorage, pluginUrl
 import { matchPaperpilePdfs, PAPERPILE_DIR } from "./core/paperpile";
 import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf";
 import { Reader } from "./reader/Reader";
+import { AskPanel } from "./AskPanel";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
 import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
 import { allFolders, cleanFolder, folderTree, type FolderNode } from "./core/folders";
@@ -66,7 +67,8 @@ export function App() {
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | null>(null);
+  const [readingPage, setReadingPage] = useState(0);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -352,6 +354,10 @@ export function App() {
               {saveLabel}
             </span>
           )}
+          <button class="ask-btn" onClick={() => setPanel("ask")} disabled={!library.papers.length} title="Ask a question across your library">
+            <Icon name="sparkle" />
+            <span class="label">Ask</span>
+          </button>
           <button class="primary add" onClick={() => setPanel("add")} disabled={!storage}>
             <Icon name="plus" />
             <span class="label">Add paper</span>
@@ -551,6 +557,7 @@ export function App() {
           onRead={() => {
             library.update(paper.id, { opened: new Date().toISOString() });
             scheduleSave();
+            setReadingPage(0);
             setReading(paper.id);
           }}
           onGetPdf={canFindOpenPdf(paper, pdfOptions(settings)) ? () => getPdf(paper) : undefined}
@@ -564,9 +571,33 @@ export function App() {
         <Reader
           paper={library.papers.find((p) => p.id === reading)!}
           storage={storage}
+          page={readingPage}
           onClose={() => setReading(null)}
           onError={setError}
           onText={(id, text) => textIndex?.add(id, text).then(() => setTextVersion((v) => v + 1))}
+        />
+      )}
+
+      {panel === "ask" && (
+        <AskPanel
+          papers={library.papers}
+          texts={textIndex?.texts ?? new Map()}
+          unindexed={textIndex?.missing(library.papers).length ?? 0}
+          settings={settings}
+          hidden={Boolean(reading)}
+          onIndex={() => { if (!indexing) indexPdfs(); }}
+          onOpen={(id, page) => {
+            const p = library.papers.find((x) => x.id === id);
+            if (!p) return;
+            setSelected(id);
+            if (p.pdf && storage) {
+              library.update(id, { opened: new Date().toISOString() });
+              scheduleSave();
+              setReadingPage(page);
+              setReading(id); // the conversation waits underneath the reader
+            } else setPanel(null);
+          }}
+          onClose={() => setPanel(null)}
         />
       )}
 
