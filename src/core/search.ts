@@ -3,6 +3,8 @@ import type { Paper } from "./types";
 // Plain-text search over the fields people remember. Every word must match
 // somewhere; title and author hits rank higher. Supports filters:
 //   tag:"machine learning"  author:hinton  year:2019  year:2015-2020  has:pdf  has:abstract
+//   in:"Physics/QFT" (that folder and the ones inside it)  is:starred  is:recent  is:trash
+// Papers in the trash only show with is:trash.
 
 export interface Query {
   words: string[];
@@ -10,12 +12,14 @@ export interface Query {
   authors: string[];
   years?: [number, number];
   has: string[];
+  folders: string[];
+  is: string[];
 }
 
 const fold = (s: string) => s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 export function parseQuery(input: string): Query {
-  const q: Query = { words: [], tags: [], authors: [], has: [] };
+  const q: Query = { words: [], tags: [], authors: [], has: [], folders: [], is: [] };
   const re = /(\w+):"([^"]*)"|(\w+):(\S+)|"([^"]*)"|(\S+)/g;
   for (const m of input.matchAll(re)) {
     const field = (m[1] ?? m[3])?.toLowerCase();
@@ -23,6 +27,8 @@ export function parseQuery(input: string): Query {
     if (field === "tag") q.tags.push(fold(value));
     else if (field === "author") q.authors.push(fold(value));
     else if (field === "has") q.has.push(value.toLowerCase());
+    else if (field === "in") q.folders.push(fold(value).replace(/\/+$/, ""));
+    else if (field === "is") q.is.push(value.toLowerCase());
     else if (field === "year") {
       const [a, b] = value.split("-").map(Number);
       if (a) q.years = [a, b || a];
@@ -31,7 +37,16 @@ export function parseQuery(input: string): Query {
   return q;
 }
 
+const inFolder = (p: Paper, f: string) => (p.folders ?? []).some((pf) => {
+  const x = fold(pf);
+  return x === f || x.startsWith(`${f}/`);
+});
+
 function score(p: Paper, q: Query): number {
+  if (Boolean(p.trashed) !== q.is.includes("trash")) return 0;
+  if (q.is.includes("starred") && !p.starred) return 0;
+  if (q.is.includes("recent") && !p.opened) return 0;
+  if (q.folders.length && !q.folders.every((f) => inFolder(p, f))) return 0;
   if (q.tags.length && !q.tags.every((t) => p.tags.some((pt) => fold(pt) === t))) return 0;
   const authorText = fold(p.authors.join(" ; "));
   if (q.authors.length && !q.authors.every((a) => authorText.includes(a))) return 0;
@@ -54,7 +69,7 @@ function score(p: Paper, q: Query): number {
   return total;
 }
 
-export type SortBy = "added" | "year" | "title" | "relevance";
+export type SortBy = "added" | "year" | "title" | "relevance" | "opened";
 
 export function search(papers: Paper[], input: string, sort: SortBy = "added"): Paper[] {
   const q = parseQuery(input);
@@ -64,7 +79,8 @@ export function search(papers: Paper[], input: string, sort: SortBy = "added"): 
     added: (a, b) => b.added.localeCompare(a.added),
     year: (a, b) => (b.year ?? 0) - (a.year ?? 0),
     title: (a, b) => a.title.localeCompare(b.title),
+    opened: (a, b) => (b.opened ?? "").localeCompare(a.opened ?? "") || b.added.localeCompare(a.added),
   };
-  const effective = sort === "added" && q.words.length ? "relevance" : sort;
+  const effective = sort === "added" && q.is.includes("recent") ? "opened" : sort === "added" && q.words.length ? "relevance" : sort;
   return scored.sort((x, y) => by[effective](x[0], y[0], x[1], y[1])).map(([p]) => p);
 }

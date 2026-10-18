@@ -24,6 +24,13 @@ export interface Paper {
   notes?: string;
   /** ISO timestamp. */
   added: string;
+  /** Folders the paper is in, as paths like "Physics/QFT". A paper can be in several. */
+  folders?: string[];
+  starred?: boolean;
+  /** When it was moved to the trash (ISO); trashed papers are hidden until restored. */
+  trashed?: string;
+  /** When it was last opened in the reader (ISO). */
+  opened?: string;
   /** Remaining BibTeX fields, lower-cased names, raw values. */
   fields: Record<string, string>;
 }

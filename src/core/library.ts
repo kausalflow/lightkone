@@ -1,5 +1,6 @@
 import type { LibraryFile, Paper, PaperDraft, StorageAdapter } from "./types";
 import { libraryToBibtex } from "./bibtex";
+import { foldersFromPaperpile } from "./folders";
 
 // The library is plain files in whatever storage the user picked:
 //   lightkone/library.json  the source of truth
@@ -44,9 +45,9 @@ export class Library {
     this.listeners.forEach((fn) => fn());
   }
 
-  async load(): Promise<{ loaded: number; seeded: number }> {
+  async load(): Promise<{ loaded: number; seeded: number; foldered: number }> {
     this.papers = [];
-    if (!this.storage) return { loaded: 0, seeded: 0 };
+    if (!this.storage) return { loaded: 0, seeded: 0, foldered: 0 };
     const raw = await this.storage.read(LIBRARY_PATH);
     if (raw) {
       const file = JSON.parse(decoder.decode(raw)) as LibraryFile;
@@ -56,8 +57,15 @@ export class Library {
     const loaded = this.papers.length;
     let seeded = 0;
     if (this.storage.seed) seeded = this.merge(await this.storage.seed()).added.length;
+    // Papers from before folders existed take theirs from Paperpile's file paths, once.
+    let foldered = 0;
+    for (const p of this.papers) {
+      if (p.folders) continue;
+      p.folders = foldersFromPaperpile(p.file);
+      if (p.folders.length) foldered++;
+    }
     this.emit();
-    return { loaded, seeded };
+    return { loaded, seeded, foldered };
   }
 
   async save(): Promise<void> {
@@ -101,6 +109,11 @@ export class Library {
           existing.tags = tags;
           changed = true;
         }
+        const folders = [...new Set([...(existing.folders ?? []), ...(d.folders ?? foldersFromPaperpile(d.file))])];
+        if (folders.length !== (existing.folders ?? []).length) {
+          existing.folders = folders;
+          changed = true;
+        }
         if (changed) updated.push(existing);
         continue;
       }
@@ -112,6 +125,7 @@ export class Library {
         fields: {},
         ...d,
         tags: d.tags ?? [],
+        folders: d.folders ?? foldersFromPaperpile(d.file),
         id: newId(),
         key,
         added: d.added ?? new Date().toISOString(),

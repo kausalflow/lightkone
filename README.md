@@ -71,7 +71,18 @@ into your bucket once and every paper finds its PDF (see
 
 Words match titles, authors, abstracts, venues, tags and notes. Filters:
 `tag:"machine learning"`, `author:hinton`, `year:2015-2020`, `has:pdf`,
-`has:abstract`, `has:arxiv`, `has:notes`.
+`has:abstract`, `has:arxiv`, `has:notes`, `in:"Physics/QFT"` (a folder and
+the folders inside it), `is:starred`, `is:recent`, `is:trash`.
+
+## Organizing
+
+Papers can be starred, put in nested folders (a paper can be in several), and
+moved to the trash, where they wait until you restore them or empty it.
+"Recently read" lists what you opened in the reader. Papers imported from
+Paperpile land in the folders their PDFs were filed under in Google Drive
+(`All Papers/MLDS/Statistics/...` puts a paper in `MLDS/Statistics`); the
+author folders Paperpile makes are not folders of yours and are skipped. On a
+phone, **Browse** opens the folders and tags.
 
 ## More
 

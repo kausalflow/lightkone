@@ -5,6 +5,7 @@ import { paperToBibtex } from "../core/bibtex";
 import { annotationsPath, parseAnnotations } from "../core/annotations";
 import { pagesOf, textPath } from "../core/fulltext";
 import { arxiv, arxivId, crossref, doiOf } from "../plugins/lookup";
+import { cleanFolder, folderTree, type FolderNode } from "../core/folders";
 
 // Lightkone as an MCP server (Streamable HTTP, JSON responses): Claude, Claude
 // Code or any MCP client can search the library, read papers and notes, and
@@ -35,6 +36,8 @@ const brief = (p: Paper) => ({
   year: p.year,
   venue: p.venue,
   tags: p.tags,
+  folders: p.folders?.length ? p.folders : undefined,
+  starred: p.starred || undefined,
   arxiv: p.arxiv,
   doi: p.doi,
   pdf: Boolean(p.pdf),
@@ -53,7 +56,8 @@ export const tools: Tool[] = [
   {
     name: "search_papers",
     description:
-      "Search the researcher's paper library. Words match title, authors, abstract, tags and notes; filters: tag:x author:x year:2020 year:2015-2020 has:pdf has:notes. " +
+      "Search the researcher's paper library. Words match title, authors, abstract, tags and notes; filters: tag:x author:x year:2020 year:2015-2020 has:pdf has:notes " +
+      'in:"Folder/Sub" is:starred is:recent (recently read). ' +
       "An empty query lists the most recently added papers.",
     inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 100, default: 20 } }, required: ["query"] },
     annotations: { readOnlyHint: true },
@@ -102,11 +106,14 @@ export const tools: Tool[] = [
   },
   {
     name: "list_tags",
-    description: "All tags in the library with how many papers carry each.",
+    description: "All tags and folders in the library, with how many papers are in each (a folder counts the folders inside it).",
     inputSchema: { type: "object", properties: {} },
     annotations: { readOnlyHint: true },
     async run(_, { library }) {
-      return JSON.stringify(Object.fromEntries(library.tagCounts()), null, 1);
+      const folders: Record<string, number> = {};
+      const walk = (ns: FolderNode[]) => ns.forEach((n) => ((folders[n.path] = n.count), walk(n.children)));
+      walk(folderTree(library.papers));
+      return JSON.stringify({ tags: Object.fromEntries(library.tagCounts()), folders }, null, 1);
     },
   },
   {
@@ -129,23 +136,30 @@ export const tools: Tool[] = [
   },
   {
     name: "tag_papers",
-    description: "Add and/or remove tags on one or more papers.",
+    description: 'Add or remove tags, and put papers into or take them out of folders (paths like "Physics/QFT"), for one or more papers.',
     inputSchema: {
       type: "object",
       properties: {
         papers: { type: "array", items: PAPER, minItems: 1 },
         add: { type: "array", items: { type: "string" } },
         remove: { type: "array", items: { type: "string" } },
+        add_folders: { type: "array", items: { type: "string" } },
+        remove_folders: { type: "array", items: { type: "string" } },
       },
       required: ["papers"],
     },
     async run(a, { library }) {
       const add = ((a.add as string[]) ?? []).map((t) => t.trim()).filter(Boolean);
       const remove = new Set((a.remove as string[]) ?? []);
+      const addF = ((a.add_folders as string[]) ?? []).map(cleanFolder).filter(Boolean);
+      const removeF = new Set(((a.remove_folders as string[]) ?? []).map(cleanFolder));
       const done = (a.papers as string[]).map((ref) => {
         const p = find(library, ref);
-        library.update(p.id, { tags: [...new Set([...p.tags.filter((t) => !remove.has(t)), ...add])] });
-        return `${p.key}: ${p.tags.join(", ") || "(no tags)"}`;
+        library.update(p.id, {
+          tags: [...new Set([...p.tags.filter((t) => !remove.has(t)), ...add])],
+          folders: [...new Set([...(p.folders ?? []).filter((f) => !removeF.has(f)), ...addF])],
+        });
+        return `${p.key}: tags ${p.tags.join(", ") || "(none)"}; folders ${p.folders?.join(", ") || "(none)"}`;
       });
       await library.save();
       return done.join("\n");
