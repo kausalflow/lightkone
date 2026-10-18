@@ -94,5 +94,7 @@ export function withOfflineCache(inner: StorageAdapter, maybeCache: ByteCache | 
   };
   if (inner.remove) s.remove = (p) => inner.remove!(p).then(() => cache.delete(p).catch(() => {}));
   if (inner.seed) s.seed = () => inner.seed!().catch((e) => (offlineError(e) ? [] : Promise.reject(e)));
+  if (inner.access) s.access = () => inner.access!().catch(() => "write" as const);
+  if (inner.listAll) s.listAll = (p) => inner.listAll!(p);
   return s;
 }

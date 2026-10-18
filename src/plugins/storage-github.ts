@@ -72,6 +72,12 @@ export function githubStorage(cfg: GitHubConfig): StorageAdapter {
       const items = (await r.json()) as { path: string; type: string }[];
       return items.filter((i) => i.type === "file" && i.path.startsWith(prefix)).map((i) => i.path);
     },
+    async access() {
+      const r = await fetch(`${api}/repos/${cfg.repo}`, { headers: headers(), ...fresh });
+      if (!r.ok) return "write"; // unknown: a save will say if it can't
+      const perms = (await r.json()).permissions;
+      return perms && !perms.push ? "read" : "write";
+    },
     async listAll(prefix) {
       const r = await fetch(`${api}/repos/${cfg.repo}/git/trees/${encodeURIComponent(cfg.branch || "HEAD")}?recursive=1`, { headers: headers(), ...fresh });
       if (r.status === 404 || r.status === 409) return []; // no such branch, or an empty repository

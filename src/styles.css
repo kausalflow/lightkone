@@ -655,3 +655,12 @@ svg.map .node-label { font-size: 10px; fill: var(--text, currentColor); paint-or
 .eq-math { overflow-x: auto; overflow-y: hidden; }
 .eq-math .katex-display { margin: 4px 0; }
 .eq-hits a { color: inherit; }
+
+/* Shared libraries */
+.library-switch { display: block; margin: 0 0 10px; }
+.library-switch select { width: 100%; }
+.shared-list { list-style: none; padding: 0; margin: 12px 0; }
+.shared-list li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.shared-list li.on strong::after { content: " · open"; font-weight: 400; color: var(--muted); }
+.shared-list .row { margin-top: 0; }
+.copy-to { width: auto; }

@@ -31,6 +31,8 @@ export interface Paper {
   trashed?: string;
   /** When it was last opened in the reader (ISO). */
   opened?: string;
+  /** Who added it, in a shared library: the name they gave in Settings. */
+  by?: string;
   /** Remaining BibTeX fields, lower-cased names, raw values. */
   fields: Record<string, string>;
 }
@@ -67,6 +69,8 @@ export interface StorageAdapter {
   read(path: string): Promise<Uint8Array | null>;
   write(path: string, data: Uint8Array | string, contentType?: string): Promise<void>;
   list(prefix: string): Promise<string[]>;
+  /** Whether this device may change what is stored: "read" when the owner gave read access only. */
+  access?(): Promise<"read" | "write">;
   /** Every file under a prefix, in subfolders too. */
   listAll?(prefix: string): Promise<string[]>;
   remove?(path: string): Promise<void>;
