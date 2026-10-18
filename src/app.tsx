@@ -17,6 +17,7 @@ import { WritingPanel } from "./WritingPanel";
 import { CitationMap } from "./CitationMap";
 import { FreshPanel } from "./FreshPanel";
 import { ManuscriptPanel } from "./ManuscriptPanel";
+import { EquationPanel } from "./EquationPanel";
 import type { ManuscriptReport } from "./core/manuscript";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
 import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
@@ -73,7 +74,7 @@ export function App() {
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | null>(null);
   const [readingPage, setReadingPage] = useState(0);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -467,6 +468,12 @@ export function App() {
               <span class="name">Citation map</span>
             </button>
           )}
+          {storage && library.papers.some((p) => p.arxiv) && (
+            <button class="tag" title="Find the papers that use an equation" onClick={() => { setPanel("equation"); setSideOpen(false); }}>
+              <Icon name="search" />
+              <span class="name">Search by equation</span>
+            </button>
+          )}
           {library.papers.length > 0 && (
             <button class="tag" title="Find what to cite for a sentence; a .bib for a manuscript" onClick={() => { setPanel("writing"); setSideOpen(false); }}>
               <Icon name="book" />
@@ -720,6 +727,10 @@ export function App() {
           onSettings={() => setPanel("settings")}
           onClose={() => setPanel(null)}
         />
+      )}
+
+      {panel === "equation" && storage && (
+        <EquationPanel papers={library.papers} storage={storage} hidden={Boolean(reading)} onOpen={openAt} onClose={() => setPanel(null)} />
       )}
 
       {panel === "writing" && (
