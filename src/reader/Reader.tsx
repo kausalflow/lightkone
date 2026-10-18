@@ -11,6 +11,7 @@ import {
 } from "../core/annotations";
 import { PdfView, type Selected } from "./view";
 import { Explain, type Subject } from "./Explain";
+import { joinPages, textPath } from "../core/fulltext";
 import "./reader.css";
 
 const decoder = new TextDecoder();
@@ -64,6 +65,12 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; onClose()
         setHighlights(hs);
         loaded.current = true;
         setState("ready");
+        // Keep the text next to the PDF once, for search and for AI tools reading the library.
+        if (!(await storage.read(textPath(paper.id)).catch(() => null))) {
+          v.allText()
+            .then((pages) => (pages.some((s) => s.trim()) ? storage.write(textPath(paper.id), joinPages(pages), "text/plain; charset=utf-8") : undefined))
+            .catch(() => {}); // closed meanwhile, or offline: next time
+        }
       } catch (e) {
         setState("failed");
         props.onError(`Could not open the PDF: ${(e as Error).message}`);
