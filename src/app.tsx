@@ -12,6 +12,7 @@ import { matchPaperpilePdfs, PAPERPILE_DIR } from "./core/paperpile";
 import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf";
 import { Reader } from "./reader/Reader";
 import { AskPanel } from "./AskPanel";
+import { ObsidianPanel } from "./ObsidianPanel";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
 import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
 import { allFolders, cleanFolder, folderTree, type FolderNode } from "./core/folders";
@@ -67,7 +68,7 @@ export function App() {
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | "ask" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | null>(null);
   const [readingPage, setReadingPage] = useState(0);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -159,6 +160,26 @@ export function App() {
       setBusy(null);
     }
   }
+
+  // A link from an exported note, ?open=<paper id>&page=<n>, opens that paper at that page.
+  useEffect(() => {
+    if (!storage) return;
+    const url = new URL(location.href);
+    const id = url.searchParams.get("open");
+    if (!id) return;
+    const p = library.papers.find((x) => x.id === id);
+    if (p) {
+      setSelected(p.id);
+      const page = Number(url.searchParams.get("page")) || 0;
+      if (page && p.pdf) {
+        setReadingPage(page);
+        setReading(p.id);
+      }
+    }
+    url.searchParams.delete("open");
+    url.searchParams.delete("page");
+    history.replaceState(null, "", url);
+  }, [storage]);
 
   // Once storage is open, hand a captured paper to the Add panel and tidy the address bar.
   useEffect(() => {
@@ -397,6 +418,12 @@ export function App() {
               <span class="name">Tidy up</span>
             </button>
           )}
+          {storage && (
+            <button class="tag" title="Highlights and notes as Markdown notes" onClick={() => { setPanel("obsidian"); setSideOpen(false); }}>
+              <Icon name="file" />
+              <span class="name">Export to Obsidian</span>
+            </button>
+          )}
         </nav>
         <h3>Folders</h3>
         {!tree.length && <p class="muted small hint">Put a paper in a folder from its details; folders can nest, like "Physics/QFT".</p>}
@@ -599,6 +626,10 @@ export function App() {
           }}
           onClose={() => setPanel(null)}
         />
+      )}
+
+      {panel === "obsidian" && storage && (
+        <ObsidianPanel papers={library.papers} inView={visible} storage={storage} onClose={() => setPanel(null)} />
       )}
 
       {panel === "add" && (
