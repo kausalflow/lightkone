@@ -10,6 +10,7 @@ import {
   type Highlight,
 } from "../core/annotations";
 import { PdfView, type Selected } from "./view";
+import { Explain, type Subject } from "./Explain";
 import "./reader.css";
 
 const decoder = new TextDecoder();
@@ -39,6 +40,8 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; onClose()
       return false;
     }
   });
+  const [explaining, setExplaining] = useState<Subject | null>(null);
+  const pdfBytes = useRef<Uint8Array | null>(null);
   const loaded = useRef(false);
   const saveTimer = useRef<number | undefined>(undefined);
 
@@ -55,6 +58,7 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; onClose()
       try {
         const [bytes, notes] = await Promise.all([storage.read(paper.pdf!), storage.read(annotationsPath(paper.id)).catch(() => null)]);
         if (!bytes) throw new Error("The PDF is missing from storage.");
+        pdfBytes.current = bytes;
         const hs = parseAnnotations(notes && decoder.decode(notes), paper.id);
         setPages(await v.open(bytes));
         setHighlights(hs);
@@ -98,10 +102,10 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; onClose()
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (open ? setOpen(null) : props.onClose());
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (explaining ? setExplaining(null) : open ? setOpen(null) : props.onClose());
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, explaining]);
 
   function addHighlight(withNote: boolean) {
     if (!selection) return;
@@ -113,6 +117,26 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; onClose()
       setOpen(h);
       setNoteText("");
     }
+  }
+
+  function explain(s: { page: number; rects: Selected["rects"]; text: string }) {
+    setExplaining({ page: s.page, rects: s.rects, text: s.text, image: view.current?.snapshot(s.page, s.rects) ?? null });
+    document.getSelection()?.removeAllRanges();
+    setSelection(null);
+    setOpen(null);
+  }
+
+  /** Keep an explanation: as the note of the highlight it came from, or on a new highlight. */
+  function saveExplanation(answer: string) {
+    if (!explaining) return;
+    const rects = mergeRects(explaining.rects);
+    const same = highlights.find((h) => h.page === explaining.page && h.text === explaining.text);
+    if (same) {
+      setHighlights(highlights.map((h) => (h === same ? { ...h, note: [h.note, answer].filter(Boolean).join("\n\n") } : h)));
+    } else {
+      setHighlights(sortHighlights([...highlights, { id: newId(), page: explaining.page, rects, text: explaining.text, note: answer, created: new Date().toISOString() }]));
+    }
+    setExplaining(null);
   }
 
   function saveNote() {
@@ -180,12 +204,14 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; onClose()
         )}
       </div>
 
-      {selection && !open && (
+      {selection && !open && !explaining && (
         <div class="reader-sheet" onMouseDown={(e) => e.preventDefault()}>
           <button class="primary" onClick={() => addHighlight(false)}>Highlight</button>
           <button onClick={() => addHighlight(true)}>Highlight + note</button>
+          <button onClick={() => explain(selection)} title="Claude explains this in the context of the paper">Explain</button>
         </div>
       )}
+      {explaining && <Explain paper={paper} pdf={pdfBytes.current} subject={explaining} onClose={() => setExplaining(null)} onSave={saveExplanation} />}
       {open && (
         <div class="reader-sheet note-sheet">
           <p class="quote">{open.text}</p>
@@ -193,6 +219,7 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; onClose()
           <div class="row">
             <button class="primary" onClick={saveNote}>Save</button>
             <button class="ghost" onClick={() => setOpen(null)}>Cancel</button>
+            <button class="ghost" onClick={() => explain(open)}>Explain</button>
             <button class="link danger" onClick={removeHighlight}>Delete highlight</button>
           </div>
         </div>

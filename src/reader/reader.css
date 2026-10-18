@@ -118,3 +118,16 @@
 .textLayer br::selection { background: transparent; }
 .textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none; }
 .textLayer.selecting .endOfContent { top: 0; }
+
+.explain-sheet { display: flex; flex-direction: column; gap: 8px; width: min(640px, calc(100vw - 24px)); max-height: min(70vh, 640px); padding: 10px 12px 12px; flex-wrap: nowrap; }
+.explain-head { display: flex; align-items: center; gap: 8px; }
+.explain-head .spacer { flex: 1; }
+.explain-body { overflow: auto; min-height: 0; display: grid; gap: 10px; align-content: start; overscroll-behavior: contain; }
+.explain-a { line-height: 1.55; overflow-wrap: anywhere; }
+.explain-a p, .explain-a ul, .explain-a ol { margin: 0 0 0.6em; }
+.explain-a h4 { margin: 0.6em 0 0.3em; }
+.explain-a .katex-display { margin: 0.5em 0; overflow-x: auto; overflow-y: hidden; }
+.explain-a .math { font-family: ui-monospace, monospace; overflow-x: auto; }
+.explain-q { margin: 0; justify-self: end; max-width: 85%; background: var(--hover); padding: 6px 10px; border-radius: 10px; }
+.explain-ask { display: flex; gap: 6px; flex-wrap: wrap; }
+.explain-ask input { flex: 1 1 180px; min-width: 0; }
