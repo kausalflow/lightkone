@@ -74,6 +74,14 @@ const plugin: LightkonePlugin = {
   id: "related",
   name: "Related papers",
   description: "Finds papers related to one in your library, through Semantic Scholar.",
+  settings: [
+    {
+      name: "openalexKey",
+      label: "OpenAlex API key (optional)",
+      type: "password",
+      help: "Free from openalex.org. Without one, the citation map shares OpenAlex's daily budget with everyone on your network.",
+    },
+  ],
   actions: [
     {
       id: "related",

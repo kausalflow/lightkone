@@ -14,6 +14,7 @@ import { Reader } from "./reader/Reader";
 import { AskPanel } from "./AskPanel";
 import { ObsidianPanel } from "./ObsidianPanel";
 import { WritingPanel } from "./WritingPanel";
+import { CitationMap } from "./CitationMap";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
 import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
 import { allFolders, cleanFolder, folderTree, type FolderNode } from "./core/folders";
@@ -69,7 +70,7 @@ export function App() {
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | null>(null);
   const [readingPage, setReadingPage] = useState(0);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -443,6 +444,12 @@ export function App() {
               <span class="name">Tidy up</span>
             </button>
           )}
+          {storage && library.papers.length > 0 && (
+            <button class="tag" title="Which of your papers cite which, and what they cite that you don't have" onClick={() => { setPanel("map"); setSideOpen(false); }}>
+              <Icon name="link" />
+              <span class="name">Citation map</span>
+            </button>
+          )}
           {library.papers.length > 0 && (
             <button class="tag" title="Find what to cite for a sentence; a .bib for a manuscript" onClick={() => { setPanel("writing"); setSideOpen(false); }}>
               <Icon name="book" />
@@ -645,6 +652,18 @@ export function App() {
           hidden={Boolean(reading)}
           onIndex={() => { if (!indexing) indexPdfs(); }}
           onOpen={openAt}
+          onClose={() => setPanel(null)}
+        />
+      )}
+
+      {panel === "map" && storage && (
+        <CitationMap
+          papers={library.papers}
+          storage={storage}
+          settings={settings}
+          hidden={Boolean(reading)}
+          onOpen={openAt}
+          onAdd={(d) => addDrafts([d]).length > 0}
           onClose={() => setPanel(null)}
         />
       )}

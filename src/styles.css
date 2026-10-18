@@ -595,3 +595,26 @@ label.file input, label.button input { display: none; }
 .verdict { margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--sunken); color: var(--muted); white-space: nowrap; }
 .verdict.supports { background: var(--accent-soft); color: var(--accent); }
 .cite-out { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; padding: 6px 8px; background: var(--sunken); border-radius: var(--r-sm); font-size: 13px; }
+
+/* Citation map */
+.map-panel { width: min(1100px, 100%); }
+.map-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; }
+.map-tools .muted { flex: 1 1 220px; }
+.map-all { display: inline-flex; align-items: center; gap: 6px; }
+.map-all input { width: 16px; height: 16px; accent-color: var(--accent); }
+svg.map { display: block; width: 100%; height: auto; max-height: 68vh; min-height: 260px; background: var(--sunken); border-radius: var(--r); touch-action: none; cursor: grab; user-select: none; }
+svg.map .band { fill: transparent; }
+svg.map .band.odd { fill: var(--hover); }
+svg.map .band-label { font-size: 12px; font-weight: 600; }
+svg.map .tick { stroke: var(--line); stroke-width: 0.6; }
+svg.map .tick-label { font-size: 11px; fill: var(--muted); text-anchor: middle; }
+svg.map .edge { fill: none; stroke: var(--muted); stroke-width: 0.8; opacity: 0.28; }
+svg.map .edge.on { stroke: var(--accent); stroke-width: 1.4; opacity: 0.8; }
+svg.map .node { cursor: pointer; }
+svg.map .node circle { stroke: var(--panel); stroke-width: 1; }
+svg.map .node.picked circle { stroke: var(--text, #111); stroke-width: 2; }
+svg.map .node-label { font-size: 10px; fill: var(--text, currentColor); paint-order: stroke; stroke: var(--sunken); stroke-width: 3px; pointer-events: none; }
+.map-card { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); }
+.map-links { margin-top: 6px; font-size: 13px; }
+.missing-item { grid-template-columns: 1fr auto !important; align-items: start; }
+.cited-by { margin: 4px 0 0; padding-left: 18px; }
