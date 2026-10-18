@@ -5,7 +5,7 @@ import { pdfLocation } from "./core/filing";
 import { search, type SortBy } from "./core/search";
 import { libraryToBibtex, paperToBibtex } from "./core/bibtex";
 import { actions, allPlugins, importers, loadPluginFromUrl, lookups, storageProviders } from "./core/plugins";
-import { loadSettings, pluginUrls, saveSettings, storageConfig, type Settings } from "./core/settings";
+import { exportSettings, importSettings, loadSettings, persistStorage, pluginUrls, saveSettings, storageConfig, type Settings } from "./core/settings";
 import { matchPaperpilePdfs, PAPERPILE_DIR } from "./core/paperpile";
 import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf";
 import { Reader } from "./reader/Reader";
@@ -148,6 +148,7 @@ export function App() {
   function updateSettings(next: Settings) {
     setSettings(next);
     saveSettings(next);
+    persistStorage();
   }
 
   function addDrafts(drafts: PaperDraft[]): Paper[] {
@@ -566,12 +567,35 @@ function SettingsPanel(props: { settings: Settings; onSave(s: Settings): void; o
   const providerId = draft["storage.provider"] || "browser";
   const provider = storageProviders().find((p) => p.id === providerId) ?? storageProviders()[0];
   const set = (k: string, v: string) => setDraft({ ...draft, [k]: v });
+  const [kept, setKept] = useState<boolean | null>(null);
+  const [passphrase, setPassphrase] = useState("");
+  const [note, setNote] = useState("");
+  useEffect(() => void persistStorage().then(setKept), []);
+
+  async function backup() {
+    const day = new Date().toISOString().slice(0, 10);
+    download(`lightkone-settings-${day}.json`, await exportSettings(draft, passphrase), "application/json");
+    setNote(passphrase ? "Exported, encrypted with your passphrase." : "Exported. The file holds your keys in plain text: keep it somewhere private.");
+  }
+
+  async function restore(file: File | undefined) {
+    if (!file) return;
+    try {
+      setDraft(await importSettings(await file.text(), passphrase));
+      setNote(`Read ${file.name}. Press Save to use these settings.`);
+    } catch (e) {
+      setNote((e as Error).message);
+    }
+  }
 
   return (
     <div class="overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
       <form class="panel wide" onSubmit={(e) => { e.preventDefault(); props.onSave(draft); props.onClose(); }}>
         <h2>Settings</h2>
-        <p class="muted small">Settings, keys and tokens are kept in this browser only.</p>
+        <p class="muted small">
+          Settings, keys and tokens are kept in this browser only
+          {kept === true ? ", and the browser has agreed to keep them until you clear this site's data." : kept === false ? ". This browser may clear them if it runs low on space, so keep a backup." : "."}
+        </p>
 
         <h3>Where your library lives</h3>
         <div class="providers">
@@ -605,6 +629,21 @@ function SettingsPanel(props: { settings: Settings; onSave(s: Settings): void; o
           is a Lightkone plugin; it runs with full access to this page, so only add code you trust.
         </p>
         <textarea rows={2} value={draft["plugins.urls"] ?? ""} placeholder="https://example.com/my-plugin.js" onInput={(e) => set("plugins.urls", e.currentTarget.value)} />
+
+        <h3>Backup</h3>
+        <p class="muted small">Save these settings to a file, or load them on another device. With a passphrase, the file is encrypted.</p>
+        <label class="field">
+          <span>Passphrase (optional)</span>
+          <input type="password" autoComplete="new-password" value={passphrase} onInput={(e) => setPassphrase(e.currentTarget.value)} />
+        </label>
+        <div class="row">
+          <button type="button" onClick={backup}>Export settings</button>
+          <label class="button">
+            Import settings
+            <input type="file" accept=".json,application/json" hidden onChange={(e) => { restore(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
+          </label>
+        </div>
+        {note && <p class="message">{note}</p>}
 
         <div class="row">
           <button class="primary" type="submit">Save</button>

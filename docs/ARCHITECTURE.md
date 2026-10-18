@@ -46,7 +46,10 @@ when the PDF is stored in Lightkone, the PDF itself.
 ## Security model
 
 Settings, storage credentials and API keys stay in the browser's localStorage
-and are never written into the library. Use credentials scoped to one bucket or
+and are never written into the library. Lightkone asks the browser to keep that
+storage persistent (`navigator.storage.persist()`). **Settings → Backup** exports
+them to a JSON file, encrypted with AES-GCM under a PBKDF2 key when a passphrase
+is given, and imports such a file on another device. Use credentials scoped to one bucket or
 one repository. Plugins loaded from a URL run with full page access, so only
 load code you trust.
 
