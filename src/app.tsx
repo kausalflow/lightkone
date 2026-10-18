@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ActionResult, BibTarget, Paper, PaperDraft, StorageAdapter } from "./core/types";
 import { Library } from "./core/library";
-import { pdfLocation } from "./core/filing";
+import { moveOldPdfs, pdfLocation } from "./core/filing";
 import { parseQuery, search, type SortBy } from "./core/search";
 import { libraryToBibtex, paperToBibtex } from "./core/bibtex";
 import { cite, CITE_STYLES, type CiteStyle } from "./core/cite";
 import { TextIndex } from "./core/textsearch";
 import { actions, allPlugins, importers, loadPluginFromUrl, lookups, storageProviders } from "./core/plugins";
 import { exportSettings, importSettings, loadSettings, persistStorage, pluginUrls, saveSettings, storageConfig, type Settings } from "./core/settings";
-import { matchPaperpilePdfs, PAPERPILE_DIR } from "./core/paperpile";
+import { matchPaperpilePdfs, PDF_DIR } from "./core/paperpile";
 import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf";
 import { Reader } from "./reader/Reader";
 import { AskPanel } from "./AskPanel";
@@ -50,7 +50,7 @@ const pdfOptions = (s: Settings): OpenPdfOptions => ({ email: s["pdfs.email"]?.t
 async function linkPaperpilePdfs(storage: StorageAdapter): Promise<number> {
   const unlinked = library.papers.filter((p) => p.file && !p.pdf);
   if (!unlinked.length) return 0;
-  const keys = await storage.list(PAPERPILE_DIR).catch(() => [] as string[]);
+  const keys = await (storage.listAll ?? storage.list).call(storage, PDF_DIR).catch(() => [] as string[]);
   const found = matchPaperpilePdfs(unlinked, keys);
   for (const [id, path] of found) library.update(id, { pdf: path });
   return found.size;
@@ -132,6 +132,7 @@ export function App() {
             foldered ? ` · ${foldered} paper${foldered > 1 ? "s" : ""} put in folders from Paperpile` : "",
           ].join(""),
         );
+        if (!readOnlyRef.current) movePdfs(adapter);
         if (seeded || linked || foldered) {
           scheduleSave();
         } else if (library.bibSync.some((t) => t.tex !== undefined) && syncToken()) {
@@ -225,6 +226,21 @@ export function App() {
     CAPTURE_KEYS.forEach((k) => url.searchParams.delete(k));
     history.replaceState(null, "", url);
   }, [captured, storage]);
+
+  /** Libraries from before papers/ keep PDFs under Paperpile/All Papers/: move them, once. */
+  async function movePdfs(adapter: StorageAdapter) {
+    try {
+      const { repointed, removeOld } = await moveOldPdfs(adapter, library.papers, (done, total) => setSeededNote(` · moving PDFs to papers/ (${done} of ${total})`));
+      for (const [id, pdf] of repointed) library.update(id, { pdf });
+      // Papers from Paperpile's .bib find PDFs that were only now moved.
+      const linked = await linkPaperpilePdfs(adapter);
+      if (repointed.size || linked) await library.save();
+      await removeOld();
+      if (repointed.size || linked) setSeededNote(` · PDFs moved to papers/${linked ? `, ${linked} linked` : ""}`);
+    } catch (e) {
+      setError(`Could not move PDFs to papers/: ${(e as Error).message}. Nothing was removed; it will try again next time.`);
+    }
+  }
 
   function scheduleSave() {
     if (readOnlyRef.current) {

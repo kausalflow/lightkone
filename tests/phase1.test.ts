@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Paper } from "../src/core/types";
-import { matchPaperpilePdfs, PAPERPILE_DIR } from "../src/core/paperpile";
+import { matchPaperpilePdfs, PDF_DIR } from "../src/core/paperpile";
 import { annotationsToMarkdown, mergeRects, parseAnnotations, serializeAnnotations, type Highlight } from "../src/core/annotations";
 import { findOpenPdf } from "../src/core/openpdf";
-import { paperpileFile, pdfLocation } from "../src/core/filing";
+import { moveOldPdfs, paperpileFile, pdfLocation } from "../src/core/filing";
 import { handle } from "../functions/api/pdf";
 
 const paper = (over: Partial<Paper>): Paper => ({
@@ -23,11 +23,11 @@ const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31]);
 
 describe("Paperpile PDFs", () => {
   const keys = [
-    `${PAPERPILE_DIR}All Papers/HINTON/Hinton et al. 2012 - Improving neural networks.pdf`,
-    `${PAPERPILE_DIR}All Papers/CHEN/Chen - Probability Cheatsheet v2.0.pdf`,
-    `${PAPERPILE_DIR}All Papers/SJÖSTRAND/Sjöstrand et al. 2015 - An introduction to PYTHIA 8.2.pdf`.normalize("NFD"),
-    `${PAPERPILE_DIR}All Papers/A/Same.pdf`,
-    `${PAPERPILE_DIR}All Papers/B/Same.pdf`,
+    `${PDF_DIR}All Papers/HINTON/Hinton et al. 2012 - Improving neural networks.pdf`,
+    `${PDF_DIR}All Papers/CHEN/Chen - Probability Cheatsheet v2.0.pdf`,
+    `${PDF_DIR}All Papers/SJÖSTRAND/Sjöstrand et al. 2015 - An introduction to PYTHIA 8.2.pdf`.normalize("NFD"),
+    `${PDF_DIR}All Papers/A/Same.pdf`,
+    `${PDF_DIR}All Papers/B/Same.pdf`,
   ];
 
   it("matches by path, tolerating a missing .pdf, case and Unicode form", () => {
@@ -47,7 +47,7 @@ describe("Paperpile PDFs", () => {
       paper({ id: "rep", file: "All Papers/X/missing.pdf;All Papers/HINTON/Hinton et al. 2012 - Improving neural networks.pdf" }),
       paper({ id: "moved", file: "Other/Chen - Probability Cheatsheet v2.0.pdf" }),
       paper({ id: "amb", file: "Elsewhere/Same.pdf" }),
-      paper({ id: "has", file: "All Papers/HINTON/Hinton et al. 2012 - Improving neural networks.pdf", pdf: "Paperpile/All Papers/X/has.pdf" }),
+      paper({ id: "has", file: "All Papers/HINTON/Hinton et al. 2012 - Improving neural networks.pdf", pdf: "papers/All Papers/X/has.pdf" }),
     ];
     const m = matchPaperpilePdfs(papers, keys);
     expect(m.get("rep")).toBe(keys[0]);
@@ -159,10 +159,40 @@ describe("Paperpile file names", () => {
     expect(paperpileFile({ authors: p.authors!, year: p.year, title: p.title! })).toBe(expected);
   });
 
-  it("places a new PDF under Paperpile/ and avoids taken names", () => {
+  it("places a new PDF under papers/ and avoids taken names", () => {
     const a = paper({ id: "a", authors: ["Wang, Sida", "Manning, Christopher"], year: 2013, title: "Fast dropout training" });
     const b = { ...a, id: "b", file: "All Papers/WANG/Wang and Manning 2013 - Fast dropout training.pdf" };
-    expect(pdfLocation(a, [a])).toEqual({ pdf: "Paperpile/All Papers/WANG/Wang and Manning 2013 - Fast dropout training.pdf", file: "All Papers/WANG/Wang and Manning 2013 - Fast dropout training.pdf" });
+    expect(pdfLocation(a, [a])).toEqual({ pdf: "papers/All Papers/WANG/Wang and Manning 2013 - Fast dropout training.pdf", file: "All Papers/WANG/Wang and Manning 2013 - Fast dropout training.pdf" });
     expect(pdfLocation(a, [a, b]).file).toBe("All Papers/WANG/Wang and Manning 2013 - Fast dropout training (2).pdf");
+  });
+});
+
+describe("one place for PDFs", () => {
+  it("moves PDFs from Paperpile/ to papers/, and removes the old ones only when asked", async () => {
+    const files: Record<string, Uint8Array> = {
+      "Paperpile/All Papers/HINTON/Hinton 2012.pdf": PDF,
+      "Paperpile/All Papers/X/unlinked.pdf": PDF,
+      "papers/All Papers/A/already.pdf": PDF,
+    };
+    const storage = {
+      async read(p: string) { return files[p] ?? null; },
+      async write(p: string, d: Uint8Array | string) { files[p] = d as Uint8Array; },
+      async list(prefix: string) { return Object.keys(files).filter((k) => k.startsWith(prefix)); },
+      async remove(p: string) { delete files[p]; },
+    };
+    const papers = [paper({ id: "h", pdf: "Paperpile/All Papers/HINTON/Hinton 2012.pdf" }), paper({ id: "a", pdf: "papers/All Papers/A/already.pdf" })];
+    const progress: number[] = [];
+    const { repointed, removeOld } = await moveOldPdfs(storage, papers, (d) => progress.push(d));
+    expect([...repointed]).toEqual([["h", "papers/All Papers/HINTON/Hinton 2012.pdf"]]);
+    expect(progress).toEqual([1, 2]);
+    expect(Object.keys(files).sort()).toEqual([
+      "Paperpile/All Papers/HINTON/Hinton 2012.pdf",
+      "Paperpile/All Papers/X/unlinked.pdf",
+      "papers/All Papers/A/already.pdf",
+      "papers/All Papers/HINTON/Hinton 2012.pdf",
+      "papers/All Papers/X/unlinked.pdf",
+    ]);
+    await removeOld();
+    expect(Object.keys(files).every((k) => k.startsWith("papers/"))).toBe(true);
   });
 });

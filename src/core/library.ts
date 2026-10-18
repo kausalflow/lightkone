@@ -6,7 +6,7 @@ import { mergeLibraries } from "./merge";
 // The library is plain files in whatever storage the user picked:
 //   lightkone/library.json  the source of truth
 //   lightkone/library.bib   written on every save, ready for LaTeX and Overleaf
-//   Paperpile/All Papers/...  PDFs, filed the way Paperpile files them (core/filing.ts)
+//   papers/<AUTHOR>/...      PDFs, named the way Paperpile names them (core/filing.ts)
 //   lightkone/annotations/<id>.json  highlights and notes (core/annotations.ts)
 export const LIBRARY_PATH = "lightkone/library.json";
 export const BIB_PATH = "lightkone/library.bib";

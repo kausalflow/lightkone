@@ -36,10 +36,10 @@ describe("shared libraries", () => {
   });
 
   it("copies papers with their PDFs, once, saying who added them", async () => {
-    const from = memory({ "Paperpile/All Papers/WILSON/Wilson 1971.pdf": new Uint8Array([37, 80, 68, 70]) });
+    const from = memory({ "papers/All Papers/WILSON/Wilson 1971.pdf": new Uint8Array([37, 80, 68, 70]) });
     const mine = new Library(from);
     mine.merge([{ title: "Renormalization group and critical phenomena", authors: ["Wilson, Kenneth G."], year: 1971, starred: true }]);
-    const paper: Paper = { ...mine.papers[0], pdf: "Paperpile/All Papers/WILSON/Wilson 1971.pdf", opened: "2026-01-01" };
+    const paper: Paper = { ...mine.papers[0], pdf: "papers/All Papers/WILSON/Wilson 1971.pdf", opened: "2026-01-01" };
     const to = memory();
     expect(await copyPapers([paper], from, to, "L")).toBe(1);
     const shared = new Library(to);
