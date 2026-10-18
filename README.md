@@ -33,6 +33,8 @@ npm run build      # static site in dist/
 
 Open Settings to choose where the library lives. "This browser only" works with
 no setup. See [docs/STORAGE.md](docs/STORAGE.md) for R2, S3 and GitHub.
+Settings stay in this browser; **Settings → Backup** saves them to a file
+(encrypted if you give a passphrase) to restore here or on another device.
 
 ## Moving from Paperpile
 
