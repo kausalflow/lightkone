@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { ActionResult, Paper, PaperDraft, StorageAdapter } from "./core/types";
+import type { ActionResult, BibTarget, Paper, PaperDraft, StorageAdapter } from "./core/types";
 import { Library } from "./core/library";
 import { pdfLocation } from "./core/filing";
 import { search, type SortBy } from "./core/search";
@@ -14,6 +14,8 @@ import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
 import { allFolders, cleanFolder, folderTree, type FolderNode } from "./core/folders";
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
+import { defaultBibPath, papersInFolder, runBibSync } from "./core/bibsync";
+import { githubStorage } from "./plugins/storage-github";
 
 const library = new Library();
 
@@ -50,6 +52,8 @@ export function App() {
   const [status, setStatus] = useState("Opening your library…");
   const [where, setWhere] = useState<string | null>(null);
   const [seededNote, setSeededNote] = useState("");
+  const [bibNote, setBibNote] = useState("");
+  const [syncing, setSyncing] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortBy>("added");
@@ -142,8 +146,20 @@ export function App() {
       } catch (e) {
         setSaveState("error");
         setError(`Could not save: ${(e as Error).message}`);
+        return;
       }
+      if (library.bibSync.length) syncBibs();
     }, 1200);
+  }
+
+  const syncToken = () => settings["bibsync.token"] || (providerId === "github" ? settings["storage.github.token"] : "") || "";
+  async function syncBibs() {
+    const token = syncToken();
+    if (!token) return setError("BibTeX sync needs a GitHub token: add one under Settings → BibTeX sync to GitHub.");
+    const api = settings["storage.github.api"] || undefined;
+    const r = await runBibSync(library.bibSync, library.papers, (t) => githubStorage({ repo: t.repo, branch: t.branch, token, api }));
+    if (r.errors.length) setError(`BibTeX sync failed for ${r.errors.join("; ")}`);
+    if (r.written.length) setBibNote(` · .bib synced to ${r.written.join(", ")}`);
   }
 
   // Warn before closing with unsaved changes.
@@ -273,7 +289,7 @@ export function App() {
       </header>
 
       <div class="statusbar">
-        <span>{where ? `${counts.all} papers · ${where}${seededNote}` : status}</span>
+        <span>{where ? `${counts.all} papers · ${where}${seededNote}${bibNote}` : status}</span>
         {saveLabel && <span class={`save ${saveState}`}>{saveLabel}</span>}
         {busy && <span class="busy">{busy}…</span>}
       </div>
@@ -340,6 +356,15 @@ export function App() {
               </button>
             )}
           </span>
+          {storage && (query === "" || /^in:"[^"]+"$/.test(query)) && (
+            <button
+              class="link small"
+              title="Keep a .bib of these papers in a GitHub repository, for Overleaf"
+              onClick={() => setSyncing(query ? query.slice(4, -1) : "")}
+            >
+              {library.bibSync.some((t) => t.folder === (query ? query.slice(4, -1) : "")) ? "Syncing .bib" : "Sync .bib"}
+            </button>
+          )}
           <label>
             Sort{" "}
             <select value={sort} onChange={(e) => setSort(e.currentTarget.value as SortBy)}>
@@ -430,6 +455,22 @@ export function App() {
             return added.length;
           }}
           canAdd={Boolean(storage)}
+        />
+      )}
+      {syncing !== null && (
+        <BibSyncPanel
+          folder={syncing}
+          count={papersInFolder(library.papers, syncing).length}
+          targets={library.bibSync.filter((t) => t.folder === syncing)}
+          hasToken={Boolean(syncToken())}
+          defaultRepo={providerId === "github" ? settings["storage.github.repo"] ?? "" : ""}
+          onSave={(targets) => {
+            library.bibSync = [...library.bibSync.filter((t) => t.folder !== syncing), ...targets];
+            scheduleSave();
+            setSyncing(null);
+          }}
+          onClose={() => setSyncing(null)}
+          onSettings={() => { setSyncing(null); setPanel("settings"); }}
         />
       )}
       {panel === "settings" && <SettingsPanel settings={settings} onSave={updateSettings} onClose={() => setPanel(null)} />}
@@ -657,6 +698,64 @@ function Detail(props: {
         <button class="link danger" onClick={props.onRemove}>{p.trashed ? "Delete for good" : "Move to trash"}</button>
       </p>
     </section>
+  );
+}
+
+function BibSyncPanel(props: {
+  folder: string;
+  count: number;
+  targets: BibTarget[];
+  hasToken: boolean;
+  defaultRepo: string;
+  onSave(targets: BibTarget[]): void;
+  onClose(): void;
+  onSettings(): void;
+}) {
+  const t = props.targets[0];
+  const [repo, setRepo] = useState(t?.repo ?? props.defaultRepo);
+  const [path, setPath] = useState(t?.path ?? defaultBibPath(props.folder));
+  const [branch, setBranch] = useState(t?.branch ?? "");
+  const valid = /^[\w.-]+\/[\w.-]+$/.test(repo.trim()) && /\.bib$/i.test(path.trim());
+  const name = props.folder || "your whole library";
+
+  return (
+    <div class="overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
+      <form
+        class="panel"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (valid) props.onSave([{ folder: props.folder, repo: repo.trim(), path: path.trim().replace(/^\/+/, ""), ...(branch.trim() ? { branch: branch.trim() } : {}) }]);
+        }}
+      >
+        <h2>Sync .bib</h2>
+        <p class="muted">
+          Keep the {props.count} papers in <strong>{name}</strong> as a .bib file in a GitHub repository. It is rewritten whenever they change, so
+          Overleaf (Menu → GitHub) or your paper's own repository always has current references. Citation keys never change.
+        </p>
+        {!props.hasToken && (
+          <p class="message">
+            First add a GitHub token under <button type="button" class="link" onClick={props.onSettings}>Settings → BibTeX sync to GitHub</button>.
+          </p>
+        )}
+        <label class="field">
+          <span>Repository</span>
+          <input value={repo} placeholder="owner/name" onInput={(e) => setRepo(e.currentTarget.value)} />
+        </label>
+        <label class="field">
+          <span>File</span>
+          <input value={path} placeholder="references.bib" onInput={(e) => setPath(e.currentTarget.value)} />
+        </label>
+        <label class="field">
+          <span>Branch (optional)</span>
+          <input value={branch} placeholder="main" onInput={(e) => setBranch(e.currentTarget.value)} />
+        </label>
+        <div class="row">
+          <button class="primary" type="submit" disabled={!valid}>{t ? "Save and sync" : "Start syncing"}</button>
+          {t && <button type="button" class="link danger" onClick={() => props.onSave([])}>Stop syncing</button>}
+          <button type="button" class="ghost" onClick={props.onClose}>Cancel</button>
+        </div>
+      </form>
+    </div>
   );
 }
 

@@ -84,6 +84,15 @@ Paperpile land in the folders their PDFs were filed under in Google Drive
 author folders Paperpile makes are not folders of yours and are skipped. On a
 phone, **Browse** opens the folders and tags.
 
+## LaTeX and Overleaf
+
+`lightkone/library.bib` is rewritten on every save. To keep a folder's papers
+in a GitHub repository instead (Overleaf's GitHub sync, or your paper's own
+repository), open the folder and choose **Sync .bib**: pick the repository and
+file, and Lightkone rewrites it whenever those papers change. Citation keys
+never change once given. Add a GitHub token under **Settings → BibTeX sync to
+GitHub** first.
+
 ## More
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it fits together, and what comes next
