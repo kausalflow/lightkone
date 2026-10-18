@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { Paper } from "../core/types";
 import type { Rect } from "../core/annotations";
 import { loadSettings } from "../core/settings";
-import { plainMath, renderMarkdown, type MathRenderer } from "../core/markdown";
+import { renderMarkdown } from "../core/markdown";
+import { useMath } from "../core/math";
 import { chatAboutPaper, type ChatTurn } from "../plugins/claude";
 
 export interface Subject {
@@ -10,15 +11,6 @@ export interface Subject {
   rects: Rect[];
   text: string;
   image: string | null;
-}
-
-// KaTeX is loaded the first time an answer needs it.
-let katexMath: Promise<MathRenderer> | null = null;
-function loadMath(): Promise<MathRenderer> {
-  katexMath ??= Promise.all([import("katex"), import("katex/dist/katex.min.css")]).then(([k]) => (tex: string, display: boolean) =>
-    k.default.renderToString(tex, { displayMode: display, throwOnError: false, output: "htmlAndMathml" }),
-  );
-  return katexMath;
 }
 
 /** Claude explains a selected passage, equation or figure, with follow-up questions. */
@@ -29,13 +21,9 @@ export function Explain(props: { paper: Paper; pdf: Uint8Array | null; subject: 
   const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
-  const [math, setMath] = useState<MathRenderer>(() => plainMath);
+  const math = useMath();
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    loadMath().then((m) => setMath(() => m), () => {});
-  }, []);
 
   async function ask(next: ChatTurn[]) {
     setTurns(next);

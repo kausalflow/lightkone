@@ -11,6 +11,9 @@ import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf
 import { Reader } from "./reader/Reader";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
 import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
+import { allFolders, cleanFolder, folderTree, type FolderNode } from "./core/folders";
+import { renderMarkdown } from "./core/markdown";
+import { useMath } from "./core/math";
 
 const library = new Library();
 
@@ -80,7 +83,7 @@ export function App() {
         const adapter = provider.id === "browser" ? remote : withOfflineCache(remote, browserCache());
         library.storage = adapter;
         setStatus(`Opening your library from ${provider.label}…`);
-        const { loaded, seeded } = await library.load();
+        const { loaded, seeded, foldered } = await library.load();
         if (cancelled) return;
         setStorage(adapter);
         setWhere(provider.label);
@@ -92,9 +95,10 @@ export function App() {
             offline ? " · offline copy, changes won't save until you're back online" : "",
             seeded ? ` · ${seeded} new from .bib files` : "",
             linked ? ` · ${linked} PDF${linked > 1 ? "s" : ""} linked from Paperpile` : "",
+            foldered ? ` · ${foldered} paper${foldered > 1 ? "s" : ""} put in folders from Paperpile` : "",
           ].join(""),
         );
-        if (seeded || linked) {
+        if (seeded || linked || foldered) {
           scheduleSave();
         } else if (!loaded && !library.papers.length && !captured) {
           setPanel("add");
@@ -153,7 +157,18 @@ export function App() {
 
   const visible = useMemo(() => search(library.papers, query, sort), [version, query, sort]);
   const tags = useMemo(() => library.tagCounts(), [version]);
+  const tree = useMemo(() => folderTree(library.papers), [version]);
+  const counts = useMemo(() => {
+    const live = library.papers.filter((p) => !p.trashed);
+    return { all: live.length, starred: live.filter((p) => p.starred).length, recent: live.filter((p) => p.opened).length, trash: library.papers.length - live.length };
+  }, [version]);
   const [tagFilter, setTagFilter] = useState("");
+  // On a phone the sidebar is a drawer; picking something in it closes it.
+  const [sideOpen, setSideOpen] = useState(false);
+  const pick = (q: string) => {
+    setQuery(q);
+    setSideOpen(false);
+  };
   const [allTags, setAllTags] = useState(false);
   // Big imported libraries carry hundreds of publisher keywords: show the most used first.
   const matchingTags = useMemo(
@@ -242,6 +257,9 @@ export function App() {
           onInput={(e) => setQuery(e.currentTarget.value)}
         />
         <div class="top-actions">
+          <button class="browse" onClick={() => setSideOpen(!sideOpen)} aria-expanded={sideOpen}>
+            Browse
+          </button>
           <button class="primary" onClick={() => setPanel("add")} disabled={!storage}>
             Add paper
           </button>
@@ -255,7 +273,7 @@ export function App() {
       </header>
 
       <div class="statusbar">
-        <span>{where ? `${library.papers.length} papers · ${where}${seededNote}` : status}</span>
+        <span>{where ? `${counts.all} papers · ${where}${seededNote}` : status}</span>
         {saveLabel && <span class={`save ${saveState}`}>{saveLabel}</span>}
         {busy && <span class="busy">{busy}…</span>}
       </div>
@@ -265,10 +283,25 @@ export function App() {
         </div>
       )}
 
-      <aside class="side">
-        <button class={`tag ${!query ? "on" : ""}`} onClick={() => setQuery("")}>
-          All papers <span>{library.papers.length}</span>
-        </button>
+      {sideOpen && <div class="side-backdrop" onClick={() => setSideOpen(false)} />}
+      <aside class={`side ${sideOpen ? "open" : ""}`}>
+        {(
+          [
+            ["", "All papers", counts.all],
+            ["is:starred", "★ Starred", counts.starred],
+            ["is:recent", "Recently read", counts.recent],
+            ["is:trash", "Trash", counts.trash],
+          ] as const
+        ).map(([q, label, n]) =>
+          q === "is:trash" && !n && query !== q ? null : (
+            <button key={label} class={`tag ${query === q ? "on" : ""}`} onClick={() => pick(q)}>
+              {label} <span>{n}</span>
+            </button>
+          ),
+        )}
+        <h3>Folders</h3>
+        {!tree.length && <p class="muted small">Put a paper in a folder from its details; folders can nest, like "Physics/QFT".</p>}
+        <FolderList nodes={tree} query={query} onPick={pick} />
         <h3>Tags</h3>
         {tags.length === 0 && <p class="muted small">Tags from your papers show here.</p>}
         {tags.length > 30 && (
@@ -277,7 +310,7 @@ export function App() {
         {shownTags.map(([t, n]) => {
           const q = `tag:"${t}"`;
           return (
-            <button key={t} class={`tag ${query === q ? "on" : ""}`} onClick={() => setQuery(query === q ? "" : q)}>
+            <button key={t} class={`tag ${query === q ? "on" : ""}`} onClick={() => pick(query === q ? "" : q)}>
               {t} <span>{n}</span>
             </button>
           );
@@ -293,6 +326,19 @@ export function App() {
         <div class="list-head">
           <span>
             {visible.length} {visible.length === 1 ? "paper" : "papers"}
+            {query === "is:trash" && visible.length > 0 && (
+              <button
+                class="link danger small empty-trash"
+                onClick={() => {
+                  if (!confirm(`Delete ${visible.length} paper${visible.length > 1 ? "s" : ""} in the trash for good? Their PDFs stay in storage.`)) return;
+                  visible.forEach((p) => library.remove(p.id));
+                  setSelected(null);
+                  scheduleSave();
+                }}
+              >
+                Empty trash
+              </button>
+            )}
           </span>
           <label>
             Sort{" "}
@@ -301,12 +347,21 @@ export function App() {
               <option value="year">Year</option>
               <option value="title">Title</option>
               <option value="relevance">Relevance</option>
+              <option value="opened">Recently read</option>
             </select>
           </label>
         </div>
         <ul>
           {visible.slice(0, 500).map((p) => (
             <li key={p.id} class={p.id === selected ? "on" : ""} onClick={() => { setSelected(p.id); setResult(null); }}>
+              <button
+                class={`star ${p.starred ? "on" : ""}`}
+                aria-label={p.starred ? "Unstar" : "Star"}
+                aria-pressed={Boolean(p.starred)}
+                onClick={(e) => { e.stopPropagation(); library.update(p.id, { starred: !p.starred || undefined }); scheduleSave(); }}
+              >
+                {p.starred ? "★" : "☆"}
+              </button>
               <div class="title">{p.title}</div>
               <div class="meta">
                 {shortAuthors(p)}
@@ -339,13 +394,21 @@ export function App() {
           onClose={() => setSelected(null)}
           onChange={(patch) => { library.update(paper.id, patch); scheduleSave(); }}
           onRemove={() => {
-            if (!confirm(`Remove "${paper.title}" from the library?`)) return;
-            library.remove(paper.id);
-            setSelected(null);
+            if (!paper.trashed) {
+              library.update(paper.id, { trashed: new Date().toISOString() });
+              setSelected(null);
+            } else if (confirm(`Delete "${paper.title}" for good? Its PDF stays in storage.`)) {
+              library.remove(paper.id);
+              setSelected(null);
+            }
             scheduleSave();
           }}
           onAction={(id) => runAction(id, paper)}
-          onRead={() => setReading(paper.id)}
+          onRead={() => {
+            library.update(paper.id, { opened: new Date().toISOString() });
+            scheduleSave();
+            setReading(paper.id);
+          }}
           onGetPdf={canFindOpenPdf(paper, pdfOptions(settings)) ? () => getPdf(paper) : undefined}
           onAdd={(d) => addDrafts([d]).length > 0}
           onError={setError}
@@ -374,6 +437,51 @@ export function App() {
   );
 }
 
+const OPEN_KEY = "lightkone.folders.open";
+
+/** The folder tree in the sidebar; which folders are open is remembered on this device. */
+function FolderList(props: { nodes: FolderNode[]; query: string; onPick(q: string): void }) {
+  const [open, setOpen] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? "[]"));
+    } catch {
+      return new Set();
+    }
+  });
+  function toggle(path: string) {
+    const next = new Set(open);
+    next.has(path) ? next.delete(path) : next.add(path);
+    setOpen(next);
+    try {
+      localStorage.setItem(OPEN_KEY, JSON.stringify([...next]));
+    } catch {
+      // fine for this visit
+    }
+  }
+  const render = (nodes: FolderNode[], depth: number) =>
+    nodes.map((n) => {
+      const q = `in:"${n.path}"`;
+      return (
+        <div key={n.path}>
+          <div class="folder" style={{ paddingLeft: `${depth * 12}px` }}>
+            {n.children.length ? (
+              <button class="ghost twisty" aria-label={open.has(n.path) ? "Close folder" : "Open folder"} aria-expanded={open.has(n.path)} onClick={() => toggle(n.path)}>
+                {open.has(n.path) ? "▾" : "▸"}
+              </button>
+            ) : (
+              <span class="twisty" />
+            )}
+            <button class={`tag ${props.query === q ? "on" : ""}`} onClick={() => props.onPick(props.query === q ? "" : q)}>
+              {n.name} <span>{n.count}</span>
+            </button>
+          </div>
+          {open.has(n.path) && render(n.children, depth + 1)}
+        </div>
+      );
+    });
+  return <>{render(props.nodes, 0)}</>;
+}
+
 function Detail(props: {
   paper: Paper;
   library: Paper[];
@@ -391,6 +499,15 @@ function Detail(props: {
 }) {
   const { paper: p, storage } = props;
   const [tagText, setTagText] = useState(p.tags.join(", "));
+  const [folderText, setFolderText] = useState("");
+  const math = useMath();
+  const known = allFolders(props.library);
+
+  function addFolder() {
+    const f = cleanFolder(folderText);
+    if (f) props.onChange({ folders: [...new Set([...(p.folders ?? []), f])] });
+    setFolderText("");
+  }
   const [notes, setNotes] = useState(p.notes ?? "");
   const [addedTitles, setAddedTitles] = useState<Set<string>>(new Set());
   const [showAllAuthors, setShowAllAuthors] = useState(false);
@@ -428,7 +545,17 @@ function Detail(props: {
   return (
     <section class="detail" aria-label="Paper details">
       <button class="close ghost" onClick={props.onClose} aria-label="Close">×</button>
-      <h2>{p.title}</h2>
+      {p.trashed && (
+        <p class="message">
+          In the trash. <button class="link" onClick={() => props.onChange({ trashed: undefined })}>Restore</button>
+        </p>
+      )}
+      <h2>
+        <button class={`star big ${p.starred ? "on" : ""}`} aria-label={p.starred ? "Unstar" : "Star"} aria-pressed={Boolean(p.starred)} onClick={() => props.onChange({ starred: !p.starred || undefined })}>
+          {p.starred ? "★" : "☆"}
+        </button>{" "}
+        {p.title}
+      </h2>
       <p class="authors">
         {showAllAuthors || p.authors.length <= 12 ? p.authors.join("; ") : `${p.authors.slice(0, 10).join("; ")}; `}
         {!showAllAuthors && p.authors.length > 12 && (
@@ -466,7 +593,7 @@ function Detail(props: {
       {props.result && props.result.kind === "text" && (
         <div class="result">
           <h3>{props.result.title}</h3>
-          <div class="prose">{props.result.text}</div>
+          <div class="prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(props.result.text, math) }} />
         </div>
       )}
       {props.result && props.result.kind === "papers" && (
@@ -501,6 +628,21 @@ function Detail(props: {
         </>
       )}
 
+      <h3>Folders</h3>
+      <div class="chips folders">
+        {(p.folders ?? []).map((f) => (
+          <span class="chip" key={f}>
+            {f}
+            <button class="link" aria-label={`Take out of ${f}`} onClick={() => props.onChange({ folders: (p.folders ?? []).filter((x) => x !== f) })}>×</button>
+          </span>
+        ))}
+      </div>
+      <form class="row add-folder" onSubmit={(e) => { e.preventDefault(); addFolder(); }}>
+        <input list="known-folders" value={folderText} placeholder="Add to folder, e.g. Physics/QFT" onInput={(e) => setFolderText(e.currentTarget.value)} />
+        <datalist id="known-folders">{known.map((f) => <option key={f} value={f} />)}</datalist>
+        <button type="submit" disabled={!cleanFolder(folderText)}>Add</button>
+      </form>
+
       <h3>Tags</h3>
       <input
         value={tagText}
@@ -512,7 +654,7 @@ function Detail(props: {
       <textarea rows={5} value={notes} onInput={(e) => setNotes(e.currentTarget.value)} onBlur={() => notes !== (p.notes ?? "") && props.onChange({ notes })} />
 
       <p class="remove">
-        <button class="link danger" onClick={props.onRemove}>Remove from library</button>
+        <button class="link danger" onClick={props.onRemove}>{p.trashed ? "Delete for good" : "Move to trash"}</button>
       </p>
     </section>
   );

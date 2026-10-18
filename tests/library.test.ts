@@ -43,14 +43,14 @@ describe("Library", () => {
     const storage = memoryStorage();
     storage.seed = async () => [{ title: "From the Paperpile sync", key: "Pp2020-ab", year: 2020 }];
     const lib = new Library(storage);
-    expect(await lib.load()).toEqual({ loaded: 0, seeded: 1 });
+    expect(await lib.load()).toEqual({ loaded: 0, seeded: 1, foldered: 0 });
     lib.merge([{ title: "Added by hand", authors: ["Noether, Emmy"], year: 1918 }]);
     await lib.save();
     expect(storage.files.has(LIBRARY_PATH)).toBe(true);
     expect(new TextDecoder().decode(storage.files.get(BIB_PATH))).toContain("@article{Noether1918-");
 
     const again = new Library(storage);
-    expect(await again.load()).toEqual({ loaded: 2, seeded: 0 });
+    expect(await again.load()).toEqual({ loaded: 2, seeded: 0, foldered: 0 });
   });
 });
 
