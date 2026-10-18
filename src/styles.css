@@ -581,3 +581,17 @@ label.file input, label.button input { display: none; }
 .overlay[hidden] { display: none; }
 .ask-btn { display: inline-flex; align-items: center; gap: 6px; }
 .ask-cited a { color: inherit; text-decoration-color: var(--line-strong); }
+
+/* Writing helpers */
+.tabs { display: flex; gap: 4px; margin: 10px 0 14px; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 6px 10px; color: var(--muted); }
+.tabs button.on { color: inherit; border-bottom-color: var(--accent); font-weight: 560; }
+.writing-panel textarea { width: 100%; }
+.candidates { list-style: none; padding: 0; margin: 12px 0 0; max-height: 46vh; overflow: auto; }
+.candidates li { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.candidates li input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); }
+.candidates li.v-no { opacity: 0.6; }
+.cand-title { font-weight: 560; }
+.verdict { margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--sunken); color: var(--muted); white-space: nowrap; }
+.verdict.supports { background: var(--accent-soft); color: var(--accent); }
+.cite-out { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; padding: 6px 8px; background: var(--sunken); border-radius: var(--r-sm); font-size: 13px; }

@@ -211,6 +211,32 @@ export async function askLibrary(
   return final.stop_reason === "max_tokens" ? `${text}\n\n(The answer was cut off at the length limit.)` : text;
 }
 
+const SUPPORT =
+  SYSTEM +
+  " The researcher is writing a paper and wants to cite the right work for a sentence. For each numbered source, " +
+  'judge whether it backs the sentence: "supports" when the source states or shows it, "related" when it is on the topic ' +
+  'but does not establish the claim, "no" otherwise. Reply with only a JSON array, no other text: ' +
+  '[{"n": 1, "support": "supports", "quote": "the few words in the source that back the sentence"}]. ' +
+  "Give a quote only for supports, copied exactly from the source.";
+
+/** Which of the passages back a sentence, as Claude reads them. */
+export async function checkSupport(settings: Record<string, string>, sentence: string, sources: string): Promise<string> {
+  const client = await clientFor(settings);
+  const response = await client.beta.messages.create({
+    model: settings["claude.model"] || DEFAULT_MODEL,
+    max_tokens: 4000,
+    system: SUPPORT,
+    output_config: { effort: "low" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    messages: [{ role: "user", content: `<sources>\n${sources}\n</sources>\n\nThe sentence: ${sentence}` }],
+  });
+  if (response.stop_reason === "refusal") {
+    throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
+  }
+  return textOf(response.content);
+}
+
 const FIND =
   "Identify the one research paper the researcher means, using web search and by fetching the page if they gave a link. " +
   "Reply with only a JSON object, no other text: " +
