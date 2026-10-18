@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractEquations, emptyEquations, indexEquations, overToFrac, searchEquations, skeleton, tokens, toIndex } from "../src/core/equations";
+import { extractEquations, emptyEquations, indexEquations, overToFrac, prepareEquations, searchEquations, skeleton, tokens, toIndex, type EquationStore } from "../src/core/equations";
 import { handle, sourceOf, untar } from "../functions/api/tex";
 import type { Paper } from "../src/core/types";
 
@@ -113,5 +113,22 @@ describe("search by equation", () => {
     expect(s.papers.a.equations).toEqual(["x=1"]);
     expect(saved).toBe(1);
     expect(toIndex(papers, s)).toEqual([]);
+  });
+
+  it("keeps its index between searches, adding only papers read since", async () => {
+    const s: EquationStore = { ...emptyEquations(), papers: { a: { arxiv: "1", at: "t1", equations: ["E = mc^2"] } } };
+    const progress: number[] = [];
+    await prepareEquations(s, (d) => progress.push(d));
+    expect(progress).toEqual([1]);
+    expect(searchEquations(s, "x^2 + y^2 = z^2")).toEqual([]);
+    s.papers.b = { arxiv: "2", at: "t2", equations: ["x^2 + y^2 = z^2"] };
+    expect(searchEquations(s, "x^2 + y^2 = z^2").map((h) => h.paperId)).toEqual(["b"]);
+    progress.length = 0;
+    await prepareEquations(s, (d) => progress.push(d));
+    expect(progress).toEqual([]);
+    // A paper read again: its old equations go.
+    s.papers.a = { arxiv: "1", at: "t3", equations: ["F = ma"] };
+    expect(searchEquations(s, "E = mc^2")).toEqual([]);
+    expect(searchEquations(s, "F = ma").map((h) => h.paperId)).toEqual(["a"]);
   });
 });

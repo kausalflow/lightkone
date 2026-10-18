@@ -81,6 +81,17 @@ export function profileIds(papers: Paper[], max = 200): string[] {
 /** Words stripped of a plural s, so "networks" meets "network". */
 const words = (text: string) => [...new Set(terms(text).map((w) => (w.length > 4 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w)))];
 
+// A paper's words are worked out once per session and again only when its title or abstract changes.
+const known = new Map<string, { text: string; w: string[] }>();
+function paperWords(p: Paper): string[] {
+  const text = `${p.title} ${p.title} ${p.abstract ?? ""}`;
+  const hit = known.get(p.id);
+  if (hit?.text === text) return hit.w;
+  const w = words(text);
+  known.set(p.id, { text, w });
+  return w;
+}
+
 export interface Pick {
   preprint: Preprint;
   score: number;
@@ -104,15 +115,18 @@ export function rank(preprints: Preprint[], papers: Paper[], s: FreshStore): Pic
   const turnedDown = new Set(s.dismissed.map((d) => d.arxiv));
   const todo = preprints.filter((p) => !have.has(bare(p.arxiv)) && !turnedDown.has(p.arxiv) && !titles.has(p.title.toLowerCase().replace(/\W+/g, "")));
 
-  const libDocs = live.map((p) => ({ id: p.id, w: words(`${p.title} ${p.title} ${p.abstract ?? ""}`) })).filter((d) => d.w.length);
+  const libDocs = live.map((p) => ({ id: p.id, w: paperWords(p) })).filter((d) => d.w.length);
   const noDocs = s.dismissed.map((d) => words(`${d.title} ${d.abstract ?? ""}`));
   const newDocs = todo.map((p) => words(`${p.title} ${p.abstract}`));
 
   const df = new Map<string, number>();
   for (const d of [...libDocs.map((d) => d.w), ...newDocs]) for (const w of d) df.set(w, (df.get(w) ?? 0) + 1);
   const total = libDocs.length + newDocs.length;
-  const idf = (w: string) => Math.log((total + 1) / ((df.get(w) ?? 0) + 1));
-  const norm = (ws: string[]) => Math.sqrt(ws.reduce((t, w) => t + idf(w) ** 2, 0)) || 1;
+  // Each word's weight, idf squared, worked out once.
+  const weight = new Map<string, number>();
+  for (const [w, n] of df) weight.set(w, Math.log((total + 1) / (n + 1)) ** 2);
+  const wt = (w: string) => weight.get(w) ?? Math.log(total + 1) ** 2;
+  const norm = (ws: string[]) => Math.sqrt(ws.reduce((t, w) => t + wt(w), 0)) || 1;
 
   // Which library papers hold each word.
   const postings = new Map<string, number[]>();
@@ -126,9 +140,22 @@ export function rank(preprints: Preprint[], papers: Paper[], s: FreshStore): Pic
     .map((p, i) => {
       const ws = newDocs[i];
       const n = norm(ws);
-      const dot = new Map<number, number>();
-      for (const w of ws) for (const j of postings.get(w) ?? []) dot.set(j, (dot.get(j) ?? 0) + idf(w) ** 2);
-      const sims = [...dot].map(([j, v]) => ({ j, sim: v / (n * libNorm[j]) })).sort((a, b) => b.sim - a.sim).slice(0, 3);
+      const dot = new Float64Array(libDocs.length);
+      for (const w of ws) {
+        const x = wt(w);
+        for (const j of postings.get(w) ?? []) dot[j] += x;
+      }
+      // The three closest, without sorting them all.
+      const sims: { j: number; sim: number }[] = [];
+      for (let j = 0; j < dot.length; j++) {
+        if (!dot[j]) continue;
+        const sim = dot[j] / (n * libNorm[j]);
+        if (sims.length < 3 || sim > sims[2].sim) {
+          sims.push({ j, sim });
+          sims.sort((a, b) => b.sim - a.sim);
+          if (sims.length > 3) sims.pop();
+        }
+      }
       const top = sims[0]?.sim ?? 0;
       const mean = sims.reduce((t, x) => t + x.sim, 0) / 3;
       let score = 0.6 * top + 0.4 * mean;
@@ -138,7 +165,7 @@ export function rank(preprints: Preprint[], papers: Paper[], s: FreshStore): Pic
       let unlike = 0;
       for (const d of noSets) {
         let v = 0;
-        for (const w of ws) if (d.ws.has(w)) v += idf(w) ** 2;
+        for (const w of ws) if (d.ws.has(w)) v += wt(w);
         unlike = Math.max(unlike, v / (n * d.n));
       }
       score -= 0.5 * unlike;

@@ -158,18 +158,12 @@ export function skeleton(toks: string[]): string[] {
   return toks.map((t) => (/^[A-Za-z]$|^\\(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|rho|sigma|tau|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Sigma|Phi|Psi|Omega)$/.test(t) ? (names.get(t) ?? names.set(t, `v${names.size}`).get(t)!) : t));
 }
 
-const grams = (toks: string[], n = 3) => {
+/** Overlapping runs of three tokens. */
+const grams = (t: string[]) => {
   const out = new Set<string>();
-  if (toks.length < n) out.add(toks.join(" "));
-  for (let i = 0; i + n <= toks.length; i++) out.add(toks.slice(i, i + n).join(" "));
+  if (t.length < 3) out.add(t.join(" "));
+  for (let i = 0; i + 3 <= t.length; i++) out.add(`${t[i]} ${t[i + 1]} ${t[i + 2]}`);
   return out;
-};
-
-const contained = (q: Set<string>, e: Set<string>) => {
-  if (!q.size) return 0;
-  let n = 0;
-  for (const g of q) if (e.has(g)) n++;
-  return n / q.size;
 };
 
 export interface EquationHit {
@@ -182,30 +176,105 @@ export interface EquationHit {
   renamed: boolean;
 }
 
+/**
+ * The equations cut into overlapping runs of three tokens, with, for each run,
+ * the equations that have it, as written and with letters renamed. Built once
+ * per session and added to as papers are read, so a search only looks at
+ * equations sharing something with the query.
+ */
+class EquationIndex {
+  entries: { paperId: string; arxiv: string; equation: string; length: number }[] = [];
+  exact = new Map<string, number[]>();
+  shape = new Map<string, number[]>();
+  /** Papers in the index, with when they were read. */
+  read = new Map<string, string>();
+
+  /** Whether a paper was read again or dropped since: then the index starts over. */
+  stale(s: EquationStore): boolean {
+    return [...this.read].some(([id, at]) => s.papers[id]?.at !== at);
+  }
+
+  /** Papers read since the index was last brought up to date. */
+  todo(s: EquationStore): string[] {
+    return Object.keys(s.papers).filter((id) => !this.read.has(id));
+  }
+
+  add(id: string, entry: EquationStore["papers"][string]) {
+    if (this.read.has(id)) return;
+    this.read.set(id, entry.at);
+    for (const equation of entry.equations) {
+      const t = tokens(equation);
+      const n = this.entries.push({ paperId: id, arxiv: entry.arxiv, equation, length: t.length }) - 1;
+      for (const g of grams(t)) (this.exact.get(g) ?? this.exact.set(g, []).get(g)!).push(n);
+      for (const g of grams(skeleton(t))) (this.shape.get(g) ?? this.shape.set(g, []).get(g)!).push(n);
+    }
+  }
+
+  /** For each equation sharing a run with the query, the share of the query's runs it has. */
+  private share(post: Map<string, number[]>, q: Set<string>): Map<number, number> {
+    const out = new Map<number, number>();
+    for (const g of q) for (const n of post.get(g) ?? []) out.set(n, (out.get(n) ?? 0) + 1 / q.size);
+    return out;
+  }
+
+  search(query: string, max: number, perPaper: number, min: number): EquationHit[] {
+    const q = tokens(query);
+    if (!q.length) return [];
+    const exact = this.share(this.exact, grams(q));
+    const shape = this.share(this.shape, grams(skeleton(q)));
+    const byPaper = new Map<string, EquationHit[]>();
+    for (const n of new Set([...exact.keys(), ...shape.keys()])) {
+      const e = this.entries[n];
+      const ex = Math.min(1, exact.get(n) ?? 0);
+      // With letters renamed almost anything short looks alike: it counts only when nearly all of it is there, and for less.
+      const sameShape = ex < 1 ? Math.min(1, shape.get(n) ?? 0) : 0;
+      const sh = sameShape >= 0.9 ? 0.85 * sameShape : 0;
+      const score = Math.max(ex, sh);
+      if (score < min) continue;
+      // Of two equations holding the query, the one closer to it in length comes first.
+      const fit = 0.1 * Math.min(1, (q.length + 4) / e.length);
+      const list = byPaper.get(e.paperId) ?? byPaper.set(e.paperId, []).get(e.paperId)!;
+      list.push({ paperId: e.paperId, arxiv: e.arxiv, equation: e.equation, score: 0.9 * score + fit, renamed: sh > ex });
+    }
+    return [...byPaper.values()]
+      .flatMap((list) => list.sort((a, b) => b.score - a.score).slice(0, perPaper))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, max);
+  }
+}
+
+const indexes = new WeakMap<EquationStore, EquationIndex>();
+
+function indexOf(s: EquationStore): EquationIndex {
+  let index = indexes.get(s);
+  if (!index || index.stale(s)) indexes.set(s, (index = new EquationIndex()));
+  return index;
+}
+
+/**
+ * Bring the search index up to date without holding up the page: a few
+ * hundred papers at a time, letting the browser draw in between. Only papers
+ * read since the last time are added.
+ */
+export async function prepareEquations(s: EquationStore, onProgress?: (done: number, total: number) => void): Promise<void> {
+  const index = indexOf(s);
+  const todo = index.todo(s);
+  for (let i = 0; i < todo.length; i++) {
+    index.add(todo[i], s.papers[todo[i]]);
+    if (i % 50 === 49) {
+      onProgress?.(i + 1, todo.length);
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+  if (todo.length) onProgress?.(todo.length, todo.length);
+}
+
 /** Equations like the query, best first, at most a few per paper. */
 export function searchEquations(s: EquationStore, query: string, opts: { max?: number; perPaper?: number; min?: number } = {}): EquationHit[] {
   const { max = 30, perPaper = 3, min = 0.5 } = opts;
-  const q = tokens(query);
-  if (!q.length) return [];
-  const qExact = grams(q);
-  const qShape = grams(skeleton(q));
-  const hits: EquationHit[] = [];
-  for (const [paperId, entry] of Object.entries(s.papers)) {
-    const found: EquationHit[] = [];
-    for (const equation of entry.equations) {
-      const t = tokens(equation);
-      const exact = contained(qExact, grams(t));
-      // With letters renamed almost anything short looks alike: it counts only when nearly all of it is there, and for less.
-      const sameShape = exact < 1 ? contained(qShape, grams(skeleton(t))) : 0;
-      const shape = sameShape >= 0.9 ? 0.85 * sameShape : 0;
-      const score = Math.max(exact, shape);
-      // Of two equations holding the query, the one closer to it in length comes first.
-      const fit = 0.1 * Math.min(1, (q.length + 4) / t.length);
-      if (score >= min) found.push({ paperId, arxiv: entry.arxiv, equation, score: 0.9 * score + fit, renamed: shape > exact });
-    }
-    hits.push(...found.sort((a, b) => b.score - a.score).slice(0, perPaper));
-  }
-  return hits.sort((a, b) => b.score - a.score).slice(0, max);
+  const index = indexOf(s);
+  for (const id of index.todo(s)) index.add(id, s.papers[id]);
+  return index.search(query, max, perPaper, min);
 }
 
 /** Read the equations of papers not yet indexed, one at a time, through /api/tex. */

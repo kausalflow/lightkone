@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Paper, StorageAdapter } from "./core/types";
-import { indexEquations, loadEquations, saveEquations, searchEquations, toIndex, type EquationStore } from "./core/equations";
+import { indexEquations, loadEquations, prepareEquations, saveEquations, searchEquations, toIndex, type EquationStore } from "./core/equations";
 import { shortAuthors } from "./core/cite";
 import { useMath } from "./core/math";
 
@@ -11,12 +11,23 @@ export function EquationPanel(props: { papers: Paper[]; storage: StorageAdapter;
   const [typed, setTyped] = useState("");
   const [progress, setProgress] = useState<[number, number] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The search index is brought up to date in the background, a few papers at a time.
+  const [ready, setReady] = useState(false);
+  const [preparing, setPreparing] = useState<string | null>(null);
   const [, redraw] = useState(0);
   const stop = useRef<AbortController | null>(null);
   const math = useMath();
 
   useEffect(() => {
-    loadEquations(props.storage).then(setStore, (e) => setError((e as Error).message));
+    loadEquations(props.storage).then(
+      async (s) => {
+        setStore(s);
+        await prepareEquations(s, (d, t) => t > 200 && setPreparing(`Getting ${t} papers' equations ready to search: ${d}…`));
+        setPreparing(null);
+        setReady(true);
+      },
+      (e) => setError((e as Error).message),
+    );
     return () => stop.current?.abort();
   }, []);
   useEffect(() => {
@@ -26,7 +37,7 @@ export function EquationPanel(props: { papers: Paper[]; storage: StorageAdapter;
 
   const left = store ? toIndex(props.papers, store).length : 0;
   const read = store ? Object.values(store.papers).filter((p) => p.equations.length).length : 0;
-  const hits = useMemo(() => (store && query.trim() ? searchEquations(store, query) : []), [store, query, progress?.[0]]);
+  const hits = useMemo(() => (store && ready && query.trim() ? searchEquations(store, query) : []), [store, ready, query, progress?.[0]]);
   const byId = new Map(props.papers.map((p) => [p.id, p]));
 
   async function readAll() {
@@ -74,9 +85,10 @@ export function EquationPanel(props: { papers: Paper[]; storage: StorageAdapter;
         )}
         {left > 50 && !progress && <p class="small muted">arXiv asks to be read gently, so this goes one paper at a time. It can be stopped and picked up later.</p>}
         {error && <p class="error">{error}</p>}
+        {preparing && <p class="small muted">{preparing}</p>}
         <textarea class="eq-query" rows={3} spellcheck={false} autocapitalize="off" value={typed} placeholder="\mathrm{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V" onInput={(e) => setTyped(e.currentTarget.value)} />
         {typed.trim() && <div class="eq-preview" dangerouslySetInnerHTML={{ __html: math(typed, true) }} />}
-        {query.trim() && store && !hits.length && <p class="muted">{read ? "No equation like it in your papers." : "Read the equations first."}</p>}
+        {query.trim() && store && ready && !hits.length && <p class="muted">{read ? "No equation like it in your papers." : "Read the equations first."}</p>}
         <ul class="eq-hits">
           {hits.map((h, i) => {
             const p = byId.get(h.paperId);
