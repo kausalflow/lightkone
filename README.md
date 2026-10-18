@@ -50,3 +50,4 @@ Words match titles, authors, abstracts, venues, tags and notes. Filters:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it fits together, and what comes next
 - [docs/PLUGINS.md](docs/PLUGINS.md): writing a plugin
 - [docs/STORAGE.md](docs/STORAGE.md): setting up each storage backend
+- [docs/HOSTING.md](docs/HOSTING.md): deploying to Cloudflare Pages or any static host
