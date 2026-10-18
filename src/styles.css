@@ -618,3 +618,22 @@ svg.map .node-label { font-size: 10px; fill: var(--text, currentColor); paint-or
 .map-links { margin-top: 6px; font-size: 13px; }
 .missing-item { grid-template-columns: 1fr auto !important; align-items: start; }
 .cited-by { margin: 4px 0 0; padding-left: 18px; }
+
+/* New on arXiv for you */
+.fresh-panel .candidates { max-height: none; overflow: visible; margin-top: 0; }
+.fresh-panel .candidates li { display: block; }
+.fresh-panel .fresh-day h3 { margin-top: 18px; }
+.fresh-item .row { margin-top: 8px; }
+.fresh-item .row .button, .fresh-item .row button { min-height: 32px; padding: 3px 12px; font-size: 14px; text-decoration: none; }
+.fresh-item .near { margin-top: 4px; color: var(--muted); }
+.fresh-item details { margin-top: 4px; }
+.fresh-item summary { cursor: pointer; color: var(--muted); }
+.fresh-item .abstract { margin-top: 4px; line-height: 1.55; }
+.fresh-item .abstract p { margin: 0 0 6px; }
+.fresh-item.dismissed { opacity: 0.45; transition: opacity 0.4s; }
+.fresh-item .chip { margin: 4px 4px 0 0; }
+.badge { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; vertical-align: 2px; }
+.fresh-follow { margin-top: 8px; }
+.fresh-item a.button { color: var(--text); }
+.fresh-item .near a { color: inherit; }
+.fresh-item .abstract { font-size: 15px; }

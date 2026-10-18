@@ -15,6 +15,7 @@ import { AskPanel } from "./AskPanel";
 import { ObsidianPanel } from "./ObsidianPanel";
 import { WritingPanel } from "./WritingPanel";
 import { CitationMap } from "./CitationMap";
+import { FreshPanel } from "./FreshPanel";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
 import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
 import { allFolders, cleanFolder, folderTree, type FolderNode } from "./core/folders";
@@ -70,7 +71,7 @@ export function App() {
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | null>(null);
   const [readingPage, setReadingPage] = useState(0);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -445,6 +446,12 @@ export function App() {
             </button>
           )}
           {storage && library.papers.length > 0 && (
+            <button class="tag" title="Each day's arXiv preprints near your library" onClick={() => { setPanel("fresh"); setSideOpen(false); }}>
+              <Icon name="sparkle" />
+              <span class="name">New on arXiv</span>
+            </button>
+          )}
+          {storage && library.papers.length > 0 && (
             <button class="tag" title="Which of your papers cite which, and what they cite that you don't have" onClick={() => { setPanel("map"); setSideOpen(false); }}>
               <Icon name="link" />
               <span class="name">Citation map</span>
@@ -658,6 +665,18 @@ export function App() {
 
       {panel === "map" && storage && (
         <CitationMap
+          papers={library.papers}
+          storage={storage}
+          settings={settings}
+          hidden={Boolean(reading)}
+          onOpen={openAt}
+          onAdd={(d) => addDrafts([d]).length > 0}
+          onClose={() => setPanel(null)}
+        />
+      )}
+
+      {panel === "fresh" && storage && (
+        <FreshPanel
           papers={library.papers}
           storage={storage}
           settings={settings}
