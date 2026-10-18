@@ -28,7 +28,7 @@ import { Icon, type IconName } from "./icons";
 
 const library = new Library();
 
-type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
+type SaveState = "idle" | "pending" | "saving" | "saved" | "merged" | "error";
 
 function download(name: string, text: string, type = "application/x-bibtex") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -210,8 +210,7 @@ export function App() {
     saveTimer.current = window.setTimeout(async () => {
       setSaveState("saving");
       try {
-        await library.save();
-        setSaveState("saved");
+        setSaveState((await library.save()) ? "merged" : "saved");
       } catch (e) {
         setSaveState("error");
         setError(`Could not save: ${(e as Error).message}`);
@@ -230,6 +229,17 @@ export function App() {
     if (r.errors.length) setError(`BibTeX sync failed for ${r.errors.join("; ")}`);
     if (r.written.length) setBibNote(` · .bib synced to ${r.written.join(", ")}`);
   }
+
+  // Coming back to the tab, take in what was saved on another device or by Claude meanwhile.
+  useEffect(() => {
+    if (!storage) return;
+    const check = () => {
+      if (document.visibilityState !== "visible") return;
+      library.refresh().then((n) => n && setSaveState((s) => (s === "pending" || s === "saving" ? s : "merged")), () => {});
+    };
+    document.addEventListener("visibilitychange", check);
+    return () => document.removeEventListener("visibilitychange", check);
+  }, [storage]);
 
   // Warn before closing with unsaved changes.
   useEffect(() => {
@@ -356,7 +366,7 @@ export function App() {
     }
   }
 
-  const saveLabel = { idle: "", pending: "Unsaved", saving: "Saving…", saved: "Saved", error: "Not saved" }[saveState];
+  const saveLabel = { idle: "", pending: "Unsaved", saving: "Saving…", saved: "Saved", merged: "Synced", error: "Not saved" }[saveState];
   const view = viewTitle(query);
 
   return (
@@ -384,8 +394,9 @@ export function App() {
         </label>
         <div class="top-actions">
           {saveLabel && (
-            <span class={`save ${saveState}`} role="status">
+            <span class={`save ${saveState}`} role="status" title={saveState === "merged" ? "Merged with changes saved on another device or by Claude" : undefined}>
               {saveState === "saved" && <Icon name="check" size={14} />}
+              {saveState === "merged" && <Icon name="sync" size={14} />}
               {saveLabel}
             </span>
           )}

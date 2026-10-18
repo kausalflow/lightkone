@@ -66,7 +66,9 @@ work without either of these.
 
 ## Notes
 
-- Changes made through MCP appear in the app the next time it opens the
-  library. If the app and an AI app save at the same moment, the later save
-  wins; Phase 5 adds version checks.
+- Changes made through MCP appear in the app when you come back to its tab.
+  Every save reads the library again first and merges what was saved
+  elsewhere, paper by paper and field by field, so the app and an AI app
+  don't overwrite each other. Only when both changed the same field of the
+  same paper does the later save's value stay.
 - GitHub-backed libraries commit each change through MCP, like the app does.

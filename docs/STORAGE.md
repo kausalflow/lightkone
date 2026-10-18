@@ -8,6 +8,14 @@ the library. Give each one access to a single bucket or repository.
 No setup. The library lives in IndexedDB on this device and does not sync.
 Good for trying Lightkone out.
 
+## Using several devices
+
+With R2/S3 or GitHub, open the same library on as many devices as you like.
+Before each save Lightkone reads the library again and merges changes saved
+elsewhere (by another device, or by Claude through MCP) instead of
+overwriting them, and it picks them up when you return to the tab. If two
+devices change the same field of the same paper, the later save's value stays.
+
 ## Cloudflare R2 (or any S3-compatible bucket)
 
 1. Create a bucket, for example `papers`.

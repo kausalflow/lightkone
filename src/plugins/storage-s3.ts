@@ -45,7 +45,8 @@ export function s3Storage(cfg: S3Config): StorageAdapter {
 
   return {
     async read(path) {
-      const r = await client.fetch(url(path));
+      // Always the stored copy, never one from the browser's cache: saves merge against it.
+      const r = await client.fetch(url(path), typeof window === "undefined" ? {} : { cache: "no-store" });
       if (r.status === 404) return null;
       if (!r.ok) throw new Error(`Storage read failed (${r.status}): ${path}`);
       return new Uint8Array(await r.arrayBuffer());
