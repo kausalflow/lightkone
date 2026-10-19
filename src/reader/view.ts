@@ -1,5 +1,6 @@
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import type { Highlight, Rect } from "../core/annotations";
+import { guardSelection, unguardSelection } from "./selection";
 
 // Draws a PDF as a column of pages: a canvas for the picture, pdf.js's text
 // layer on top so text can be selected, and our highlights above that. Pages
@@ -132,9 +133,13 @@ export class PdfView {
     s.el.style.setProperty("--scale-factor", String(scale));
     await page.render({ canvas, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] }).promise;
     if (s.drawn !== w) return; // zoomed meanwhile
-    s.el.querySelectorAll("canvas, .textLayer").forEach((x) => x.remove());
+    s.el.querySelectorAll<HTMLElement>("canvas, .textLayer").forEach((x) => {
+      unguardSelection(x);
+      x.remove();
+    });
     s.el.prepend(canvas, text);
     await new pdfjs.TextLayer({ textContentSource: page.streamTextContent(), container: text, viewport }).render();
+    guardSelection(text);
     this.paint(s);
   }
 
@@ -174,9 +179,20 @@ export class PdfView {
     const pageEl = start.closest?.(".pdf-page") as HTMLElement | null;
     if (!pageEl || !this.root.contains(pageEl)) return null;
     const box = pageEl.getBoundingClientRect();
-    const rects: Rect[] = [...range.getClientRects()]
-      .filter((r) => r.width > 1 && r.height > 1 && r.top < box.bottom && r.bottom > box.top)
-      .map((r) => [(r.left - box.left) / box.width, (r.top - box.top) / box.height, r.width / box.width, r.height / box.height]);
+    // Boxes of the selected characters only, one per piece of text: the boxes
+    // of whole elements that getClientRects() adds are taller than the line.
+    const rects: Rect[] = [];
+    for (const t of textNodesIn(range)) {
+      if (t.parentElement?.closest(".pdf-page") !== pageEl || t.parentElement.closest(".endOfContent")) continue;
+      const part = document.createRange();
+      part.setStart(t, t === range.startContainer ? range.startOffset : 0);
+      part.setEnd(t, t === range.endContainer ? range.endOffset : t.length);
+      if (!part.toString().trim()) continue;
+      const r = part.getBoundingClientRect();
+      if (r.width > 1 && r.height > 1 && r.top < box.bottom && r.bottom > box.top) {
+        rects.push([(r.left - box.left) / box.width, (r.top - box.top) / box.height, r.width / box.width, r.height / box.height]);
+      }
+    }
     return rects.length ? { page: Number(pageEl.dataset.page), rects, text } : null;
   }
 
@@ -222,7 +238,18 @@ export class PdfView {
 
   destroy() {
     this.observer.disconnect();
+    this.root.querySelectorAll<HTMLElement>(".textLayer").forEach(unguardSelection);
     this.doc?.loadingTask.destroy();
     this.root.replaceChildren();
   }
+}
+
+/** The text nodes a range touches, in order. */
+function textNodesIn(range: Range): Text[] {
+  const root = range.commonAncestorContainer;
+  if (root.nodeType === Node.TEXT_NODE) return [root as Text];
+  const out: Text[] = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) if (range.intersectsNode(n)) out.push(n as Text);
+  return out;
 }
