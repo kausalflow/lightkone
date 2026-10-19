@@ -19,6 +19,30 @@ async function loadPdfjs() {
   return pdfjs;
 }
 
+/**
+ * Dark pages: swaps light and dark in place but keeps each colour's hue, so
+ * black text turns white and a red curve stays red. Doing it twice restores the
+ * page. This is done on the pixels rather than with a CSS filter, because some
+ * phones (Chrome on Android) draw a filtered canvas as a blank page.
+ */
+export function invertLightness(px: Uint8ClampedArray) {
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i], g = px[i + 1], b = px[i + 2];
+    const shift = 255 - Math.max(r, g, b) - Math.min(r, g, b);
+    px[i] = r + shift;
+    px[i + 1] = g + shift;
+    px[i + 2] = b + shift;
+  }
+}
+
+function invertCanvas(canvas: HTMLCanvasElement) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx || !canvas.width || !canvas.height) return;
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  invertLightness(img.data);
+  ctx.putImageData(img, 0, 0);
+}
+
 /** The text of every page of a PDF, without drawing it. */
 export async function extractText(bytes: Uint8Array): Promise<string[]> {
   const lib = await loadPdfjs();
@@ -57,6 +81,7 @@ export class PdfView {
   private observer: IntersectionObserver;
   private highlights: Highlight[] = [];
   zoom = 1;
+  private dark = false;
   onHighlightClick: (h: Highlight) => void = () => {};
 
   constructor(private root: HTMLElement) {
@@ -115,6 +140,16 @@ export class PdfView {
     this.root.scrollTop = top * this.root.scrollHeight;
   }
 
+  /** Dark pages on or off; pages already drawn are flipped in place. */
+  setDark(dark: boolean) {
+    if (dark === this.dark) return;
+    this.dark = dark;
+    this.pages.forEach((s) => {
+      const canvas = s.el.querySelector("canvas");
+      if (canvas) invertCanvas(canvas);
+    });
+  }
+
   private async draw(s: PageSlot) {
     if (!this.doc || !pdfjs) return;
     const w = this.targetWidth();
@@ -133,6 +168,7 @@ export class PdfView {
     s.el.style.setProperty("--scale-factor", String(scale));
     await page.render({ canvas, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] }).promise;
     if (s.drawn !== w) return; // zoomed meanwhile
+    if (this.dark) invertCanvas(canvas);
     s.el.querySelectorAll<HTMLElement>("canvas, .textLayer").forEach((x) => {
       unguardSelection(x);
       x.remove();
@@ -222,6 +258,7 @@ export class PdfView {
     out.width = Math.max(1, Math.round(sw * k));
     out.height = Math.max(1, Math.round(sh * k));
     out.getContext("2d")!.drawImage(canvas, x0 * canvas.width, y0 * canvas.height, sw, sh, 0, 0, out.width, out.height);
+    if (this.dark) invertCanvas(out); // Claude sees the page as printed
     return out.toDataURL("image/png").split(",")[1] ?? null;
   }
 

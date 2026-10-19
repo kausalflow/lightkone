@@ -24,7 +24,8 @@
 .pdf-page { position: relative; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.2); flex: none; }
 .pdf-page canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .reader.dark .pdf-page { background: #111; }
-.reader.dark .pdf-page canvas { filter: invert(0.88) hue-rotate(180deg); }
+/* The pixels are inverted in view.ts; this softens pure white text a little. */
+.reader.dark .pdf-page canvas { opacity: 0.88; }
 
 .pdf-marks { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 /* A mark is a button so it can be tapped, but none of the app's button look:

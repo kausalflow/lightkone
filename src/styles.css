@@ -768,3 +768,8 @@ details.guide ul { margin-top: 8px; }
 .offline-list { list-style: none; margin: 6px 0 12px; padding: 0; max-height: 40vh; overflow: auto; border-top: 1px solid var(--line); }
 .offline-list li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .offline-list .title { flex: 1; min-width: 0; font-family: var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A question asked while an action runs (Ask Claude about a paper) */
+.question-panel textarea { width: 100%; font: 16px/1.5 var(--sans); resize: vertical; }
+.question-panel .subject { font-family: var(--serif); margin: 0 0 12px; }
+.result > .pill { margin-top: 12px; }

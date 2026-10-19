@@ -114,7 +114,7 @@ export interface Importer {
 }
 
 export type ActionResult =
-  | { kind: "text"; title: string; text: string }
+  | { kind: "text"; title: string; text: string; /** A button under the text that runs the action again. */ again?: string }
   | { kind: "papers"; title: string; papers: PaperDraft[] }
   | { kind: "none" };
 
@@ -123,7 +123,8 @@ export interface ActionContext {
   storage: StorageAdapter | null;
   library: Paper[];
   open(url: string): void;
-  ask(question: string, placeholder?: string): string | null;
+  /** Asks the user for some text in a dialog; null when they cancel. */
+  ask(question: string, placeholder?: string): Promise<string | null>;
 }
 
 /** A button on a paper. */

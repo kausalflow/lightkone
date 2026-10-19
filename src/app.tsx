@@ -13,6 +13,7 @@ import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf
 import { Reader } from "./reader/Reader";
 import { AskPanel } from "./AskPanel";
 import { ObsidianPanel } from "./ObsidianPanel";
+import { QuestionDialog, type Question } from "./QuestionDialog";
 import { OfflinePanel } from "./OfflinePanel";
 import { WritingPanel } from "./WritingPanel";
 import { CitationMap } from "./CitationMap";
@@ -91,6 +92,8 @@ export function App() {
   const [demoPending, setDemoPending] = useState(false);
   const [readingPage, setReadingPage] = useState(0);
   const [result, setResult] = useState<ActionResult | null>(null);
+  const [question, setQuestion] = useState<Question | null>(null);
+  const [lastAction, setLastAction] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
@@ -483,6 +486,7 @@ export function App() {
   async function runAction(id: string, p: Paper) {
     const action = actions().find((a) => `${a.plugin}.${a.id}` === id);
     if (!action) return;
+    setLastAction(id);
     setBusy(action.label);
     setError(null);
     try {
@@ -491,7 +495,19 @@ export function App() {
         storage,
         library: library.papers,
         open: (url) => window.open(url, "_blank", "noopener"),
-        ask: (q, placeholder) => window.prompt(q, placeholder ?? ""),
+        ask: (title, placeholder) =>
+          new Promise((resolve) => {
+            setBusy(null);
+            setQuestion({
+              title,
+              placeholder,
+              answer: (text) => {
+                setQuestion(null);
+                if (text) setBusy(action.label);
+                resolve(text);
+              },
+            });
+          }),
       });
       if (r.kind !== "none") setResult(r);
     } catch (e) {
@@ -861,6 +877,7 @@ export function App() {
           library={library.papers}
           storage={storage}
           result={result}
+          lastAction={lastAction ?? undefined}
           onClose={() => setSelected(null)}
           onChange={(patch) => { library.update(paper.id, patch); scheduleSave(); }}
           onRemove={() => {
@@ -970,6 +987,7 @@ export function App() {
         <WritingPanel papers={library.papers} texts={textIndex?.texts ?? new Map()} settings={settings} hidden={Boolean(reading)} onOpen={openAt} onClose={() => setPanel(null)} />
       )}
 
+      {question && <QuestionDialog question={question} subject={paper?.title} />}
       {panel === "offline" && offlineStore && (
         <OfflinePanel
           papers={library.papers}
@@ -1273,6 +1291,7 @@ function Detail(props: {
   library: Paper[];
   storage: StorageAdapter | null;
   result: ActionResult | null;
+  lastAction?: string;
   onClose(): void;
   onChange(patch: Partial<Paper>): void;
   onRemove(): void;
@@ -1439,6 +1458,11 @@ function Detail(props: {
           <div class="result">
             <h3><Icon name="sparkle" size={14} /> {props.result.title}</h3>
             <div class="prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(props.result.text, math) }} />
+            {props.result.again && props.lastAction && (
+              <button class="pill" onClick={() => props.onAction(props.lastAction!)}>
+                <Icon name="sparkle" size={14} /> {props.result.again}
+              </button>
+            )}
           </div>
         )}
         {props.result && props.result.kind === "papers" && (
