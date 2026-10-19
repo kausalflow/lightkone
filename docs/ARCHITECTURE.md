@@ -15,7 +15,9 @@ public/sw.js   service worker, so the installed app opens offline
 
 Remote storage is wrapped by `src/core/offline.ts`, which keeps a copy of what
 was last read (the library, notes and the 25 most recent PDFs) in the browser's
-Cache Storage and answers from it when there is no network. The web app
+Cache Storage and answers from it when there is no network. PDFs chosen under
+Offline papers are kept there too, outside the 25, within a size limit.
+Highlights written with no network wait there and are written on reconnect. The web app
 manifest makes Lightkone installable and a share target (`?title=&text=&url=`);
 the bookmarklet sends `?add=` (`src/core/capture.ts`).
 

@@ -181,8 +181,8 @@ overwriting it. It also picks up changes when you come back to its tab. If
 two devices change the same field of the same paper, the later save wins.
 
 The installed app (Install app, from the browser menu) also keeps an offline
-copy of the library and the last 25 PDFs you opened. Changes made offline are
-saved when you are back online.
+copy of the library and the last 25 PDFs you opened. To take more on a trip,
+choose them under **Offline papers** (see [Reading offline](READING.md#reading-offline)).
 
 ## Troubleshooting
 

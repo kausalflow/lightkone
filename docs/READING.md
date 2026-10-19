@@ -45,6 +45,33 @@ folder to write the notes straight into it (Chrome and Edge), or download a
 .zip. Run it again later and only the part above the marker line is
 rewritten: what you wrote below it in Obsidian is kept.
 
+## Reading offline
+
+Lightkone keeps the last 25 PDFs you opened on the device. To choose more, for
+a flight or a trip, open **Offline papers** (in the side bar under Organize,
+or Ctrl/⌘K):
+
+- Pick a folder, tag, **Starred** or a search first. The panel then offers to
+  keep every paper in that view, and downloads their PDFs, highlights and
+  notes.
+- On a single paper, press **Keep offline** in its details.
+- Kept papers show an **Offline** label in the list. They stay until you
+  remove them, one by one or with **Remove all**.
+- They take space on the device, within a limit you set (500 MB to 10 GB,
+  2 GB at first). Keeping stops at the limit and says so.
+
+For the app itself to open with no network, install it (**Install app** or
+**Add to Home Screen**) and open it once before you go.
+
+With no network you can read, highlight and take notes. Highlights are kept on
+the device and saved to your storage when you are back online, even if the app
+was closed meanwhile. Other changes (notes, stars, folders) are saved when you
+are back online as long as Lightkone stays open; the top bar says
+*Offline, saves later* until then.
+
+This applies to a bucket or a GitHub repository. With **This browser only**,
+everything is on the device already.
+
 ## Reading at night
 
 With the Dullaby plugin set up (**Settings → Dullaby night reading**), **Read

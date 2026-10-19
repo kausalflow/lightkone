@@ -221,7 +221,7 @@ label.file input, label.button input { display: none; }
 .top-actions { display: flex; gap: 4px; align-items: center; margin-left: auto; }
 .top-actions .add { margin: 0 6px 0 4px; }
 .save { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--faint); padding: 0 6px; }
-.save.pending, .save.saving { color: var(--warm); }
+.save.pending, .save.saving, .save.offline { color: var(--warm); }
 .save.error { color: var(--danger); }
 .browse, .phone-only { display: none; }
 
@@ -736,7 +736,7 @@ svg.map .node-label { font-size: 10px; fill: var(--text, currentColor); paint-or
   .brand-name { display: none; }
   /* Narrow phones: the save state is a dot, so the header keeps to two rows. */
   .save .save-text { display: none; }
-  .save.pending::before, .save.saving::before, .save.error::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .save.pending::before, .save.saving::before, .save.error::before, .save.offline::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 }
 
 /* Welcome tour and Help */
@@ -755,3 +755,16 @@ details.guide { border-bottom: 1px solid var(--line); padding: 10px 0; }
 details.guide summary { cursor: pointer; font-weight: 560; }
 details.guide ul { margin-top: 8px; }
 .info-panel a.button { color: var(--text); text-decoration: none; }
+
+/* Offline papers */
+.chip.offline { color: var(--text); font-weight: 600; font-size: 11px; letter-spacing: 0.04em; }
+.offline-use { margin: 14px 0 10px; }
+.offline-use .small { margin: 6px 0 0; }
+.offline-use select { font-size: 13px; padding: 2px 6px; min-height: 0; }
+.meter { height: 8px; border-radius: 999px; background: var(--chip); overflow: hidden; }
+.meter span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.offline-head { display: flex; align-items: baseline; justify-content: space-between; margin-top: 18px; }
+.offline-head h3 { margin: 0; font-size: 15px; }
+.offline-list { list-style: none; margin: 6px 0 12px; padding: 0; max-height: 40vh; overflow: auto; border-top: 1px solid var(--line); }
+.offline-list li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.offline-list .title { flex: 1; min-width: 0; font-family: var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

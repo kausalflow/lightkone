@@ -13,6 +13,7 @@ import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf
 import { Reader } from "./reader/Reader";
 import { AskPanel } from "./AskPanel";
 import { ObsidianPanel } from "./ObsidianPanel";
+import { OfflinePanel } from "./OfflinePanel";
 import { WritingPanel } from "./WritingPanel";
 import { CitationMap } from "./CitationMap";
 import { FreshPanel } from "./FreshPanel";
@@ -25,7 +26,7 @@ import { Welcome } from "./Welcome";
 import { demoDrafts, isDemo, markDemoOffered, markWelcomed, wantsDemo, welcomed } from "./core/demo";
 import { activeId, activeStorage, copyPapers, readInvite, sharedLibraries, type Invite } from "./core/shared";
 import type { ManuscriptReport } from "./core/manuscript";
-import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
+import { browserCache, offlineLimit, withOfflineCache, type OfflineStorage } from "./core/offline";
 import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
 import { allFolders, cleanFolder, folderTree, type FolderNode } from "./core/folders";
 import { renderMarkdown } from "./core/markdown";
@@ -40,7 +41,7 @@ import { site } from "./core/site";
 
 const library = new Library();
 
-type SaveState = "idle" | "pending" | "saving" | "saved" | "merged" | "error";
+type SaveState = "idle" | "pending" | "saving" | "saved" | "merged" | "error" | "offline";
 
 function download(name: string, text: string, type = "application/x-bibtex") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -81,7 +82,9 @@ export function App() {
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | "offline" | null>(null);
+  // PDFs kept on this device on purpose (Offline papers), by storage path.
+  const [keptPdfs, setKeptPdfs] = useState<Map<string, number>>(new Map());
   const [infoPage, setInfoPage] = useState<InfoPage>("start");
   const [welcome, setWelcome] = useState(false);
   // A brand-new library in this browser gets an example paper once storage is open.
@@ -129,6 +132,7 @@ export function App() {
         if (cancelled) return;
         setReadOnly(readOnlyRef.current);
         setStorage(adapter);
+        (adapter as Partial<OfflineStorage>).kept?.().then((m) => !cancelled && setKeptPdfs(m)) ?? setKeptPdfs(new Map());
         setWhere(active.shared ? `${active.shared.name} (shared${readOnlyRef.current ? ", read only" : ""})` : provider.label);
         const linked = await linkPaperpilePdfs(adapter);
         if (cancelled) return;
@@ -279,8 +283,14 @@ export function App() {
       try {
         setSaveState((await library.save()) ? "merged" : "saved");
       } catch (e) {
-        setSaveState("error");
-        setError(`Could not save: ${(e as Error).message}`);
+        if (navigator.onLine === false || (e instanceof TypeError && /fetch|network|load failed/i.test(e.message))) {
+          setSaveState("offline");
+          if (!offlineWarned.current) setError("No network: changes will be saved when you're back online, so keep Lightkone open until then. Highlights are kept on this device either way.");
+          offlineWarned.current = true;
+        } else {
+          setSaveState("error");
+          setError(`Could not save: ${(e as Error).message}`);
+        }
         return;
       }
       if (library.bibSync.length) syncBibs();
@@ -347,7 +357,7 @@ export function App() {
   // Warn before closing with unsaved changes.
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if (saveState === "pending" || saveState === "saving") e.preventDefault();
+      if (saveState === "pending" || saveState === "saving" || saveState === "offline") e.preventDefault();
     };
     addEventListener("beforeunload", warn);
     return () => removeEventListener("beforeunload", warn);
@@ -502,6 +512,43 @@ export function App() {
   };
   // The tools, by group: listed in the sidebar and found by the command palette.
   const hasPapers = library.papers.length > 0;
+  const offlineStore = storage && "keep" in storage ? (storage as OfflineStorage) : null;
+  // Back online: write highlights made offline, and changes that couldn't be saved.
+  const offlineWarned = useRef(false);
+  const saveStateRef = useRef(saveState);
+  saveStateRef.current = saveState;
+  useEffect(() => {
+    if (!offlineStore) return;
+    const back = () => {
+      offlineStore.flush().catch(() => {});
+      offlineWarned.current = false;
+      if (saveStateRef.current === "error" || saveStateRef.current === "offline") scheduleSave();
+    };
+    if (navigator.onLine !== false) back();
+    addEventListener("online", back);
+    return () => removeEventListener("online", back);
+  }, [offlineStore]);
+  async function keepOffline(papers: Paper[], onProgress?: (done: number, total: number) => void, signal?: AbortSignal): Promise<string> {
+    if (!offlineStore) return "";
+    navigator.storage?.persist?.().catch(() => {});
+    const withPdf = papers.filter((p) => p.pdf);
+    const r = await offlineStore.keep(withPdf.map((p) => p.pdf!), offlineLimit(), onProgress, signal);
+    // Highlights and notes come along, so they show offline too.
+    for (const p of withPdf) await offlineStore.read(annotationsPath(p.id)).catch(() => null);
+    setKeptPdfs(await offlineStore.kept());
+    return [
+      `Kept ${r.added} ${r.added === 1 ? "paper" : "papers"} on this device.`,
+      r.failed ? `${r.failed} could not be downloaded; try again when the connection is better.` : "",
+      r.full ? "Stopped at the space limit: raise it, or remove some papers." : "",
+      signal?.aborted ? "Stopped." : "",
+    ].filter(Boolean).join(" ");
+  }
+  async function releaseOffline(paths: string[]) {
+    if (!offlineStore) return;
+    await offlineStore.release(paths);
+    setKeptPdfs(await offlineStore.kept());
+  }
+
   const tools: Tool[] = [
     { id: "fresh", group: "Discover", label: "New on arXiv", icon: "sparkle", hint: "Each day's arXiv preprints near your library", show: Boolean(storage && hasPapers), run: go("fresh") },
     { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: go("map") },
@@ -510,6 +557,7 @@ export function App() {
     { id: "manuscript", group: "Write", label: "Watch my manuscript", icon: "sync", hint: "Keep a LaTeX manuscript's .bib in step with what it cites", show: Boolean(storage), run: go("manuscript") },
     { id: "obsidian", group: "Write", label: "Export to Obsidian", icon: "file", hint: "Highlights and notes as Markdown notes", show: Boolean(storage), run: go("obsidian") },
     { id: "tidy", group: "Organize", label: "Tidy up", icon: "broom", hint: "Duplicates, published versions of preprints", show: Boolean(storage), run: () => { setTidying(true); setSideOpen(false); } },
+    { id: "offline", group: "Organize", label: "Offline papers", icon: "download", hint: "Choose PDFs to keep on this device, for reading with no network", show: Boolean(offlineStore && library.papers.some((p) => p.pdf)), run: go("offline") },
     { id: "shared", group: "Organize", label: "Shared libraries", icon: "users", hint: "Libraries shared with a group", show: true, run: go("shared") },
   ].filter((t) => t.show) as Tool[];
   const commands: Command[] = [
@@ -540,7 +588,7 @@ export function App() {
     ...tags.map(([t, n]) => ({ id: `tag:${t}`, group: "Tags", label: t, icon: "tag" as IconName, hint: `${n} ${n === 1 ? "paper" : "papers"}`, onlyWhenTyped: true, run: () => pick(`tag:"${t}"`) })),
   ];
 
-  const saveLabel = { idle: "", pending: "Unsaved", saving: "Saving…", saved: "Saved", merged: "Synced", error: "Not saved" }[saveState];
+  const saveLabel = { idle: "", pending: "Unsaved", saving: "Saving…", saved: "Saved", merged: "Synced", error: "Not saved", offline: "Offline, saves later" }[saveState];
   const view = viewTitle(query);
 
   return (
@@ -769,6 +817,7 @@ export function App() {
               {(p.pdf || p.tags.length > 0) && (
                 <div class="chips">
                   {p.pdf && <span class="chip pdf">PDF</span>}
+                  {p.pdf && keptPdfs.has(p.pdf) && <span class="chip offline" title="Kept on this device for reading offline">Offline</span>}
                   {p.tags.slice(0, 4).map((t) => (
                     <span class="chip" key={t}>{t}</span>
                   ))}
@@ -837,6 +886,12 @@ export function App() {
           scheduleSave={scheduleSave}
           others={otherLibraries()}
           onCopyTo={(id) => copyTo(id, [paper])}
+          offline={offlineStore && paper.pdf ? keptPdfs.has(paper.pdf) : undefined}
+          onOffline={() => {
+            if (!paper.pdf) return;
+            if (keptPdfs.has(paper.pdf)) return void releaseOffline([paper.pdf]);
+            keepOffline([paper]).then((m) => /space limit|could not/.test(m) && setError(m));
+          }}
         />
       )}
 
@@ -913,6 +968,19 @@ export function App() {
 
       {panel === "writing" && (
         <WritingPanel papers={library.papers} texts={textIndex?.texts ?? new Map()} settings={settings} hidden={Boolean(reading)} onOpen={openAt} onClose={() => setPanel(null)} />
+      )}
+
+      {panel === "offline" && offlineStore && (
+        <OfflinePanel
+          papers={library.papers}
+          inView={visible}
+          view={view === "All papers" ? "your library" : `“${view}”`}
+          storage={offlineStore}
+          kept={keptPdfs}
+          onKeep={keepOffline}
+          onRelease={releaseOffline}
+          onClose={() => setPanel(null)}
+        />
       )}
 
       {panel === "obsidian" && storage && (
@@ -1217,6 +1285,9 @@ function Detail(props: {
   /** Other libraries this paper can be copied to. */
   others: { id: string; name: string }[];
   onCopyTo(libraryId: string): void;
+  /** Whether the PDF is kept on this device; undefined when that can't be chosen. */
+  offline?: boolean;
+  onOffline(): void;
 }) {
   const { paper: p, storage } = props;
   const [tagText, setTagText] = useState(p.tags.join(", "));
@@ -1351,6 +1422,11 @@ function Detail(props: {
           {p.pdf && (
             <button class="pill" onClick={openPdf}>
               <Icon name="file" size={14} /> PDF file
+            </button>
+          )}
+          {p.pdf && props.offline !== undefined && (
+            <button class={`pill ${props.offline ? "on" : ""}`} aria-pressed={props.offline} onClick={props.onOffline} title={props.offline ? "Kept on this device; press to remove it from here" : "Keep this PDF on this device, to read with no network"}>
+              <Icon name={props.offline ? "check" : "download"} size={14} /> {props.offline ? "Kept offline" : "Keep offline"}
             </button>
           )}
           <label class="pill file">

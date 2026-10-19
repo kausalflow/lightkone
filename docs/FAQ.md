@@ -50,8 +50,11 @@ Use **Attach PDF**.
 **"Not saved" at the top**: the last save didn't reach your storage, and a
 message says why. Your changes are still in the open page, and the next change
 saves everything again, so keep the tab open until it says *Saved*. If it
-keeps failing, check the storage details in Settings. In the installed app
-while offline, changes are kept and saved once you are back online.
+keeps failing, check the storage details in Settings.
+
+**"Offline, saves later" at the top**: there is no network. Changes are saved
+when it comes back, as long as Lightkone stays open; highlights are kept on
+the device either way. See [Reading offline](READING.md#reading-offline).
 
 **Ask says to add a key**: paste your Anthropic API key under
 **Settings → Claude**.
