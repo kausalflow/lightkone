@@ -26,14 +26,15 @@ export function Welcome(props: { hasDemo: boolean; onOpenDemo(): void; onAdd(): 
     props.hasDemo
       ? {
           icon: "file",
-          title: "Try the example paper",
+          title: "Try the example papers",
           body: (
             <>
               <p>
-                Your library starts with one paper to try things on, <em>Transformer models: an introduction and catalog</em>. Open it, press{" "}
-                <strong>Read</strong>, and select text to highlight it or add a note.
+                Your library starts with two papers to try things on: <em>Attention Is All You Need</em> and{" "}
+                <em>Transformer models: an introduction and catalog</em>. Open one, press <strong>Read</strong>, and select text to highlight
+                it or add a note.
               </p>
-              <p class="muted">It is tagged Example. Remove it whenever you like; it won't come back.</p>
+              <p class="muted">They are tagged Example. Remove them whenever you like; they won't come back.</p>
             </>
           ),
         }
@@ -114,7 +115,7 @@ export function Welcome(props: { hasDemo: boolean; onOpenDemo(): void; onAdd(): 
           {last && <button onClick={props.onHelp}>Open Help</button>}
           {last && props.hasDemo && (
             <button class="primary" onClick={props.onOpenDemo}>
-              Open the example
+              Open an example
             </button>
           )}
           {last && !props.hasDemo && (

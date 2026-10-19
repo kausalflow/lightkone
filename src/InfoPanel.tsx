@@ -72,7 +72,7 @@ function Start(props: { onTour(): void }) {
         </li>
       </ol>
       <p class="muted small">
-        A new library starts with one example paper, tagged Example, to try things on. Move it to the trash whenever you like; it won't come back.
+        A new library starts with two example papers, tagged Example, to try things on. Move them to the trash whenever you like; they won't come back.
       </p>
       <div class="row">
         <button onClick={props.onTour}>Show the welcome tour again</button>

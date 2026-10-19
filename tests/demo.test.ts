@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { demoDraft, isDemo, markDemoOffered, wantsDemo } from "../src/core/demo";
+import { demoDrafts, isDemo, markDemoOffered, wantsDemo } from "../src/core/demo";
 
 // Tests run in Node: a small stand-in for the browser's localStorage.
 const store = new Map<string, string>();
@@ -28,8 +28,10 @@ describe("example paper", () => {
   });
 
   it("is known by its tag and arXiv id", () => {
-    const d = demoDraft();
-    expect(isDemo({ arxiv: d.arxiv, tags: d.tags! })).toBe(true);
-    expect(isDemo({ arxiv: d.arxiv, tags: [] })).toBe(false);
+    const ds = demoDrafts();
+    expect(ds.map((d) => d.arxiv)).toEqual(["1706.03762", "2302.07730"]);
+    for (const d of ds) expect(isDemo({ arxiv: d.arxiv, tags: d.tags! })).toBe(true);
+    expect(isDemo({ arxiv: ds[0].arxiv, tags: [] })).toBe(false);
+    expect(isDemo({ arxiv: "2106.09685", tags: ["Example"] })).toBe(false);
   });
 });

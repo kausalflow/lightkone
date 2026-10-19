@@ -22,7 +22,7 @@ import { SharedPanel } from "./SharedPanel";
 import { CommandPalette, type Command } from "./CommandPalette";
 import { InfoPanel, type InfoPage } from "./InfoPanel";
 import { Welcome } from "./Welcome";
-import { demoDraft, isDemo, markDemoOffered, markWelcomed, wantsDemo, welcomed } from "./core/demo";
+import { demoDrafts, isDemo, markDemoOffered, markWelcomed, wantsDemo, welcomed } from "./core/demo";
 import { activeId, activeStorage, copyPapers, readInvite, sharedLibraries, type Invite } from "./core/shared";
 import type { ManuscriptReport } from "./core/manuscript";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
@@ -212,9 +212,10 @@ export function App() {
     if (!storage || !demoPending) return;
     setDemoPending(false);
     markDemoOffered();
-    addDrafts([demoDraft()]);
+    addDrafts(demoDrafts());
   }, [storage, demoPending]);
-  const demo = library.papers.find((p) => isDemo(p) && !p.trashed);
+  const demos = library.papers.filter((p) => isDemo(p) && !p.trashed);
+  const demo = demos[0];
 
   function closeWelcome() {
     markWelcomed();
@@ -726,16 +727,17 @@ export function App() {
         )}
         {demo && query !== "is:trash" && (
           <p class="text-note muted small">
-            The example paper is here to try things on: read it, highlight, ask about it.{" "}
+            {demos.length > 1 ? "The two example papers are" : "The example paper is"} here to try things on: read, highlight, ask.{" "}
             <button
               class="link"
               onClick={() => {
-                library.update(demo.id, { trashed: new Date().toISOString() });
-                if (selected === demo.id) setSelected(null);
+                const now = new Date().toISOString();
+                demos.forEach((p) => library.update(p.id, { trashed: now }));
+                if (demos.some((p) => p.id === selected)) setSelected(null);
                 scheduleSave();
               }}
             >
-              Remove it
+              {demos.length > 1 ? "Remove them" : "Remove it"}
             </button>
           </p>
         )}
