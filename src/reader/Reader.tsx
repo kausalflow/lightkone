@@ -47,10 +47,13 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
   const loaded = useRef(false);
   const saveTimer = useRef<number | undefined>(undefined);
 
+  useEffect(() => view.current?.setDark(dark), [dark]);
+
   // Open the PDF and its annotations.
   useEffect(() => {
     const v = new PdfView(pagesRef.current!);
     view.current = v;
+    v.setDark(dark);
     v.onHighlightClick = (h) => {
       setOpen(h);
       setNoteText(h.note ?? "");

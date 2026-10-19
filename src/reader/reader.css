@@ -5,6 +5,9 @@
   display: flex;
   flex-direction: column;
   background: var(--bg);
+  /* Pinch zooms the paper (view.ts), never the app around it, so the toolbar
+     and the Highlight bar stay on screen. */
+  touch-action: pan-x pan-y;
 }
 .reader-bar {
   display: flex;
@@ -19,12 +22,13 @@
 .reader-bar .notes-btn { min-height: 36px; }
 .badge { min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--accent-text); font-size: 11px; line-height: 18px; text-align: center; }
 .reader-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 15px/1.3 var(--serif); padding: 0 6px; }
-.reader-body { flex: 1; min-height: 0; display: flex; }
-.pdf-pages { flex: 1; overflow: auto; padding: 8px 8px 160px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.reader-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.pdf-pages { flex: 1; overflow: auto; padding: 8px 8px 160px; display: flex; flex-direction: column; align-items: safe center; gap: 8px; }
 .pdf-page { position: relative; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.2); flex: none; }
 .pdf-page canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .reader.dark .pdf-page { background: #111; }
-.reader.dark .pdf-page canvas { filter: invert(0.88) hue-rotate(180deg); }
+/* The pixels are inverted in view.ts; this softens pure white text a little. */
+.reader.dark .pdf-page canvas { opacity: 0.88; }
 
 .pdf-marks { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 /* A mark is a button so it can be tapped, but none of the app's button look:

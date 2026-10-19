@@ -344,9 +344,9 @@ const plugin: LightkonePlugin = {
       id: "ask",
       label: "Ask Claude…",
       async run(p, ctx) {
-        const q = ctx.ask("What would you like to know about this paper?", "How does this relate to the renormalization group?");
+        const q = await ctx.ask("What would you like to know about this paper?", "How does this relate to the renormalization group?");
         if (!q) return { kind: "none" };
-        return { kind: "text", title: q, text: await askClaude(p, ctx, q) };
+        return { kind: "text", title: q, text: await askClaude(p, ctx, q), again: "Ask another question" };
       },
     },
   ],

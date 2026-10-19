@@ -19,6 +19,30 @@ async function loadPdfjs() {
   return pdfjs;
 }
 
+/**
+ * Dark pages: swaps light and dark in place but keeps each colour's hue, so
+ * black text turns white and a red curve stays red. Doing it twice restores the
+ * page. This is done on the pixels rather than with a CSS filter, because some
+ * phones (Chrome on Android) draw a filtered canvas as a blank page.
+ */
+export function invertLightness(px: Uint8ClampedArray) {
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i], g = px[i + 1], b = px[i + 2];
+    const shift = 255 - Math.max(r, g, b) - Math.min(r, g, b);
+    px[i] = r + shift;
+    px[i + 1] = g + shift;
+    px[i + 2] = b + shift;
+  }
+}
+
+function invertCanvas(canvas: HTMLCanvasElement) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx || !canvas.width || !canvas.height) return;
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  invertLightness(img.data);
+  ctx.putImageData(img, 0, 0);
+}
+
 /** The text of every page of a PDF, without drawing it. */
 export async function extractText(bytes: Uint8Array): Promise<string[]> {
   const lib = await loadPdfjs();
@@ -57,6 +81,7 @@ export class PdfView {
   private observer: IntersectionObserver;
   private highlights: Highlight[] = [];
   zoom = 1;
+  private dark = false;
   onHighlightClick: (h: Highlight) => void = () => {};
 
   constructor(private root: HTMLElement) {
@@ -64,6 +89,7 @@ export class PdfView {
       root,
       rootMargin: "150% 0px",
     });
+    this.pinch();
   }
 
   async open(bytes: Uint8Array): Promise<number> {
@@ -108,11 +134,60 @@ export class PdfView {
     }
   }
 
-  setZoom(z: number) {
-    const top = this.root.scrollTop / Math.max(1, this.root.scrollHeight);
+  /** Zooms the pages, keeping the point under (x, y) on screen; the middle of the view by default. */
+  setZoom(z: number, x?: number, y?: number) {
+    const box = this.root.getBoundingClientRect();
+    const fx = (x ?? box.left + box.width / 2) - box.left;
+    const fy = (y ?? box.top + box.height / 2) - box.top;
+    const cx = this.root.scrollLeft + fx;
+    const cy = this.root.scrollTop + fy;
+    const before = this.zoom;
     this.zoom = Math.min(4, Math.max(0.5, z));
     this.layout();
-    this.root.scrollTop = top * this.root.scrollHeight;
+    const r = this.zoom / before;
+    this.root.scrollLeft = cx * r - fx;
+    this.root.scrollTop = cy * r - fy;
+  }
+
+  // Pinching zooms the pages, not the whole app (the page itself sets
+  // touch-action so the browser leaves pinches to us). While the fingers move
+  // the pages are only stretched; they are drawn sharp at the new size on release.
+  private pinch() {
+    let start = 0;
+    let mid: [number, number] = [0, 0];
+    let scale = 1;
+    const gap = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const end = () => {
+      if (!start) return;
+      start = 0;
+      this.root.style.transform = "";
+      if (Math.abs(scale - 1) > 0.02) this.setZoom(this.zoom * scale, mid[0], mid[1]);
+    };
+    this.root.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 2) return end();
+      start = gap(e.touches);
+      scale = 1;
+      mid = [(e.touches[0].clientX + e.touches[1].clientX) / 2, (e.touches[0].clientY + e.touches[1].clientY) / 2];
+      const box = this.root.getBoundingClientRect();
+      this.root.style.transformOrigin = `${mid[0] - box.left}px ${mid[1] - box.top}px`;
+    }, { passive: true });
+    this.root.addEventListener("touchmove", (e) => {
+      if (!start || e.touches.length !== 2) return;
+      scale = Math.min(4 / this.zoom, Math.max(0.5 / this.zoom, gap(e.touches) / start));
+      this.root.style.transform = `scale(${scale})`;
+    }, { passive: true });
+    this.root.addEventListener("touchend", end);
+    this.root.addEventListener("touchcancel", end);
+  }
+
+  /** Dark pages on or off; pages already drawn are flipped in place. */
+  setDark(dark: boolean) {
+    if (dark === this.dark) return;
+    this.dark = dark;
+    this.pages.forEach((s) => {
+      const canvas = s.el.querySelector("canvas");
+      if (canvas) invertCanvas(canvas);
+    });
   }
 
   private async draw(s: PageSlot) {
@@ -133,6 +208,7 @@ export class PdfView {
     s.el.style.setProperty("--scale-factor", String(scale));
     await page.render({ canvas, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] }).promise;
     if (s.drawn !== w) return; // zoomed meanwhile
+    if (this.dark) invertCanvas(canvas);
     s.el.querySelectorAll<HTMLElement>("canvas, .textLayer").forEach((x) => {
       unguardSelection(x);
       x.remove();
@@ -222,6 +298,7 @@ export class PdfView {
     out.width = Math.max(1, Math.round(sw * k));
     out.height = Math.max(1, Math.round(sh * k));
     out.getContext("2d")!.drawImage(canvas, x0 * canvas.width, y0 * canvas.height, sw, sh, 0, 0, out.width, out.height);
+    if (this.dark) invertCanvas(out); // Claude sees the page as printed
     return out.toDataURL("image/png").split(",")[1] ?? null;
   }
 
