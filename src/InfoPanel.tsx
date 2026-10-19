@@ -104,6 +104,7 @@ function Guide() {
         "Read opens the PDF. Select text, then Highlight, Note, or Explain (with a Claude key).",
         "No PDF yet? Get free PDF looks for an open copy, or Attach PDF adds your own file.",
         "Highlights are kept beside the paper and go out with Export to Obsidian.",
+        "Going somewhere without a network? Offline papers (under Organize) keeps a folder's or a search's PDFs on this device, or use Keep offline on one paper. The 25 you opened last are kept anyway.",
       ],
     ],
     [
