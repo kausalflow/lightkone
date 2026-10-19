@@ -46,6 +46,21 @@ Scholar limits anonymous requests; for steadier results, request a free key at
 https://www.semanticscholar.org/product/api and add it to the Pages project as
 the secret `S2_API_KEY`.
 
+## Limits on the services
+
+The services under `/api/` (PDF, published versions, arXiv, equations, MCP
+address) are for the site's own app. `functions/api/_middleware.ts` refuses
+calls that a browser says come from another website, and limits each address
+to a number of calls a minute per service (30 for PDFs, 120 for equations; see
+`LIMITS`), answering `429` with `Retry-After` beyond that. Normal use stays far
+below these.
+
+Those counts are kept per Cloudflare server. For a hard limit across the whole
+network, also add a rate limiting rule in the dashboard (the free plan
+includes one): your domain's zone → **Security → WAF → Rate limiting rules →
+Create rule**, with *URI Path starts with `/api/`*, counting by IP, for example
+**50 requests per 10 seconds**, action **Block** for 10 seconds.
+
 ## Other hosts
 
 Copy `dist/` to any static host (GitHub Pages, Netlify, S3 + CloudFront, an
