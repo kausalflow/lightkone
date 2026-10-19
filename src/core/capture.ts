@@ -27,3 +27,24 @@ export function bookmarklet(app: string): string {
   const code = `(()=>{const m=n=>{const e=document.querySelector('meta[name="'+n+'" i]');return e&&e.content.trim()};const a=m('citation_arxiv_id');const v=m('citation_doi')||(a&&'arXiv:'+a)||((d)=>d&&/10\\.\\d/.test(d)&&d)(m('dc.identifier'))||location.href;open(${JSON.stringify(app)}+'?add='+encodeURIComponent(v))})()`;
   return `javascript:${encodeURI(code)}`;
 }
+
+// PDF files shared to the installed app arrive as a POST, which a static site
+// can't receive, so the service worker (public/sw.js) keeps them in this cache
+// and opens the app with ?shared-files.
+export const SHARED_FILES_KEY = "shared-files";
+const SHARED_CACHE = "lightkone-shared";
+
+export const isPdf = (f: File) => f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+
+/** The PDFs the service worker kept from a share, removed from its cache as they are taken. */
+export async function takeSharedFiles(): Promise<File[]> {
+  if (!("caches" in self)) return [];
+  const cache = await caches.open(SHARED_CACHE);
+  const files: File[] = [];
+  for (const req of await cache.keys()) {
+    const res = await cache.match(req);
+    if (res) files.push(new File([await res.blob()], decodeURIComponent(res.headers.get("x-name") ?? "shared.pdf"), { type: "application/pdf" }));
+    await cache.delete(req);
+  }
+  return files;
+}

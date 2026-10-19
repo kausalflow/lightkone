@@ -43,6 +43,24 @@ function invertCanvas(canvas: HTMLCanvasElement) {
   ctx.putImageData(img, 0, 0);
 }
 
+/** The first pages' text and the title a PDF gives itself, to tell which paper it is. */
+export async function pdfFirstPages(bytes: Uint8Array, count = 2): Promise<{ pages: string[]; title?: string }> {
+  const lib = await loadPdfjs();
+  const task = lib.getDocument({ data: bytes.slice() });
+  const doc = await task.promise;
+  try {
+    const pages: string[] = [];
+    for (let n = 1; n <= Math.min(count, doc.numPages); n++) {
+      const content = await (await doc.getPage(n)).getTextContent();
+      pages.push(content.items.map((i) => ("str" in i ? i.str + (i.hasEOL ? "\n" : " ") : "")).join(""));
+    }
+    const info = (await doc.getMetadata().catch(() => null))?.info as { Title?: string } | undefined;
+    return { pages, title: info?.Title };
+  } finally {
+    await task.destroy();
+  }
+}
+
 /** The text of every page of a PDF, without drawing it. */
 export async function extractText(bytes: Uint8Array): Promise<string[]> {
   const lib = await loadPdfjs();

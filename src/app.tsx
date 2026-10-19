@@ -28,7 +28,8 @@ import { demoDrafts, isDemo, markDemoOffered, markWelcomed, wantsDemo, welcomed 
 import { activeId, activeStorage, copyPapers, readInvite, sharedLibraries, type Invite } from "./core/shared";
 import type { ManuscriptReport } from "./core/manuscript";
 import { browserCache, offlineLimit, withOfflineCache, type OfflineStorage } from "./core/offline";
-import { bookmarklet, CAPTURE_KEYS, capturedInput } from "./core/capture";
+import { bookmarklet, CAPTURE_KEYS, capturedInput, isPdf, SHARED_FILES_KEY, takeSharedFiles } from "./core/capture";
+import { fallbackTitle, identifierIn } from "./core/pdfid";
 import { allFolders, cleanFolder, folderTree, type FolderNode } from "./core/folders";
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
@@ -106,6 +107,8 @@ export function App() {
   const readOnlyRef = useRef(false);
   // A paper shared to Lightkone, or sent by the bookmarklet, waiting for storage to open.
   const [captured, setCaptured] = useState<string | null>(() => capturedInput(location.search));
+  // PDF files shared to the installed app (kept by the service worker) or dropped on the window.
+  const [sharedFiles, setSharedFiles] = useState<File[]>([]);
 
   // Open storage whenever the chosen provider or its settings change.
   const providerId = settings["storage.provider"] || "browser";
@@ -250,6 +253,29 @@ export function App() {
     history.replaceState(null, "", url);
   }, [storage]);
 
+  // PDFs shared to the app wait in the service worker's cache until the app opens.
+  useEffect(() => {
+    if (!new URLSearchParams(location.search).has(SHARED_FILES_KEY)) return;
+    takeSharedFiles().then((files) => files.length && setSharedFiles(files));
+  }, []);
+  // Dropping PDFs anywhere on the window adds them.
+  useEffect(() => {
+    const isFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files");
+    const over = (e: DragEvent) => { if (isFiles(e)) e.preventDefault(); };
+    const drop = (e: DragEvent) => {
+      const pdfs = [...(e.dataTransfer?.files ?? [])].filter(isPdf);
+      if (!pdfs.length || (e.target as HTMLElement).closest?.(".reader")) return;
+      e.preventDefault();
+      setSharedFiles(pdfs);
+    };
+    addEventListener("dragover", over);
+    addEventListener("drop", drop);
+    return () => { removeEventListener("dragover", over); removeEventListener("drop", drop); };
+  }, []);
+  useEffect(() => {
+    if (sharedFiles.length && storage) setPanel("add");
+  }, [sharedFiles, storage]);
+
   // Once storage is open, hand a captured paper to the Add panel and tidy the address bar.
   useEffect(() => {
     if (!captured || !storage) return;
@@ -258,6 +284,12 @@ export function App() {
     CAPTURE_KEYS.forEach((k) => url.searchParams.delete(k));
     history.replaceState(null, "", url);
   }, [captured, storage]);
+  useEffect(() => {
+    if (!new URLSearchParams(location.search).has(SHARED_FILES_KEY)) return;
+    const url = new URL(location.href);
+    url.searchParams.delete(SHARED_FILES_KEY);
+    history.replaceState(null, "", url);
+  }, []);
 
   /** Libraries from before papers/ keep PDFs under Paperpile/All Papers/: move them, once. */
   async function movePdfs(adapter: StorageAdapter) {
@@ -446,7 +478,7 @@ export function App() {
     persistStorage();
   }
 
-  function addDrafts(drafts: PaperDraft[]): Paper[] {
+  function addDrafts(drafts: PaperDraft[], fetchPdfs = true): Paper[] {
     if (readOnlyRef.current) {
       scheduleSave();
       return [];
@@ -456,8 +488,22 @@ export function App() {
     const { added, updated } = library.merge(by ? drafts.map((d) => ({ by, ...d })) : drafts);
     if (added.length || updated.length) scheduleSave();
     // Fetch free PDFs in the background; a big .bib import is left alone.
-    if (settings["pdfs.auto"] !== "off" && added.length <= 20) added.forEach((p) => getPdf(p, true));
+    if (fetchPdfs && settings["pdfs.auto"] !== "off" && added.length <= 20) added.forEach((p) => getPdf(p, true));
     return added;
+  }
+
+  /** Add a paper with its PDF file; a paper already in the library gets the PDF if it has none. */
+  async function addWithPdf(draft: PaperDraft, bytes: Uint8Array): Promise<"added" | "attached" | "had"> {
+    const added = addDrafts([draft], false);
+    const p = added[0] ?? library.findDuplicate(draft);
+    if (!storage || !p) throw new Error("Could not add it to the library.");
+    if (p.pdf) return "had";
+    const where = pdfLocation(p, library.papers);
+    await storage.write(where.pdf, bytes, "application/pdf");
+    library.update(p.id, where);
+    scheduleSave();
+    if (added.length) setSelected(p.id);
+    return added.length ? "added" : "attached";
   }
 
   /** Download a free PDF into storage. Quiet when it runs on its own. */
@@ -1008,7 +1054,9 @@ export function App() {
       {panel === "add" && (
         <AddPanel
           initial={captured ?? undefined}
-          onClose={() => { setPanel(null); setCaptured(null); }}
+          files={sharedFiles}
+          onAddPdf={addWithPdf}
+          onClose={() => { setPanel(null); setCaptured(null); setSharedFiles([]); }}
           onAdd={(drafts) => {
             const added = addDrafts(drafts);
             if (added.length === 1) setSelected(added[0].id);
@@ -1721,7 +1769,14 @@ function BibSyncPanel(props: {
   );
 }
 
-function AddPanel(props: { initial?: string; onClose(): void; onAdd(d: PaperDraft[]): number; canAdd: boolean }) {
+function AddPanel(props: {
+  initial?: string;
+  files?: File[];
+  onClose(): void;
+  onAdd(d: PaperDraft[]): number;
+  onAddPdf(d: PaperDraft, bytes: Uint8Array): Promise<"added" | "attached" | "had">;
+  canAdd: boolean;
+}) {
   const [text, setText] = useState(props.initial ?? "");
   const [message, setMessage] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
@@ -1730,6 +1785,50 @@ function AddPanel(props: { initial?: string; onClose(): void; onAdd(d: PaperDraf
   useEffect(() => {
     if (props.initial && props.canAdd) add(props.initial);
   }, [props.initial, props.canAdd]);
+  // So are PDFs shared to the app or dropped on it.
+  useEffect(() => {
+    if (props.files?.length && props.canAdd) addPdfs(props.files);
+  }, [props.files, props.canAdd]);
+
+  /** Each PDF becomes a paper: found from the DOI or arXiv id it prints, else by Claude, else under its own title. */
+  async function addPdfs(files: File[]) {
+    setWorking(true);
+    setMessage(null);
+    const { pdfFirstPages } = await import("./reader/view");
+    const counts = { added: 0, attached: 0, had: 0 };
+    const failed: string[] = [];
+    for (const [i, file] of files.entries()) {
+      if (files.length > 1) setMessage(`Reading ${i + 1} of ${files.length}: ${file.name}`);
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { pages, title } = await pdfFirstPages(bytes);
+        const id = identifierIn(pages);
+        const finder = (s: string) => lookups().find((l) => l.matches(s));
+        let draft: PaperDraft | null = null;
+        if (id) draft = await finder(id)?.resolve(id).catch(() => null) ?? null;
+        // Claude reads the first page when there is no identifier on it (with a key set).
+        const firstPage = pages[0]?.slice(0, 3000).trim();
+        if (!draft && firstPage && lookups().some((l) => l.id === "claude-find")) {
+          draft = await lookups().find((l) => l.id === "claude-find")!.resolve(`The first page of a paper's PDF:\n${firstPage}`).catch(() => null);
+        }
+        draft ??= { type: "article", title: fallbackTitle(title, file.name), authors: [], fields: {} };
+        counts[await props.onAddPdf(draft, bytes)]++;
+      } catch (err) {
+        failed.push(`${file.name} (${(err as Error).message})`);
+      }
+    }
+    setMessage(
+      [
+        counts.added && `Added ${counts.added} paper${counts.added > 1 ? "s" : ""} with ${counts.added > 1 ? "their PDFs" : "its PDF"}.`,
+        counts.attached && `Attached ${counts.attached} PDF${counts.attached > 1 ? "s" : ""} to papers already in your library.`,
+        counts.had && `${counts.had} already in your library with a PDF, left unchanged.`,
+        failed.length && `Couldn't read: ${failed.join(", ")}`,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+    setWorking(false);
+  }
 
   function submit(e: Event) {
     e.preventDefault();
@@ -1791,6 +1890,10 @@ function AddPanel(props: { initial?: string; onClose(): void; onAdd(d: PaperDraf
         <div class="row">
           <button class="primary" type="submit" disabled={working || !props.canAdd}>{working ? "Looking up…" : "Add"}</button>
           <label class="button">
+            Add PDF files
+            <input type="file" accept="application/pdf,.pdf" multiple onChange={(e) => { const fs = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ""; fs.length && addPdfs(fs); }} />
+          </label>
+          <label class="button">
             Import a .bib file
             <input type="file" accept={importers().map((i) => i.accepts).join(",")} onChange={(e) => e.currentTarget.files?.[0] && onFile(e.currentTarget.files[0])} />
           </label>
@@ -1798,7 +1901,7 @@ function AddPanel(props: { initial?: string; onClose(): void; onAdd(d: PaperDraf
         </div>
         {message && <p class="message">{message}</p>}
         <p class="muted small">
-          On your phone, install Lightkone (browser menu → Install app) and share a paper's page to it. On a computer, drag this button to
+          On your phone, install Lightkone (browser menu → Install app), then share a paper's page or a PDF file to it. On a computer, drop PDF files anywhere on Lightkone, or drag this button to
           your bookmarks bar and click it on any paper's page:{" "}
           <a class="bookmarklet" href={bookmarklet(location.origin + location.pathname)} onClick={(e) => e.preventDefault()}>
             + Lightkone
