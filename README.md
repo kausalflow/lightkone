@@ -58,7 +58,8 @@ opened.
 
 ## Moving from Paperpile
 
-Either import Paperpile's BibTeX export with **Add paper → Import a .bib file**,
+[docs/PAPERPILE.md](docs/PAPERPILE.md) walks through it step by step for each
+kind of storage. In short: either import Paperpile's BibTeX export with **Add paper → Import a .bib file**,
 or, if Paperpile already syncs BibTeX to a GitHub repository, choose GitHub
 storage, point it at that repository and set the `.bib` folder (for example
 `paperpile`). Lightkone then picks up every paper Paperpile adds until you
@@ -103,6 +104,10 @@ GitHub** first.
 
 ## More
 
+The documentation is also served with the app, at `/docs/` (built from `docs/*.md`).
+
+- [docs/README.md](docs/README.md): the documentation's contents
+- [docs/PAPERPILE.md](docs/PAPERPILE.md): moving from Paperpile, for each storage
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it fits together, and what comes next
 - [docs/PLUGINS.md](docs/PLUGINS.md): writing a plugin
 - [docs/STORAGE.md](docs/STORAGE.md): setting up each storage backend

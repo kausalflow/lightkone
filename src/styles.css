@@ -754,3 +754,4 @@ svg.map .node-label { font-size: 10px; fill: var(--text, currentColor); paint-or
 details.guide { border-bottom: 1px solid var(--line); padding: 10px 0; }
 details.guide summary { cursor: pointer; font-weight: 560; }
 details.guide ul { margin-top: 8px; }
+.info-panel a.button { color: var(--text); text-decoration: none; }

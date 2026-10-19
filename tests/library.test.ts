@@ -73,6 +73,15 @@ describe("search", () => {
     expect(search(lib.papers, "has:abstract")).toHaveLength(1);
   });
 
+  it("finds what is missing with no:", () => {
+    expect(search(lib.papers, "no:abstract")).toHaveLength(2);
+    // A file path from Paperpile counts for has:pdf, but only a PDF in storage clears no:pdf.
+    const p = { ...lib.papers[0], file: "All Papers/WILSON/Wilson 1983.pdf" };
+    expect(search([p], "has:pdf")).toHaveLength(1);
+    expect(search([p], "no:pdf")).toHaveLength(1);
+    expect(search([{ ...p, pdf: "papers/All Papers/WILSON/Wilson 1983.pdf" }], "no:pdf")).toHaveLength(0);
+  });
+
   it("parses quoted filters", () => {
     expect(parseQuery('tag:"machine learning" neural')).toMatchObject({ tags: ["machine learning"], words: ["neural"] });
   });

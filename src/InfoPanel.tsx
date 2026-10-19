@@ -38,6 +38,9 @@ export function InfoPanel(props: { page: InfoPage; onTour(): void; onClose(): vo
         {page === "data" && <Data />}
         {page === "keys" && <Keys />}
         <div class="row">
+          <a class="button" href="docs/" target="_blank" rel="noopener">
+            Full documentation
+          </a>
           <button onClick={props.onClose}>Close</button>
         </div>
       </div>
@@ -73,6 +76,10 @@ function Start(props: { onTour(): void }) {
       </ol>
       <p class="muted small">
         A new library starts with two example papers, tagged Example, to try things on. Move them to the trash whenever you like; they won't come back.
+      </p>
+      <p>
+        Coming from Paperpile? <a href="docs/paperpile.html" target="_blank" rel="noopener">Moving from Paperpile</a> brings your library,
+        folders, labels and PDFs over, step by step for each kind of storage.
       </p>
       <div class="row">
         <button onClick={props.onTour}>Show the welcome tour again</button>

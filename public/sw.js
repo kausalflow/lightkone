@@ -4,7 +4,7 @@
 // Storage, APIs and other sites are left alone: the app keeps its own offline
 // copy of the library and recent PDFs (src/core/offline.ts).
 
-const CACHE = "lightkone-app-v1";
+const CACHE = "lightkone-app-v2";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./manifest.webmanifest", "./icon.svg"])));
@@ -25,7 +25,8 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== location.origin || url.pathname.includes("/api/") || url.pathname.includes("/__offline/")) return;
 
-  if (req.mode === "navigate") {
+  // The documentation pages (docs/) are ordinary pages, cached under their own address below.
+  if (req.mode === "navigate" && !url.pathname.includes("/docs/")) {
     // Shared links arrive as ./?url=..., so the page is cached under "./" whatever its query.
     e.respondWith(
       fetch(req)
