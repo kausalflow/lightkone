@@ -18,7 +18,9 @@ was last read (the library, notes and the 25 most recent PDFs) in the browser's
 Cache Storage and answers from it when there is no network. PDFs chosen under
 Offline papers are kept there too, outside the 25, within a size limit.
 Highlights written with no network wait there and are written on reconnect. The web app
-manifest makes Lightkone installable and a share target (`?title=&text=&url=`);
+manifest makes Lightkone installable and a share target: shares are posted to
+`app/`, and the service worker turns them into `?title=&text=&url=`, keeping any
+PDF files in a cache for the app to take (`?shared-files`);
 the bookmarklet sends `?add=` (`src/core/capture.ts`).
 
 ## Data

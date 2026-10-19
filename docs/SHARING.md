@@ -19,9 +19,10 @@ Home Screen** in Safari). Then:
 
 - it opens offline, with the library and the last 25 PDFs you opened;
 - on Android it appears in the share menu: share a paper's page, or an arXiv
-  or DOI link, to Lightkone and it is added.
+  or DOI link, to Lightkone and it is added. Share a downloaded PDF (from
+  Files or Chrome's Downloads) and the paper is added with its PDF.
 
-On a computer, drag the **+ Lightkone** button from the Add panel to the
+On a computer, drop PDF files on Lightkone to add them, or drag the **+ Lightkone** button from the Add panel to the
 bookmarks bar. Clicked on a paper's page, it adds that paper.
 
 ## Shared libraries

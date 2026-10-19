@@ -40,6 +40,12 @@ Details come from arXiv, Crossref, Semantic Scholar and OpenAlex. Free PDFs
 are downloaded for you: from arXiv always, and from open-access copies once
 you give a contact email under **Settings → PDFs**.
 
+Have the PDF already, from a journal you subscribe to say? Use **Add PDF
+files**, or drop the files anywhere on Lightkone. Each one is identified from
+the DOI or arXiv id printed on its first page (or by Claude reading that page,
+with a key), added, and filed with its PDF. A PDF for a paper already in your
+library is attached to it.
+
 To bring a whole library, use **Import a .bib file** in the same panel. Coming
 from Paperpile, follow [Moving from Paperpile](PAPERPILE.md) for your PDFs and
 folders as well.
