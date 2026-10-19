@@ -1,13 +1,15 @@
 // Lightkone's service worker: lets the installed app open without a network.
-// Everything is fetched fresh when online and falls back to the last copy
-// offline, except built files (named by content), which are served from cache.
-// Storage, APIs and other sites are left alone: the app keeps its own offline
-// copy of the library and recent PDFs (src/core/offline.ts).
+// It sits at the site's root, so it serves the landing page and the docs as
+// well as the app under app/. Everything is fetched fresh when online and falls
+// back to the last copy offline, except built files (named by content), which
+// are served from cache. Storage, APIs and other sites are left alone: the app
+// keeps its own offline copy of the library and recent PDFs (src/core/offline.ts).
 
-const CACHE = "lightkone-app-v2";
+const CACHE = "lightkone-app-v3";
+const APP = new URL("./app/", self.location.href).href;
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./manifest.webmanifest", "./icon.svg"])));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./app/", "./manifest.webmanifest", "./icon.svg"])));
   self.skipWaiting();
 });
 
@@ -25,19 +27,18 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== location.origin || url.pathname.includes("/api/") || url.pathname.includes("/__offline/")) return;
 
-  // The documentation pages (docs/) are ordinary pages, cached under their own address below.
-  if (req.mode === "navigate" && !url.pathname.includes("/docs/")) {
-    // Shared links arrive as ./?url=..., so the page is cached under "./" whatever its query.
+  // Opening the app: shared links arrive as app/?url=..., so it is cached under app/ whatever its query.
+  if (req.mode === "navigate" && (url.origin + url.pathname === APP || url.origin + url.pathname === APP + "index.html")) {
     e.respondWith(
       fetch(req)
         .then((res) => {
           if (res.ok) {
             const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put("./", copy));
+            caches.open(CACHE).then((c) => c.put(APP, copy));
           }
           return res;
         })
-        .catch(() => caches.match("./")),
+        .catch(() => caches.match(APP)),
     );
     return;
   }
@@ -49,12 +50,12 @@ self.addEventListener("fetch", (e) => {
     }
     return res;
   };
-  // Built files never change under the same name; anything else is fetched fresh when possible.
+  // Built files never change under the same name; anything else (the landing page, the docs) is fetched fresh when possible.
   e.respondWith(
     url.pathname.includes("/assets/")
       ? caches.match(req).then((hit) => hit || fetch(req).then(save))
       : fetch(req)
           .then(save)
-          .catch(() => caches.match(req)),
+          .catch(() => caches.match(req, { ignoreSearch: req.mode === "navigate" })),
   );
 });

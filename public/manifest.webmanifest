@@ -3,7 +3,7 @@
   "short_name": "Lightkone",
   "description": "Your research papers: read, highlight, cite and ask Claude.",
   "id": "./",
-  "start_url": "./",
+  "start_url": "./app/",
   "scope": "./",
   "display": "standalone",
   "background_color": "#1d2433",
@@ -15,7 +15,7 @@
     { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "share_target": {
-    "action": "./",
+    "action": "./app/",
     "method": "GET",
     "params": { "title": "title", "text": "text", "url": "url" }
   }

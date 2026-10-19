@@ -1,4 +1,5 @@
 import type { Paper, StorageAdapter } from "./types";
+import { site } from "./site";
 
 // Search by equation: the displayed equations of each arXiv paper in the
 // library, taken from its LaTeX source, and a search that finds an equation
@@ -288,7 +289,7 @@ export async function indexEquations(
   for (const p of todo) {
     if (o.signal?.aborted) break;
     const arxiv = bare(p.arxiv!);
-    const r = await (o.fetch ?? fetch)(`api/tex?arxiv=${encodeURIComponent(arxiv)}`, { signal: o.signal });
+    const r = await (o.fetch ?? fetch)(site(`api/tex?arxiv=${encodeURIComponent(arxiv)}`), { signal: o.signal });
     if (r.status === 429 || r.status >= 500) throw new Error(`arXiv is busy (${r.status}). What was read so far is kept; try again later.`);
     const body = r.ok ? ((await r.json()) as { equations?: string[] }) : { equations: [] };
     s.papers[p.id] = { arxiv, at: new Date().toISOString(), equations: (body.equations ?? []).slice(0, PER_PAPER) };
