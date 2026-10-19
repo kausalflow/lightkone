@@ -27,18 +27,27 @@
 .reader.dark .pdf-page canvas { filter: invert(0.88) hue-rotate(180deg); }
 
 .pdf-marks { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+/* A mark is a button so it can be tapped, but none of the app's button look:
+   their 34px minimum height made each mark cover several lines. */
 .pdf-mark {
   position: absolute;
+  display: block;
+  min-height: 0;
+  min-width: 0;
   padding: 0;
   border: 0;
+  box-shadow: none;
+  transition: none;
   border-radius: 2px;
   background: rgb(255 214 0 / 0.38);
   mix-blend-mode: multiply;
   pointer-events: auto;
   cursor: pointer;
 }
+.pdf-mark:hover { background: rgb(255 200 0 / 0.5); }
 .pdf-mark.noted { box-shadow: inset 0 -2px 0 rgb(200 120 0 / 0.9); }
 .reader.dark .pdf-mark { background: rgb(255 214 0 / 0.3); mix-blend-mode: screen; }
+.reader.dark .pdf-mark:hover { background: rgb(255 214 0 / 0.45); }
 
 .reader-notes {
   width: min(360px, 40%);
@@ -69,6 +78,11 @@
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
   width: max-content;
   max-width: calc(100vw - 24px);
+}
+/* On touch screens the phone's own menu and word look-up sheet cover the
+   bottom of the screen while text is selected, so offer Highlight at the top. */
+@media (pointer: coarse) {
+  .select-sheet { top: calc(56px + env(safe-area-inset-top)); bottom: auto; }
 }
 .note-sheet { display: grid; width: min(520px, calc(100vw - 24px)); }
 .note-sheet .row { margin-top: 0; align-items: center; }

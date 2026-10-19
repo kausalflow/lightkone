@@ -227,7 +227,7 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
       </div>
 
       {selection && !open && !explaining && (
-        <div class="reader-sheet" onMouseDown={(e) => e.preventDefault()}>
+        <div class="reader-sheet select-sheet" onMouseDown={(e) => e.preventDefault()}>
           <button class="primary" onClick={() => addHighlight(false)}>Highlight</button>
           <button onClick={() => addHighlight(true)}>Highlight + note</button>
           <button onClick={() => explain(selection)} title="Claude explains this in the context of the paper">Explain</button>
