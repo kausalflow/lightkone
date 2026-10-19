@@ -4,6 +4,7 @@ import type { Paper } from "./types";
 // somewhere; title and author hits rank higher. Supports filters:
 //   tag:"machine learning"  author:hinton  year:2019  year:2015-2020  has:pdf  has:abstract
 //   in:"Physics/QFT" (that folder and the ones inside it)  is:starred  is:recent  is:trash
+//   no:pdf (no PDF in this library's storage yet)  no:abstract  no:arxiv  no:notes
 // Papers in the trash only show with is:trash. Words also match inside a
 // paper's full text when one is given, ranked below matches in its record.
 
@@ -13,6 +14,8 @@ export interface Query {
   authors: string[];
   years?: [number, number];
   has: string[];
+  /** The opposite of has:, except that no:pdf ignores a file path from another manager. */
+  no: string[];
   folders: string[];
   is: string[];
 }
@@ -20,7 +23,7 @@ export interface Query {
 const fold = (s: string) => s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 export function parseQuery(input: string): Query {
-  const q: Query = { words: [], tags: [], authors: [], has: [], folders: [], is: [] };
+  const q: Query = { words: [], tags: [], authors: [], has: [], no: [], folders: [], is: [] };
   const re = /(\w+):"([^"]*)"|(\w+):(\S+)|"([^"]*)"|(\S+)/g;
   for (const m of input.matchAll(re)) {
     const field = (m[1] ?? m[3])?.toLowerCase();
@@ -28,6 +31,7 @@ export function parseQuery(input: string): Query {
     if (field === "tag") q.tags.push(fold(value));
     else if (field === "author") q.authors.push(fold(value));
     else if (field === "has") q.has.push(value.toLowerCase());
+    else if (field === "no") q.no.push(value.toLowerCase());
     else if (field === "in") q.folders.push(fold(value).replace(/\/+$/, ""));
     else if (field === "is") q.is.push(value.toLowerCase());
     else if (field === "year") {
@@ -60,6 +64,12 @@ function score(p: Paper, q: Query, inText?: InText): number {
     if (h === "abstract" && !p.abstract) return 0;
     if (h === "arxiv" && !p.arxiv) return 0;
     if (h === "notes" && !p.notes) return 0;
+  }
+  for (const n of q.no) {
+    if (n === "pdf" && p.pdf) return 0;
+    if (n === "abstract" && p.abstract) return 0;
+    if (n === "arxiv" && p.arxiv) return 0;
+    if (n === "notes" && p.notes) return 0;
   }
   if (!q.words.length) return 1;
   const title = fold(p.title);

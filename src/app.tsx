@@ -520,6 +520,8 @@ export function App() {
     { id: "settings", group: "Actions", label: "Settings", icon: "settings", keywords: "storage key preferences claude openalex", run: () => setPanel("settings") },
     { id: "help:start", group: "Help", label: "Help: start here", icon: "help", keywords: "getting started intro onboarding", run: about("start") },
     { id: "help:guide", group: "Help", label: "Guide: how to do things", icon: "help", keywords: "help howto manual faq", run: about("guide") },
+    { id: "help:docs", group: "Help", label: "Documentation", icon: "book", keywords: "docs manual paperpile migrate storage r2 s3 github", run: () => window.open("docs/", "_blank", "noopener") },
+    { id: "help:paperpile", group: "Help", label: "Moving from Paperpile", icon: "book", keywords: "docs import migrate bibtex", run: () => window.open("docs/paperpile.html", "_blank", "noopener") },
     { id: "help:tour", group: "Help", label: "Welcome tour", icon: "help", keywords: "onboarding intro help", run: () => { setSideOpen(false); setWelcome(true); } },
     { id: "about:how", group: "Help", label: "How Lightkone works", icon: "info", keywords: "about storage server", run: about("how") },
     { id: "about:data", group: "Help", label: "Your data: what is processed where", icon: "info", keywords: "privacy about", run: about("data") },
@@ -671,6 +673,7 @@ export function App() {
           <nav class="side-links" aria-label="Help">
             <button class="link" onClick={about("start")}>Help</button>
             <button class="link" onClick={about("guide")}>Guide</button>
+            <a class="link" href="docs/" target="_blank" rel="noopener">Docs</a>
             <button class="link" onClick={about("how")}>How it works</button>
             <button class="link" onClick={about("data")}>Your data</button>
             <button class="link" onClick={about("keys")}>Shortcuts</button>
