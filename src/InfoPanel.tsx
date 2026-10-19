@@ -1,11 +1,11 @@
 import { useEffect, useState } from "preact/hooks";
 
-export type InfoPage = "how" | "data" | "keys";
+export type InfoPage = "start" | "guide" | "how" | "data" | "keys";
 
 const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
 
-/** Background pages: how Lightkone works, what is processed where, and its keys. */
-export function InfoPanel(props: { page: InfoPage; onClose(): void }) {
+/** Help, open at any time: a start, a guide to each task, how it works, what is processed where, and the keys. */
+export function InfoPanel(props: { page: InfoPage; onTour(): void; onClose(): void }) {
   const [page, setPage] = useState<InfoPage>(props.page);
   useEffect(() => setPage(props.page), [props.page]);
   useEffect(() => {
@@ -16,10 +16,12 @@ export function InfoPanel(props: { page: InfoPage; onClose(): void }) {
   return (
     <div class="overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
       <div class="panel wide info-panel">
-        <h2>About Lightkone</h2>
+        <h2>Help</h2>
         <div class="tabs" role="tablist">
           {(
             [
+              ["start", "Start here"],
+              ["guide", "Guide"],
               ["how", "How it works"],
               ["data", "Your data"],
               ["keys", "Shortcuts"],
@@ -30,6 +32,8 @@ export function InfoPanel(props: { page: InfoPage; onClose(): void }) {
             </button>
           ))}
         </div>
+        {page === "start" && <Start onTour={props.onTour} />}
+        {page === "guide" && <Guide />}
         {page === "how" && <How />}
         {page === "data" && <Data />}
         {page === "keys" && <Keys />}
@@ -37,6 +41,119 @@ export function InfoPanel(props: { page: InfoPage; onClose(): void }) {
           <button onClick={props.onClose}>Close</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Start(props: { onTour(): void }) {
+  return (
+    <div class="info-body">
+      <p>
+        Lightkone keeps your papers, their PDFs, your highlights and notes in one library you can search, read and cite from. It runs in this
+        browser; the library lives in storage you choose.
+      </p>
+      <h3>First steps</h3>
+      <ol>
+        <li>
+          <strong>Add a paper</strong> with the + button: a DOI, an arXiv id, a link or a title. A free PDF is fetched when there is one.
+        </li>
+        <li>
+          <strong>Bring your library</strong>: in the same place, import a .bib exported from Paperpile, Zotero or Mendeley.
+        </li>
+        <li>
+          <strong>Read</strong>: open a paper and press Read. Select text to highlight it or add a note.
+        </li>
+        <li>
+          <strong>Pick where it lives</strong>: in Settings, move from this browser to an S3 or R2 bucket or a private GitHub repository, so
+          every device sees the same library.
+        </li>
+        <li>
+          <strong>Add a Claude key</strong> in Settings, if you want Ask, Explain and the check in Cite this. It stays in this browser.
+        </li>
+      </ol>
+      <p class="muted small">
+        A new library starts with two example papers, tagged Example, to try things on. Move them to the trash whenever you like; they won't come back.
+      </p>
+      <div class="row">
+        <button onClick={props.onTour}>Show the welcome tour again</button>
+      </div>
+    </div>
+  );
+}
+
+function Guide() {
+  const sections: [string, preact.ComponentChildren[]][] = [
+    [
+      "Adding papers",
+      [
+        "Add paper takes several DOIs, arXiv ids, links or BibTeX entries at once, one per line. With a Claude key, a plain description works too.",
+        "Import a .bib to bring a whole library. Papers already there are matched, not doubled.",
+        "On a phone, install Lightkone from the browser menu and share any paper's page to it. On a computer, use the + Lightkone bookmark from the Add panel.",
+      ],
+    ],
+    [
+      "Reading and highlighting",
+      [
+        "Read opens the PDF. Select text, then Highlight, Note, or Explain (with a Claude key).",
+        "No PDF yet? Get free PDF looks for an open copy, or Attach PDF adds your own file.",
+        "Highlights are kept beside the paper and go out with Export to Obsidian.",
+      ],
+    ],
+    [
+      "Finding",
+      [
+        <>
+          The search box understands <code>author:hinton</code>, <code>year:2015-2020</code>, <code>tag:"machine learning"</code>,{" "}
+          <code>in:"Physics/QFT"</code>, <code>has:pdf</code>, <code>is:starred</code> and <code>is:recent</code>.
+        </>,
+        "Once PDFs have been read for search, the words inside papers are found too, with the page they are on.",
+        "Search by equation finds arXiv papers in your library that use a formula. Ask answers a question from your papers, citing the pages.",
+      ],
+    ],
+    [
+      "Organizing",
+      [
+        "Folders and tags sit in the side bar; a paper can be in several folders. Star the ones you come back to.",
+        "Tidy up finds duplicates and preprints that have since been published.",
+        "Deleted papers wait in the Trash until you empty it.",
+      ],
+    ],
+    [
+      "Writing",
+      [
+        "Cite, on a paper, copies it as APA, Markdown, \\cite or BibTeX.",
+        "Writing helpers suggest what to cite for a sentence and build a .bib from a .tex file.",
+        "Sync .bib keeps a folder's .bib in a GitHub repository for Overleaf; Watch my manuscript keeps it to what the manuscript cites.",
+      ],
+    ],
+    [
+      "Discovering",
+      [
+        "New on arXiv ranks each day's preprints in the categories you follow by how close they are to your library.",
+        "The citation map shows which of your papers cite which, and what they cite that you don't have yet. Find related, on a paper, lists its neighbours.",
+      ],
+    ],
+    [
+      "Devices, sharing and AI apps",
+      [
+        "Settings decides where the library lives. A library kept only in this browser is lost if the browser's site data is cleared, so move it to a bucket or GitHub once it matters.",
+        "Shared libraries are a bucket or repository a group can reach; send an invite link from that panel. Keys never travel in it.",
+        "Settings also makes a private address that lets Claude and other AI apps (MCP) read and add to your library.",
+      ],
+    ],
+  ];
+  return (
+    <div class="info-body">
+      {sections.map(([title, items]) => (
+        <details key={title} class="guide">
+          <summary>{title}</summary>
+          <ul>
+            {items.map((x, i) => (
+              <li key={i}>{x}</li>
+            ))}
+          </ul>
+        </details>
+      ))}
     </div>
   );
 }
@@ -118,6 +235,7 @@ function Keys() {
     [`${MOD} K`, "Find any tool, view, folder, tag or paper"],
     ["/", "Search the library"],
     ["j  k", "Next and previous paper"],
+    ["?", "Open Help"],
     ["Esc", "Close the paper, a panel or the reader"],
     ["↑  ↓  Enter", "Move and open, in the command list"],
   ];

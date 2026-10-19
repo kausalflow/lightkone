@@ -21,6 +21,8 @@ import { EquationPanel } from "./EquationPanel";
 import { SharedPanel } from "./SharedPanel";
 import { CommandPalette, type Command } from "./CommandPalette";
 import { InfoPanel, type InfoPage } from "./InfoPanel";
+import { Welcome } from "./Welcome";
+import { demoDrafts, isDemo, markDemoOffered, markWelcomed, wantsDemo, welcomed } from "./core/demo";
 import { activeId, activeStorage, copyPapers, readInvite, sharedLibraries, type Invite } from "./core/shared";
 import type { ManuscriptReport } from "./core/manuscript";
 import { browserCache, withOfflineCache, type OfflineStorage } from "./core/offline";
@@ -79,7 +81,10 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
   const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | null>(null);
-  const [infoPage, setInfoPage] = useState<InfoPage>("how");
+  const [infoPage, setInfoPage] = useState<InfoPage>("start");
+  const [welcome, setWelcome] = useState(false);
+  // A brand-new library in this browser gets an example paper once storage is open.
+  const [demoPending, setDemoPending] = useState(false);
   const [readingPage, setReadingPage] = useState(0);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -142,7 +147,9 @@ export function App() {
           // A manuscript may have changed since: bring its .bib in step.
           syncBibs();
         } else if (!loaded && !library.papers.length && !captured && !invite) {
-          setPanel("add");
+          if (wantsDemo({ provider: provider.id, shared: Boolean(active.shared), loaded, papers: library.papers.length, arriving: false })) setDemoPending(true);
+          if (welcomed()) setPanel("add");
+          else setWelcome(true);
         }
       } catch (e) {
         if (cancelled) return;
@@ -199,6 +206,20 @@ export function App() {
       setReadingPage(page);
       setReading(id);
     } else setPanel(null);
+  }
+
+  useEffect(() => {
+    if (!storage || !demoPending) return;
+    setDemoPending(false);
+    markDemoOffered();
+    addDrafts(demoDrafts());
+  }, [storage, demoPending]);
+  const demos = library.papers.filter((p) => isDemo(p) && !p.trashed);
+  const demo = demos[0];
+
+  function closeWelcome() {
+    markWelcomed();
+    setWelcome(false);
   }
 
   // A link from an exported note, ?open=<paper id>&page=<n>, opens that paper at that page.
@@ -368,11 +389,15 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (panel || tidying || syncing !== null || reading || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (panel || welcome || tidying || syncing !== null || reading || e.metaKey || e.ctrlKey || e.altKey) return;
       if (t.closest("input, textarea, select, [contenteditable]")) return;
       if (e.key === "/") {
         e.preventDefault();
         searchRef.current?.focus();
+      } else if (e.key === "?") {
+        e.preventDefault();
+        setInfoPage("start");
+        setPanel("info");
       } else if (e.key === "Escape" && selected) {
         setSelected(null);
       } else if (e.key === "j" || e.key === "k") {
@@ -387,7 +412,7 @@ export function App() {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [visible, selected, panel, tidying, syncing, reading]);
+  }, [visible, selected, panel, welcome, tidying, syncing, reading]);
 
   // Ctrl/⌘ K opens the command palette from anywhere but the reader.
   useEffect(() => {
@@ -493,9 +518,12 @@ export function App() {
     ...(visible.length ? [{ id: "bib", group: "Actions", label: "Export papers in view as .bib", icon: "download", keywords: "bibtex download", run: () => download("library.bib", libraryToBibtex(visible)) } as Command] : []),
     { id: "theme", group: "Actions", label: `Theme: ${THEME_NAMES[nextTheme(currentTheme())]}`, icon: "moon", hint: `Now: ${THEME_NAMES[currentTheme()]}`, keywords: "dark light mode appearance", run: () => chooseTheme(nextTheme(currentTheme())) },
     { id: "settings", group: "Actions", label: "Settings", icon: "settings", keywords: "storage key preferences claude openalex", run: () => setPanel("settings") },
-    { id: "about:how", group: "About", label: "How Lightkone works", icon: "info", keywords: "about storage server", run: about("how") },
-    { id: "about:data", group: "About", label: "Your data: what is processed where", icon: "info", keywords: "privacy about", run: about("data") },
-    { id: "about:keys", group: "About", label: "Keyboard shortcuts", icon: "info", keywords: "keys help", run: about("keys") },
+    { id: "help:start", group: "Help", label: "Help: start here", icon: "help", keywords: "getting started intro onboarding", run: about("start") },
+    { id: "help:guide", group: "Help", label: "Guide: how to do things", icon: "help", keywords: "help howto manual faq", run: about("guide") },
+    { id: "help:tour", group: "Help", label: "Welcome tour", icon: "help", keywords: "onboarding intro help", run: () => { setSideOpen(false); setWelcome(true); } },
+    { id: "about:how", group: "Help", label: "How Lightkone works", icon: "info", keywords: "about storage server", run: about("how") },
+    { id: "about:data", group: "Help", label: "Your data: what is processed where", icon: "info", keywords: "privacy about", run: about("data") },
+    { id: "about:keys", group: "Help", label: "Keyboard shortcuts", icon: "info", keywords: "keys help", run: about("keys") },
     ...tools.map((t) => ({ id: t.id, group: t.group, label: t.label, icon: t.icon, hint: t.hint, run: t.run })),
     ...(
       [
@@ -558,6 +586,9 @@ export function App() {
             <Icon name="download" />
           </button>
           <ThemeButton class="hide-phone" />
+          <button class="icon-btn" onClick={about("start")} title="Help (?)" aria-label="Help">
+            <Icon name="help" />
+          </button>
           <button class="icon-btn" onClick={() => setPanel("settings")} title="Settings" aria-label="Settings">
             <Icon name="settings" />
           </button>
@@ -637,7 +668,9 @@ export function App() {
             <Icon name="cloud" size={15} />
             <span>{where ? `${where}${seededNote}${bibNote}` : status}</span>
           </div>
-          <nav class="side-links" aria-label="About">
+          <nav class="side-links" aria-label="Help">
+            <button class="link" onClick={about("start")}>Help</button>
+            <button class="link" onClick={about("guide")}>Guide</button>
             <button class="link" onClick={about("how")}>How it works</button>
             <button class="link" onClick={about("data")}>Your data</button>
             <button class="link" onClick={about("keys")}>Shortcuts</button>
@@ -690,6 +723,22 @@ export function App() {
           <p class="text-note muted small">
             {indexing ? "Reading your PDFs so their text can be searched." : `${unindexed} PDF${unindexed > 1 ? "s haven't" : " hasn't"} been read for search yet.`}{" "}
             <button class="link" onClick={indexPdfs}>{indexing ? "Stop" : "Read them now"}</button>
+          </p>
+        )}
+        {demo && query !== "is:trash" && (
+          <p class="text-note muted small">
+            {demos.length > 1 ? "The two example papers are" : "The example paper is"} here to try things on: read, highlight, ask.{" "}
+            <button
+              class="link"
+              onClick={() => {
+                const now = new Date().toISOString();
+                demos.forEach((p) => library.update(p.id, { trashed: now }));
+                if (demos.some((p) => p.id === selected)) setSelected(null);
+                scheduleSave();
+              }}
+            >
+              {demos.length > 1 ? "Remove them" : "Remove it"}
+            </button>
           </p>
         )}
         <ul class="papers">
@@ -948,7 +997,29 @@ export function App() {
           onClose={() => setPanel((p) => (p === "palette" ? null : p))}
         />
       )}
-      {panel === "info" && <InfoPanel page={infoPage} onClose={() => setPanel(null)} />}
+      {panel === "info" && <InfoPanel page={infoPage} onTour={() => { setPanel(null); setWelcome(true); }} onClose={() => setPanel(null)} />}
+      {welcome && (
+        <Welcome
+          hasDemo={Boolean(demo) || demoPending}
+          onOpenDemo={() => {
+            closeWelcome();
+            if (demo) {
+              setSelected(demo.id);
+              setResult(null);
+            }
+          }}
+          onAdd={() => {
+            closeWelcome();
+            setPanel("add");
+          }}
+          onHelp={() => {
+            closeWelcome();
+            setInfoPage("start");
+            setPanel("info");
+          }}
+          onClose={closeWelcome}
+        />
+      )}
       {panel === "settings" && <SettingsPanel settings={settings} onSave={updateSettings} onClose={() => setPanel(null)} />}
     </div>
   );
