@@ -7,7 +7,7 @@ const paper: Paper = {
   authors: ["Jumper, John", "Evans, Richard"], year: 2021, venue: "Nature", doi: "10.1038/s41586-021-03819-2",
   tags: ["protein folding", "ML"], added: "2026-01-01", fields: {}, notes: "Read section 1.9 again.",
 };
-const app = "https://lightkone.lab.leima.is/";
+const app = "https://lightkone.lab.kausalflow.com/";
 const hl = [{ id: "h", page: 3, rects: [], text: "self-distillation\nwith Uniclust30", note: "Key trick.", created: "2026-01-01" }];
 
 describe("obsidian export", () => {

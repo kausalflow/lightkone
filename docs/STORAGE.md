@@ -79,7 +79,7 @@ downloads.
    ```json
    [
      {
-       "AllowedOrigins": ["https://lightkone.lab.leima.is"],
+       "AllowedOrigins": ["https://lightkone.lab.kausalflow.com"],
        "AllowedMethods": ["GET", "PUT", "DELETE", "HEAD"],
        "AllowedHeaders": ["*"],
        "ExposeHeaders": ["ETag"],

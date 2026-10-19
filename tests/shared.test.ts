@@ -27,9 +27,9 @@ describe("shared libraries", () => {
   });
 
   it("invites with where the library lives, never the token", () => {
-    const link = inviteLink("https://lightkone.lab.leima.is/?open=x#y", group, fields);
+    const link = inviteLink("https://lightkone.lab.kausalflow.com/?open=x#y", group, fields);
     expect(link).not.toContain("secret");
-    expect(link.startsWith("https://lightkone.lab.leima.is/?join=")).toBe(true);
+    expect(link.startsWith("https://lightkone.lab.kausalflow.com/?join=")).toBe(true);
     expect(readInvite(new URL(link).search)).toEqual({ name: "Cosmology group", provider: "github", config: { repo: "lab/papers", branch: "main" } });
     expect(readInvite("?join=not-base64!")).toBeNull();
     expect(readInvite(`?join=${btoa(JSON.stringify({ name: "x", provider: "github", config: { repo: "a/b", evil: { nested: 1 } } }))}`)).toEqual({ name: "x", provider: "github", config: { repo: "a/b" } });

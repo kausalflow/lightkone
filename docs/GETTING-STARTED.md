@@ -4,7 +4,7 @@
 
 Open your Lightkone site in a browser. Its front page says what Lightkone
 is; **Open Lightkone** takes you to the app, which lives at `/app/` (for
-example `https://lightkone.lab.leima.is/app/`). Bookmark that address to go
+example `https://lightkone.lab.kausalflow.com/app/`). Bookmark that address to go
 straight to your library next time. There is no account to create. The
 first time, a short tour explains the basics. A new library starts with two
 example papers, *Attention Is All You Need* and *Transformer models: an

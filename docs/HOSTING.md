@@ -13,7 +13,7 @@ are set in the repository (Settings → Secrets and variables → Actions):
 | --- | --- | --- |
 | `CLOUDFLARE_ACCOUNT_ID` | secret | Shown on the Cloudflare dashboard's account home, right sidebar. |
 | `CLOUDFLARE_API_TOKEN` | secret | My Profile → API Tokens → Create Token → Custom token, permission **Account · Cloudflare Pages · Edit**, limited to your account. |
-| `PAGES_DOMAIN` | variable (optional) | A custom domain, e.g. `lightkone.lab.leima.is`. |
+| `PAGES_DOMAIN` | variable (optional) | A custom domain, e.g. `lightkone.lab.kausalflow.com`. |
 | `PAGES_PROJECT` | variable (optional) | Pages project name; defaults to `lightkone`. |
 
 The first run creates the Pages project; the app is then at
