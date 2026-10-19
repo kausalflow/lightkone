@@ -94,6 +94,9 @@
       .lede { font-size: clamp(18px, 2.2vw, 21px); color: var(--muted); max-width: 40em; margin: 0; }
       .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
       .bookmark { font-size: 15px; color: var(--muted); margin: 4px 0 0; }
+      .maker { font-size: 15px; color: var(--muted); margin: 0; }
+      .maker a { color: var(--text); }
+      footer .maker-foot { margin-left: auto; }
       .bookmark code { font: 14px var(--mono); color: var(--text); background: var(--sunken); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
 
       .shots { padding-block: 24px 40px; }
@@ -180,6 +183,7 @@
             Lightkone keeps your papers, PDFs, highlights and notes as plain files in your own bucket or GitHub repository. Read and highlight on any
             device, search inside every PDF, keep your citation keys stable for LaTeX, and ask Claude about your library with your own key.
           </p>
+          <p class="maker">A <a href="https://kausalflow.com" rel="noopener">KausalFlow</a> project. KausalFlow builds open tools that make the life of scientists easier.</p>
           <div class="cta">
             <a class="btn primary" href="app/">Open Lightkone</a>
             <a class="btn" href="docs/paperpile.html">Moving from Paperpile</a>
@@ -299,6 +303,7 @@ papers/All Papers/HINTON/     the PDFs, filed the way Paperpile files them</pre>
         <a href="docs/storage.html">Storage</a>
         <a href="docs/privacy.html">Your data</a>
         <a href="docs/hosting.html">Host your own</a>
+        <span class="maker-foot">Made by <a href="https://kausalflow.com" rel="noopener">KausalFlow</a></span>
       </div>
     </footer>
     <script>
