@@ -734,4 +734,23 @@ svg.map .node-label { font-size: 10px; fill: var(--text, currentColor); paint-or
 }
 @media (max-width: 420px) {
   .brand-name { display: none; }
+  /* Narrow phones: the save state is a dot, so the header keeps to two rows. */
+  .save .save-text { display: none; }
+  .save.pending::before, .save.saving::before, .save.error::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 }
+
+/* Welcome tour and Help */
+.welcome { width: min(460px, 100%); }
+.welcome-icon { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); margin-bottom: 14px; }
+.welcome-body { line-height: 1.55; min-height: 120px; }
+.welcome-body p { margin: 0 0 10px; }
+.welcome-dots { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
+.welcome-dots button { width: 8px; height: 8px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: var(--line); box-shadow: none; }
+.welcome-dots button.on { background: var(--accent); }
+.welcome-gap { flex: 1; }
+.tabs { overflow-x: auto; scrollbar-width: none; }
+.tabs button { white-space: nowrap; flex: none; }
+.info-body ol { margin: 0 0 12px; padding-left: 20px; display: grid; gap: 8px; }
+details.guide { border-bottom: 1px solid var(--line); padding: 10px 0; }
+details.guide summary { cursor: pointer; font-weight: 560; }
+details.guide ul { margin-top: 8px; }
