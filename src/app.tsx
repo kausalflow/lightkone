@@ -491,6 +491,7 @@ export function App() {
     ...(hasPapers ? [{ id: "ask", group: "Actions", label: "Ask your library", icon: "sparkle", keywords: "question claude ai", run: () => setPanel("ask") } as Command] : []),
     { id: "search", group: "Actions", label: "Search the library", icon: "search", keywords: "find filter", run: () => setTimeout(() => searchRef.current?.focus()) },
     ...(visible.length ? [{ id: "bib", group: "Actions", label: "Export papers in view as .bib", icon: "download", keywords: "bibtex download", run: () => download("library.bib", libraryToBibtex(visible)) } as Command] : []),
+    { id: "theme", group: "Actions", label: `Theme: ${THEME_NAMES[nextTheme(currentTheme())]}`, icon: "moon", hint: `Now: ${THEME_NAMES[currentTheme()]}`, keywords: "dark light mode appearance", run: () => chooseTheme(nextTheme(currentTheme())) },
     { id: "settings", group: "Actions", label: "Settings", icon: "settings", keywords: "storage key preferences claude openalex", run: () => setPanel("settings") },
     { id: "about:how", group: "About", label: "How Lightkone works", icon: "info", keywords: "about storage server", run: about("how") },
     { id: "about:data", group: "About", label: "Your data: what is processed where", icon: "info", keywords: "privacy about", run: about("data") },
@@ -519,7 +520,7 @@ export function App() {
         </button>
         <div class="brand">
           <img class="logo" src="./icon.svg" alt="" />
-          <span>Lightkone</span>
+          <span class="brand-name">Lightkone</span>
         </div>
         <label class="search">
           <Icon name="search" />
@@ -536,10 +537,10 @@ export function App() {
         </label>
         <div class="top-actions">
           {saveLabel && (
-            <span class={`save ${saveState}`} role="status" title={saveState === "merged" ? "Merged with changes saved on another device or by Claude" : undefined}>
+            <span class={`save ${saveState}`} role="status" aria-label={saveLabel} title={saveState === "merged" ? "Merged with changes saved on another device or by Claude" : saveLabel}>
               {saveState === "saved" && <Icon name="check" size={14} />}
               {saveState === "merged" && <Icon name="sync" size={14} />}
-              {saveLabel}
+              <span class="save-text">{saveLabel}</span>
             </span>
           )}
           <button class="icon-btn" onClick={() => setPanel("palette")} title={`Find a tool, folder, tag or paper (${MOD}K)`} aria-label="Commands">
@@ -556,7 +557,7 @@ export function App() {
           <button class="icon-btn hide-phone" onClick={() => download("library.bib", libraryToBibtex(visible))} disabled={!visible.length} title="Export the papers in view as BibTeX" aria-label="Export .bib">
             <Icon name="download" />
           </button>
-          <ThemeButton />
+          <ThemeButton class="hide-phone" />
           <button class="icon-btn" onClick={() => setPanel("settings")} title="Settings" aria-label="Settings">
             <Icon name="settings" />
           </button>
@@ -977,27 +978,35 @@ try {
   // follow the system
 }
 
+const THEME_EVENT = "lightkone-theme";
+const currentTheme = () => (document.documentElement.dataset.theme as Theme) || "";
+const nextTheme = (t: Theme): Theme => (t === "" ? "light" : t === "light" ? "dark" : "");
+const THEME_NAMES = { "": "follow the system", light: "light", dark: "dark" } as const;
+
+/** Choose the theme, remember it on this device, and tell the theme button. */
+function chooseTheme(t: Theme) {
+  applyTheme(t);
+  try {
+    localStorage.setItem(THEME_KEY, t);
+  } catch {
+    // fine for this visit
+  }
+  dispatchEvent(new Event(THEME_EVENT));
+}
+
 /** Cycles between following the system, light and dark; remembered on this device. */
-function ThemeButton() {
-  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme) || "");
-  const next: Theme = theme === "" ? "light" : theme === "light" ? "dark" : "";
+function ThemeButton(props: { class?: string }) {
+  const [theme, setTheme] = useState<Theme>(currentTheme);
+  useEffect(() => {
+    const sync = () => setTheme(currentTheme());
+    addEventListener(THEME_EVENT, sync);
+    return () => removeEventListener(THEME_EVENT, sync);
+  }, []);
+  const next = nextTheme(theme);
   const label = { "": "Theme: follows your system", light: "Theme: light", dark: "Theme: dark" }[theme];
   const darkNow = theme === "dark" || (theme === "" && matchMedia("(prefers-color-scheme: dark)").matches);
   return (
-    <button
-      class="icon-btn"
-      title={`${label}. Click for ${next || "system"}.`}
-      aria-label={label}
-      onClick={() => {
-        setTheme(next);
-        applyTheme(next);
-        try {
-          localStorage.setItem(THEME_KEY, next);
-        } catch {
-          // fine for this visit
-        }
-      }}
-    >
+    <button class={`icon-btn ${props.class ?? ""}`} title={`${label}. Click for ${next || "system"}.`} aria-label={label} onClick={() => chooseTheme(next)}>
       <Icon name={darkNow ? "moon" : "sun"} />
       {theme === "" && <span class="auto-dot" />}
     </button>
