@@ -1,5 +1,6 @@
 import type { Paper, PaperDraft, StorageAdapter } from "./types";
 import { terms } from "./ask";
+import { site } from "./site";
 
 // New on arXiv for you: each day's preprints in the categories you read,
 // ranked by how close each is to papers already in your library, after
@@ -210,7 +211,7 @@ export function toDraft(p: Preprint): PaperDraft {
 /** Ask the /api/arxiv pass-through. */
 export async function getPreprints(query: { cats?: string[]; ids?: string[] }, f: typeof fetch = fetch, signal?: AbortSignal): Promise<Preprint[]> {
   const q = query.ids?.length ? `ids=${query.ids.join(",")}` : `cats=${(query.cats ?? []).join(",")}`;
-  const r = await f(`api/arxiv?${q}`, { signal });
+  const r = await f(site(`api/arxiv?${q}`), { signal });
   if (!r.ok) {
     const msg = await r.json().then((b: any) => b?.error, () => null);
     throw new Error(msg || `arXiv could not be reached (${r.status}).`);

@@ -1,4 +1,5 @@
 import type { Paper } from "./types";
+import { site } from "./site";
 
 // Finding a free PDF for a paper. arXiv allows browser requests, so its PDFs
 // are fetched directly. For a DOI, the site's small PDF service
@@ -38,7 +39,7 @@ export async function findOpenPdf(p: Pick<Paper, "arxiv" | "doi">, opts: OpenPdf
   }
   if (p.doi && opts.email && opts.service !== "") {
     const q = new URLSearchParams({ doi: p.doi, email: opts.email });
-    return get(f, `${opts.service || "api/pdf"}?${q}`).catch(() => null);
+    return get(f, site(`${opts.service || "api/pdf"}?${q}`)).catch(() => null);
   }
   return null;
 }

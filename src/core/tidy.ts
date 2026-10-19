@@ -1,5 +1,6 @@
 import type { Paper, PaperDraft } from "./types";
 import { normArxiv, normDoi } from "./library";
+import { site } from "./site";
 
 // Tidying a library: finding the same paper entered twice, and preprints that
 // have since been published.
@@ -94,7 +95,7 @@ export async function findPublished(
   const found: Published[] = [];
   for (let i = 0; i < preprints.length; i += 100) {
     const chunk = preprints.slice(i, i + 100);
-    const rows: { arxiv: string; doi?: string; venue?: string }[] = await get(`${service}?arxiv=${chunk.map((p) => normArxiv(p.arxiv)).join(",")}`);
+    const rows: { arxiv: string; doi?: string; venue?: string }[] = await get(site(`${service}?arxiv=${chunk.map((p) => normArxiv(p.arxiv)).join(",")}`));
     for (const [j, p] of chunk.entries()) {
       onProgress(i + j + 1, preprints.length);
       const row = rows.find((r) => r.arxiv.toLowerCase() === normArxiv(p.arxiv));

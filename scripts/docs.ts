@@ -92,7 +92,7 @@ export function buildPage(dir: string, name: string): string {
 <header class="top">
   <a class="brand" href="index.html"><img src="../icon.svg" alt="" width="26" height="26"> Lightkone <span>docs</span></a>
   <details class="menu"><summary>Pages</summary><nav aria-label="Documentation">${nav}</nav></details>
-  <a class="open" href="../">Open Lightkone</a>
+  <a class="open" href="../app/">Open Lightkone</a>
 </header>
 <div class="wrap">
   <nav class="side" aria-label="Documentation">${nav}</nav>

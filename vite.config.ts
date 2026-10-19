@@ -7,5 +7,8 @@ import { docsSite } from "./scripts/docs";
 export default defineConfig({
   base: "./",
   plugins: [preact(), docsSite()],
+  // Two pages: the landing page at the site's root, and the app at app/ (a fixed
+  // address to bookmark and install). The docs are added by docsSite().
+  build: { rollupOptions: { input: { landing: "index.html", app: "app/index.html" } } },
   test: { environment: "node" },
 });

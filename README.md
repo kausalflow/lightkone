@@ -32,7 +32,7 @@ plain files in storage you choose.
 
 ```sh
 npm install
-npm run dev        # http://localhost:5173
+npm run dev        # landing page at http://localhost:5173, the app at /app/
 npm run check      # type check and tests
 npm run build      # static site in dist/
 ```
