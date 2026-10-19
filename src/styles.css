@@ -516,6 +516,9 @@ label.file input, label.button input { display: none; }
   .search kbd { display: none; }
   .top-actions .add { padding: 0 10px; }
   .top-actions .add .label, .ask-btn .label, .hide-phone { display: none; }
+  .top { flex-wrap: wrap; }
+  .top-actions { gap: 2px; }
+  .save.saved .save-text, .save.merged .save-text { display: none; }
   .phone-only { display: block; }
   .list-head { padding: 14px 16px 10px; }
   .view h1 { font-size: 20px; }
@@ -728,4 +731,7 @@ svg.map .node-label { font-size: 10px; fill: var(--text, currentColor); paint-or
 .info-keys dd { margin: 0; }
 @media (max-width: 600px) {
   .info-table > div { grid-template-columns: 1fr; gap: 2px; }
+}
+@media (max-width: 420px) {
+  .brand-name { display: none; }
 }
