@@ -22,10 +22,10 @@ describe("capture", () => {
   });
 
   it("builds a bookmarklet that opens this app", () => {
-    const b = bookmarklet("https://lightkone.lab.leima.is/");
+    const b = bookmarklet("https://lightkone.lab.kausalflow.com/");
     expect(b.startsWith("javascript:")).toBe(true);
     const code = decodeURI(b.slice("javascript:".length));
-    expect(code).toContain('"https://lightkone.lab.leima.is/"+\'?add=\'');
+    expect(code).toContain('"https://lightkone.lab.kausalflow.com/"+\'?add=\'');
     expect(() => new Function(code)).not.toThrow();
   });
 });

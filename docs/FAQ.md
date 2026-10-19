@@ -28,7 +28,7 @@ reads what you export or copy.
 
 **"Could not open …: Failed to fetch"** with a bucket: the bucket's CORS rule
 doesn't allow the site. Add the exact address (for example
-`https://lightkone.lab.leima.is`) to *AllowedOrigins*. See
+`https://lightkone.lab.kausalflow.com`) to *AllowedOrigins*. See
 [Where your library lives](STORAGE.md#cloudflare-r2).
 
 **403, Access Denied, or 404 from GitHub**: the key or token can't reach that
