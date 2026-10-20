@@ -14,6 +14,7 @@ import { Reader } from "./reader/Reader";
 import { AskPanel } from "./AskPanel";
 import { ObsidianPanel } from "./ObsidianPanel";
 import { QuestionDialog, type Question } from "./QuestionDialog";
+import { byUse, ChipPicker } from "./ChipPicker";
 import { OfflinePanel } from "./OfflinePanel";
 import { WritingPanel } from "./WritingPanel";
 import { CitationMap } from "./CitationMap";
@@ -1357,16 +1358,11 @@ function Detail(props: {
   onOffline(): void;
 }) {
   const { paper: p, storage } = props;
-  const [tagText, setTagText] = useState(p.tags.join(", "));
-  const [folderText, setFolderText] = useState("");
   const math = useMath();
-  const known = allFolders(props.library);
-
-  function addFolder() {
-    const f = cleanFolder(folderText);
-    if (f) props.onChange({ folders: [...new Set([...(p.folders ?? []), f])] });
-    setFolderText("");
-  }
+  // Folders include their parents (Physics for Physics/QFT), so a new subfolder can be picked by its path.
+  const live = props.library.filter((q) => !q.trashed);
+  const knownFolders = [...new Set([...byUse(live.map((q) => q.folders ?? [])), ...allFolders(live)])];
+  const knownTags = byUse(live.map((q) => q.tags));
   const [notes, setNotes] = useState(p.notes ?? "");
   const [addedTitles, setAddedTitles] = useState<Set<string>>(new Set());
   const [showAllAuthors, setShowAllAuthors] = useState(false);
@@ -1547,33 +1543,26 @@ function Detail(props: {
 
         <section class="block">
           <h3>Folders</h3>
-          {(p.folders ?? []).length > 0 && (
-            <div class="chips folders">
-              {(p.folders ?? []).map((f) => (
-                <span class="chip" key={f}>
-                  <Icon name="folder" size={13} />
-                  {f}
-                  <button class="link" aria-label={`Take out of ${f}`} onClick={() => props.onChange({ folders: (p.folders ?? []).filter((x) => x !== f) })}>
-                    <Icon name="x" size={12} />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-          <form class="add-folder" onSubmit={(e) => { e.preventDefault(); addFolder(); }}>
-            <input list="known-folders" value={folderText} placeholder="Add to folder, e.g. Physics/QFT" onInput={(e) => setFolderText(e.currentTarget.value)} />
-            <datalist id="known-folders">{known.map((f) => <option key={f} value={f} />)}</datalist>
-            <button type="submit" disabled={!cleanFolder(folderText)}>Add</button>
-          </form>
+          <ChipPicker
+            label="Folders"
+            icon="folder"
+            values={p.folders ?? []}
+            known={knownFolders}
+            placeholder="Add to a folder, e.g. Physics/QFT"
+            clean={cleanFolder}
+            onChange={(folders) => props.onChange({ folders })}
+          />
         </section>
 
         <section class="block">
           <h3>Tags</h3>
-          <input
-            value={tagText}
-            placeholder="comma, separated, tags"
-            onInput={(e) => setTagText(e.currentTarget.value)}
-            onBlur={() => props.onChange({ tags: [...new Set(tagText.split(",").map((t) => t.trim()).filter(Boolean))] })}
+          <ChipPicker
+            label="Tags"
+            values={p.tags}
+            known={knownTags}
+            placeholder="Add a tag"
+            clean={(t) => t.trim().replace(/\s+/g, " ") || null}
+            onChange={(tags) => props.onChange({ tags })}
           />
         </section>
         <section class="block">

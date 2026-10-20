@@ -773,3 +773,27 @@ details.guide ul { margin-top: 8px; }
 .question-panel textarea { width: 100%; font: 16px/1.5 var(--sans); resize: vertical; }
 .question-panel .subject { font-family: var(--serif); margin: 0 0 12px; }
 .result > .pill { margin-top: 12px; }
+
+/* Folders and tags on a paper: chips plus a box that suggests what the library uses */
+.picker { position: relative; }
+.picker-box {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  min-height: 42px; padding: 5px 8px;
+  border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--panel);
+  cursor: text; transition: border-color 0.12s, box-shadow 0.12s;
+}
+.picker-box.focused { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.picker-box input { flex: 1; min-width: 8em; width: auto; border: 0; padding: 4px 2px; background: transparent; box-shadow: none; }
+.picker-box input:focus { box-shadow: none; }
+.picker-box .chip { gap: 5px; font-size: 13px; padding: 3px 4px 3px 10px; color: var(--text); }
+.picker-box .chip .icon { color: var(--faint); }
+.picker-box .chip button { display: grid; place-items: center; width: 22px; height: 22px; min-height: 0; border-radius: 50%; color: var(--faint); }
+.picker-box .chip button:hover { background: var(--line); color: var(--text); }
+.picker-list {
+  list-style: none; margin: 6px 0 0; padding: 4px;
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); box-shadow: var(--shadow-lg);
+  max-height: 280px; overflow: auto;
+}
+.picker-list li { display: flex; align-items: center; gap: 8px; padding: 10px 10px; border-radius: 5px; cursor: pointer; font-size: 15px; }
+.picker-list li .icon, .picker-list .hash { color: var(--faint); width: 14px; text-align: center; }
+.picker-list li.on, .picker-list li:hover { background: var(--accent-soft); }
