@@ -72,6 +72,21 @@ are back online as long as Lightkone stays open; the top bar says
 This applies to a bucket or a GitHub repository. With **This browser only**,
 everything is on the device already.
 
+## Saved web pages
+
+A web page added to the library (a blog post, a report, documentation) is
+saved twice: its raw HTML exactly as it was fetched, and its main text as
+Markdown, found with Mozilla's Readability, the engine behind Firefox's reader
+view. **Read** opens the Markdown as a quiet column of text, with headings,
+figures, links, tables and math. **Saved page** shows the HTML as it was saved,
+in a sandbox where none of the page's scripts run. The moon gives a dark page,
+and the toolbar copies or downloads the Markdown, ready for Obsidian.
+
+The Markdown is also the page's text for search, Ask and the MCP server, as a
+PDF's text is. Pages that build their content with scripts after they load
+may save little text; their raw HTML is kept all the same. Figures stay on the
+site they came from, so they show only with a network.
+
 ## Reading at night
 
 With the Dullaby plugin set up (**Settings → Dullaby night reading**), **Read

@@ -13,7 +13,7 @@
 // (docs/HOSTING.md).
 
 /** Calls a minute, per address, for each service. Generous for one person's use. */
-export const LIMITS: Record<string, number> = { pdf: 30, published: 30, arxiv: 60, tex: 120, "mcp-link": 10 };
+export const LIMITS: Record<string, number> = { pdf: 30, page: 30, published: 30, arxiv: 60, tex: 120, "mcp-link": 10 };
 const DEFAULT_LIMIT = 60;
 const WINDOW = 60_000;
 

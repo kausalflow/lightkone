@@ -33,6 +33,8 @@ The library is these files in the chosen storage:
 | `lightkone/library.bib` | Rewritten on every save, for LaTeX, Overleaf or any other tool |
 | `papers/All Papers/<AUTHOR>/<Author> et al. <year> - <title>.pdf` | PDFs, in the same layout Paperpile uses in Google Drive. Each paper's `file` field (also in the `.bib`) is the path under `papers/`, so Paperpile's `All Papers` folder can be copied in as it is. Libraries that kept PDFs under `Paperpile/` have them moved to `papers/` when they open |
 | `lightkone/annotations/<id>.json` | Highlights and notes on a paper's PDF |
+| `lightkone/pages/<id>.html`, `lightkone/pages/<id>.md` | A saved web page: its raw HTML, and its main text as Markdown (`src/core/webpage.ts`) |
+| `lightkone/text/<id>.txt` | A paper's text for search, Ask and MCP: from its PDF, or a saved page's Markdown |
 
 Because these are plain files, a library can always be read without Lightkone,
 moved between backends by copying a folder, and versioned (GitHub storage

@@ -21,6 +21,10 @@ export interface Paper {
   file?: string;
   /** Storage key of a PDF kept in this library's own storage. */
   pdf?: string;
+  /** Storage key of a saved web page's raw HTML, as it was fetched. */
+  html?: string;
+  /** Storage key of the saved web page's main text as Markdown, for reading. */
+  markdown?: string;
   notes?: string;
   /** ISO timestamp. */
   added: string;

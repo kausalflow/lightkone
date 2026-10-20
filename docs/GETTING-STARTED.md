@@ -34,6 +34,7 @@ line:
 - an arXiv id or link: `2106.09685`, `https://arxiv.org/abs/1706.03762`
 - a DOI or doi.org link: `10.1103/PhysRevLett.116.061102`
 - a publisher's page for the paper
+- any other web page: a blog post, a report, documentation
 - BibTeX entries
 
 Details come from arXiv, Crossref, Semantic Scholar and OpenAlex. Free PDFs
@@ -45,6 +46,13 @@ files**, or drop the files anywhere on Lightkone. Each one is identified from
 the DOI or arXiv id printed on its first page (or by Claude reading that page,
 with a key), added, and filed with its PDF. A PDF for a paper already in your
 library is attached to it.
+
+A web page that isn't a paper is added with its own title, authors and date,
+and saved: its raw HTML as it came, and its main text as Markdown, with
+figures, links and math kept. **Read** shows the Markdown as a clean page, and
+**Saved page** shows the page as it was saved. A web page already in your
+library, from a .bib file say, has **Save page** to do the same. See
+[Saved web pages](READING.md#saved-web-pages).
 
 To bring a whole library, use **Import a .bib file** in the same panel. Coming
 from Paperpile, follow [Moving from Paperpile](PAPERPILE.md) for your PDFs and
