@@ -11,6 +11,7 @@ import { exportSettings, importSettings, loadSettings, persistStorage, pluginUrl
 import { matchPaperpilePdfs, PDF_DIR } from "./core/paperpile";
 import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf";
 import { Reader } from "./reader/Reader";
+import { PageReader } from "./reader/PageReader";
 import { AskPanel } from "./AskPanel";
 import { ObsidianPanel } from "./ObsidianPanel";
 import { QuestionDialog, type Question } from "./QuestionDialog";
@@ -41,6 +42,8 @@ import { findDuplicates, findPublished, mergeInto, pickKeeper, type Published } 
 import { annotationsPath } from "./core/annotations";
 import { Icon, type IconName } from "./icons";
 import { site } from "./core/site";
+import { fetchPage, hasPage, htmlPath, isWebLink, markdownFile, markdownPath, pageMarkdown, takePage } from "./core/webpage";
+import { joinPages, textPath } from "./core/fulltext";
 
 const library = new Library();
 
@@ -85,6 +88,7 @@ export function App() {
   const [sort, setSort] = useState<SortBy>("added");
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
+  const [readingWeb, setReadingWeb] = useState<string | null>(null);
   const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | "offline" | null>(null);
   // PDFs kept on this device on purpose (Offline papers), by storage path.
   const [keptPdfs, setKeptPdfs] = useState<Map<string, number>>(new Map());
@@ -490,7 +494,36 @@ export function App() {
     if (added.length || updated.length) scheduleSave();
     // Fetch free PDFs in the background; a big .bib import is left alone.
     if (fetchPdfs && settings["pdfs.auto"] !== "off" && added.length <= 20) added.forEach((p) => getPdf(p, true));
+    // A web page that was just looked up is saved with the copy already fetched.
+    added.filter((p) => hasPage(p.url)).forEach((p) => savePage(p, true));
     return added;
+  }
+
+  /** Save a web page: its raw HTML, its text as Markdown, and that text for search and Ask. */
+  async function savePage(p: Paper, quiet = false): Promise<boolean> {
+    if (!storage || !p.url) return false;
+    if (!quiet) setBusy("Saving the page");
+    try {
+      const page = takePage(p.url) ?? (await fetchPage(p.url));
+      const doc = new DOMParser().parseFromString(page.html, "text/html");
+      const text = markdownFile(p, await pageMarkdown(doc, page.url));
+      const html = htmlPath(p.id);
+      const markdown = markdownPath(p.id);
+      await storage.write(html, page.html, "text/html; charset=utf-8");
+      await storage.write(markdown, text, "text/markdown; charset=utf-8");
+      library.update(p.id, { html, markdown });
+      scheduleSave();
+      const plain = joinPages([text]);
+      await storage.write(textPath(p.id), plain, "text/plain; charset=utf-8");
+      await textIndex?.add(p.id, plain);
+      setTextVersion((v) => v + 1);
+      return true;
+    } catch (e) {
+      if (!quiet) setError(`Could not save the page: ${(e as Error).message}`);
+      return false;
+    } finally {
+      if (!quiet) setBusy(null);
+    }
   }
 
   /** Add a paper with its PDF file; a paper already in the library gets the PDF if it has none. */
@@ -877,9 +910,10 @@ export function App() {
                 const hit = textIndex?.hit(p.id, words);
                 return hit && <div class="snippet"><span class="page">p. {hit.page}</span> {hit.snippet}</div>;
               })()}
-              {(p.pdf || p.tags.length > 0) && (
+              {(p.pdf || p.markdown || p.tags.length > 0) && (
                 <div class="chips">
                   {p.pdf && <span class="chip pdf">PDF</span>}
+                  {p.markdown && <span class="chip pdf" title="A copy of the web page is saved">Page</span>}
                   {p.pdf && keptPdfs.has(p.pdf) && <span class="chip offline" title="Kept on this device for reading offline">Offline</span>}
                   {p.tags.slice(0, 4).map((t) => (
                     <span class="chip" key={t}>{t}</span>
@@ -945,6 +979,12 @@ export function App() {
             setReading(paper.id);
           }}
           onGetPdf={canFindOpenPdf(paper, pdfOptions(settings)) ? () => getPdf(paper) : undefined}
+          onSavePage={storage && paper.url && isWebLink(paper.url) && !paper.doi && !paper.arxiv ? () => savePage(paper) : undefined}
+          onReadPage={() => {
+            library.update(paper.id, { opened: new Date().toISOString() });
+            scheduleSave();
+            setReadingWeb(paper.id);
+          }}
           onAdd={(d) => addDrafts([d]).length > 0}
           onError={setError}
           scheduleSave={scheduleSave}
@@ -968,6 +1008,10 @@ export function App() {
           onError={setError}
           onText={(id, text) => textIndex?.add(id, text).then(() => setTextVersion((v) => v + 1))}
         />
+      )}
+
+      {readingWeb && storage && library.papers.find((p) => p.id === readingWeb)?.markdown && (
+        <PageReader paper={library.papers.find((p) => p.id === readingWeb)!} storage={storage} onClose={() => setReadingWeb(null)} onError={setError} />
       )}
 
       {panel === "ask" && (
@@ -1347,6 +1391,9 @@ function Detail(props: {
   onAction(id: string): void;
   onRead(): void;
   onGetPdf?(): void;
+  /** Save a copy of the paper's web page; undefined when it has none to save. */
+  onSavePage?(): void;
+  onReadPage(): void;
   onAdd(d: PaperDraft): boolean;
   onError(msg: string): void;
   scheduleSave(): void;
@@ -1449,6 +1496,16 @@ function Detail(props: {
           {!p.pdf && props.onGetPdf && (
             <button class="primary" onClick={props.onGetPdf}>
               <Icon name="download" /> Get free PDF
+            </button>
+          )}
+          {p.markdown && (
+            <button class={p.pdf ? "" : "primary"} onClick={props.onReadPage}>
+              <Icon name="book" /> {p.pdf ? "Read saved page" : "Read"}
+            </button>
+          )}
+          {!p.markdown && props.onSavePage && (
+            <button class={p.pdf ? "" : "primary"} onClick={props.onSavePage} title="Keep a copy of the page: its HTML, and its text as Markdown to read here">
+              <Icon name="download" /> Save page
             </button>
           )}
           {props.others.length > 0 && (

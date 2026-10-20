@@ -46,9 +46,17 @@ Scholar limits anonymous requests; for steadier results, request a free key at
 https://www.semanticscholar.org/product/api and add it to the Pages project as
 the secret `S2_API_KEY`.
 
+## The page service
+
+`functions/api/page.ts` (at `/api/page?url=<page>`) fetches a web page for
+saving it into the library, because browsers don't let one site read another's
+pages. It answers JSON, never HTML, so nothing it fetches can run as part of
+the site, and it fetches only public http(s) addresses on the usual ports,
+checking each redirect, up to 5 MB.
+
 ## Limits on the services
 
-The services under `/api/` (PDF, published versions, arXiv, equations, MCP
+The services under `/api/` (PDF, web pages, published versions, arXiv, equations, MCP
 address) are for the site's own app. `functions/api/_middleware.ts` refuses
 calls that a browser says come from another website, and limits each address
 to a number of calls a minute per service (30 for PDFs, 120 for equations; see

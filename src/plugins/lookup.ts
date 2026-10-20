@@ -1,9 +1,11 @@
 import type { LightkonePlugin, Lookup, PaperDraft } from "../core/types";
 import { parseBibtexToDrafts } from "../core/bibtex";
+import { fetchPage, isWebLink, pageDraft, paperIdentifier, rememberPage } from "../core/webpage";
 
 // Adding a paper by what people actually have at hand: a DOI, an arXiv id or
 // link, a publisher link with a DOI in it, or pasted BibTeX. All sources are
-// free, open APIs that allow browser requests.
+// free, open APIs that allow browser requests. Any other web page is saved as
+// a page: its own title, authors and date, with a copy of its text.
 
 const ARXIV_NEW = /(?:arxiv\.org\/(?:abs|pdf|html)\/|arxiv:\s*)?(\d{4}\.\d{4,5})(?:v\d+)?/i;
 const ARXIV_OLD = /(?:arxiv\.org\/(?:abs|pdf)\/|arxiv:\s*)([a-z-]+(?:\.[A-Z]{2})?\/\d{7})(?:v\d+)?/i;
@@ -130,7 +132,28 @@ const lookups: Lookup[] = [
     matches: (s) => doiOf(s) !== null,
     resolve: (s) => crossref(doiOf(s)!),
   },
+  {
+    id: "webpage",
+    label: "Any other web page, saved with a copy of its text",
+    matches: (s) => isWebLink(s),
+    resolve: webPage,
+  },
 ];
+
+/** A page that turns out to be a paper (its citation tags name a DOI or arXiv id) is added as that paper. */
+async function webPage(input: string): Promise<PaperDraft | null> {
+  const page = await fetchPage(input.trim());
+  const doc = new DOMParser().parseFromString(page.html, "text/html");
+  const id = paperIdentifier(doc);
+  if (id) {
+    const paper = await (arxivId(id) && id.startsWith("arXiv:") ? arxiv(arxivId(id)!) : crossref(doiOf(id)!)).catch(() => null);
+    if (paper) return paper;
+  }
+  const draft = pageDraft(doc, page.url);
+  rememberPage(draft.url!, page);
+  rememberPage(input.trim(), page);
+  return draft;
+}
 
 const plugin: LightkonePlugin = {
   id: "lookup",

@@ -152,3 +152,35 @@
 .explain-q { margin: 0; justify-self: end; max-width: 85%; background: var(--hover); padding: 6px 10px; border-radius: 10px; }
 .explain-ask { display: flex; gap: 6px; flex-wrap: wrap; }
 .explain-ask input { flex: 1 1 180px; min-width: 0; }
+
+/* A saved web page: its Markdown as a quiet column of text, or the page as saved. */
+.page-views { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.page-views button { flex: 1; min-height: 34px; border-radius: 8px; border: 1px solid transparent; background: none; color: var(--muted); }
+.page-views button.on { background: var(--accent-soft); color: var(--accent); border-color: var(--line); }
+.page-text {
+  flex: 1;
+  overflow: auto;
+  padding: 18px 18px 120px;
+  font: 18px/1.65 var(--serif);
+  overflow-wrap: anywhere;
+}
+.page-text > * { max-width: 680px; margin-left: auto; margin-right: auto; }
+.page-text h2 { font-size: 1.45em; line-height: 1.25; margin: 0.4em auto 0.6em; }
+.page-text h3 { font-size: 1.2em; margin: 1.4em auto 0.5em; }
+.page-text h4 { font-size: 1.05em; margin: 1.2em auto 0.4em; }
+.page-text p, .page-text ul, .page-text ol, .page-text blockquote, .page-text pre, .page-text .md-table { margin-top: 0; margin-bottom: 0.9em; }
+.page-text li { margin: 0.2em 0; }
+.page-text a { color: var(--accent); }
+.page-text img { display: block; max-width: 100%; height: auto; margin: 0.6em auto; border-radius: 4px; }
+.page-text blockquote { border-left: 3px solid var(--line); padding-left: 14px; color: var(--muted); }
+.page-text pre { overflow-x: auto; padding: 10px 12px; border-radius: 8px; background: var(--hover); font-size: 14px; line-height: 1.45; }
+.page-text code { font-size: 0.88em; }
+.page-text hr { border: 0; border-top: 1px solid var(--line); margin: 1.6em auto; }
+.page-text .md-table { overflow-x: auto; }
+.page-text table { border-collapse: collapse; font: 15px/1.4 var(--sans, system-ui); }
+.page-text th, .page-text td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.page-text .katex-display { overflow-x: auto; overflow-y: hidden; }
+.page-reader.dark .page-text { background: #121212; color: #cfcfcf; }
+.page-reader.dark .page-text a { color: #9db4ff; }
+.page-reader.dark .page-text img { opacity: 0.85; }
+.page-original { flex: 1; width: 100%; border: 0; background: #fff; }
