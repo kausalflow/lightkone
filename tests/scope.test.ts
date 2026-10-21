@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scoped } from "../src/core/scope";
+import { firstPaper, scoped, startScope } from "../src/core/scope";
 import { inLibrary, searchLiterature, workToDraft } from "../src/core/literature";
 import type { Paper } from "../src/core/types";
 
@@ -12,6 +12,28 @@ describe("which papers a tool works on", () => {
     expect(scoped(papers, { kind: "view" }, [papers[1], papers[2]]).map((p) => p.id)).toEqual(["b"]);
     expect(scoped(papers, { kind: "picked", ids: ["d", "c", "zz"] }, []).map((p) => p.id)).toEqual(["d"]);
     expect(scoped(papers, { kind: "literature" }, papers)).toEqual([]);
+  });
+});
+
+describe("which papers a new chat starts with", () => {
+  const a = paper("a", { added: "2026-01-01" });
+  const b = paper("b", { added: "2026-03-01" });
+  const c = paper("c", { added: "2026-02-01", opened: "2026-04-01" });
+
+  it("is one paper: the last opened in view, else the newest", () => {
+    expect(firstPaper([a, b, c], [a, b, c])).toEqual(["c"]);
+    expect(firstPaper([a, b, c], [a, b])).toEqual(["b"]);
+    expect(firstPaper([a, b, c], [])).toEqual(["c"]);
+    expect(firstPaper([], [])).toEqual([]);
+  });
+
+  it("never starts from the whole library; old whole-library chats keep the papers they used", () => {
+    const first = () => ["c"];
+    expect(startScope({ tool: "t", first })).toEqual({ kind: "picked", ids: ["c"] });
+    expect(startScope({ tool: "t", first, pick: ["a", "b"] })).toEqual({ kind: "picked", ids: ["a", "b"] });
+    expect(startScope({ tool: "t", first, kept: { kind: "all" }, keptPapers: ["b"] })).toEqual({ kind: "picked", ids: ["b"] });
+    expect(startScope({ tool: "t", first, kept: { kind: "view" } })).toEqual({ kind: "picked", ids: [] });
+    expect(startScope({ tool: "t", first, kept: { kind: "literature" } })).toEqual({ kind: "literature" });
   });
 });
 

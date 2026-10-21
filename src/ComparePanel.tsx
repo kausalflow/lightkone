@@ -5,7 +5,7 @@ import {
   inTurn, keysIn, paperText, parseColumns, parseRow, parseWeighing, reviewSources, silentPapers, STANCES, toCsv, toLatex, weighingMarkdown,
   type ReviewFormat, type Row, type Weighing,
 } from "./core/compare";
-import { loadScope, papersText, saveScope, scoped, type Scope } from "./core/scope";
+import { firstPaper, papersText, saveScope, scoped, startScope, type Scope } from "./core/scope";
 import { libraryToBibtex } from "./core/bibtex";
 import { shortAuthors } from "./core/cite";
 import { renderMarkdown } from "./core/markdown";
@@ -43,12 +43,11 @@ function download(name: string, text: string, type: string) {
 
 export type Tab = "table" | "weigh" | "review";
 
-const SCOPE_LABEL: Record<Scope["kind"], string> = { all: "Whole library", view: "In view", picked: "Papers picked", literature: "Beyond the library" };
 
 /**
  * Compare papers: a table of values read out of each paper, where papers
  * support or contradict a claim, and a draft literature review. Each works on
- * the papers chosen at the top: the library, what is in view, or papers picked.
+ * the papers chosen at the top, added one at a time.
  */
 export function ComparePanel(props: {
   papers: Paper[];
@@ -68,7 +67,9 @@ export function ComparePanel(props: {
   const r = props.resume;
   const tab: Tab = r ? (r.kind as Tab) : props.start ?? "table";
   const [has, setHas] = useState(Boolean(r));
-  const [scope, setScope] = useState<Scope>(() => r?.scope ?? (props.pick?.length ? { kind: "picked", ids: props.pick } : loadScope("compare")));
+  const [scope, setScope] = useState<Scope>(() =>
+    startScope({ kept: r?.scope, keptPapers: r?.papers, pick: props.pick, tool: "compare", first: () => firstPaper(props.papers, props.inView) }),
+  );
   const [busy, setBusy] = useState(false);
   const chosen = useMemo(() => scoped(props.papers, scope, props.inView), [props.papers, scope, props.inView]);
   const byId = useMemo(() => new Map(props.papers.map((p) => [p.id, p])), [props.papers]);
@@ -88,8 +89,8 @@ export function ComparePanel(props: {
     <div class="work compare-panel" aria-label="Compare papers">
       {/* Once there is a result, the papers chosen fold away so the result is in view, on a phone too. */}
       <details class="compare-setup" open={!has || busy} key={has ? "has" : "none"}>
-        <summary>{SCOPE_LABEL[scope.kind]}: {papersText(chosen.length)}</summary>
-        <ScopePicker papers={props.papers} inView={props.inView} viewLabel={props.viewLabel} value={scope} onChange={pick} disabled={busy} max={tab === "table" ? TABLE_MAX : tab === "review" ? REVIEW_MAX : undefined} />
+        <summary>Reading {papersText(chosen.length)}</summary>
+        <ScopePicker papers={props.papers} value={scope} onChange={pick} disabled={busy} max={tab === "table" ? TABLE_MAX : tab === "review" ? REVIEW_MAX : undefined} />
       </details>
       {!hasKey && <p class="error">Add your Anthropic API key under Settings → Claude first.</p>}
       {tab === "table" && <TableTab {...shared} />}

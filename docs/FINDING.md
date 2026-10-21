@@ -63,23 +63,24 @@ passages that bear on the question, or its title and abstract when none do.
 In a chat about one paper, this brings other papers in beside it, and the
 chat is then listed under that set of papers.
 
-**From**, above the question, chooses which papers it answers from:
+**Which papers.** Above the question, a chat starts with one paper: the one
+open, or the one you opened last. Add more one at a time: type a few letters
+of a title, author, year or key in **Add a paper** and pick it. Tap the × on
+a paper to take it out. There is no "whole library" and no "select all":
+Claude reads every paper you add with your own API key, so you choose what
+it costs.
 
-- **Your whole library**.
-- **In view**: the folder, tag, Starred or search open in the list. Open the
-  folder first, then Ask.
-- **Papers you pick**: tick them in a list you can filter by title, author or
-  year.
-- **Published papers beyond your library**: OpenAlex searches all published
-  work for the words of your question and Claude answers from the abstracts
-  of what it finds, saying that it has only abstracts. Each paper it cites has
-  an **Add** button, or says it is already in your library.
+Instead of your papers, **Published papers beyond your library** has
+OpenAlex search all published work for the words of your question, and
+Claude answers from the abstracts of what it finds, saying that it has only
+abstracts. Each paper it cites has an **Add** button, or says it is already
+in your library.
 
 ### Compare papers
 
-The other three tabs work on the same choice of papers: the whole library,
-what is in view, or papers you pick. Once there is a result, the choice
-folds into one line above it, so the result is in view; tap the line to
+The other three tabs work on papers chosen the same way, one at a time,
+starting from one. A table takes up to 50 and a review draft up to 60. Once
+there is a result, the choice folds into one line above it, so the result is in view; tap the line to
 change it.
 
 - **Table**: name the columns, for example *Method, Data, Main result, Error
