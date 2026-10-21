@@ -112,3 +112,4 @@ The documentation is also served with the app, at `/docs/` (built from `docs/*.m
 - [docs/PLUGINS.md](docs/PLUGINS.md): writing a plugin
 - [docs/STORAGE.md](docs/STORAGE.md): setting up each storage backend
 - [docs/HOSTING.md](docs/HOSTING.md): deploying to Cloudflare Pages or any static host
+- [docs/RELEASING.md](docs/RELEASING.md): staging on every merge, the live site on a version tag, and how to release

@@ -6,8 +6,10 @@ repositories, and in the same account as an R2 bucket for storage.
 
 ## Cloudflare Pages from GitHub Actions
 
-`.github/workflows/deploy.yml` publishes on every push to `main` once these
-are set in the repository (Settings → Secrets and variables → Actions):
+`.github/workflows/deploy.yml` publishes every push to `main` to a staging
+site (`https://staging.<project>.pages.dev`), and each version tag to the live
+site, checking both in a browser; see [RELEASING.md](RELEASING.md). It needs
+these in the repository (Settings → Secrets and variables → Actions):
 
 | Name | Kind | Value |
 | --- | --- | --- |
@@ -16,8 +18,8 @@ are set in the repository (Settings → Secrets and variables → Actions):
 | `PAGES_DOMAIN` | variable (optional) | A custom domain, e.g. `lightkone.lab.kausalflow.com`. |
 | `PAGES_PROJECT` | variable (optional) | Pages project name; defaults to `lightkone`. |
 
-The first run creates the Pages project; the app is then at
-`https://<project>.pages.dev`.
+The first run creates the Pages project; after the first release the app is
+at `https://<project>.pages.dev`.
 
 For a custom domain, set `PAGES_DOMAIN`, then point DNS at Pages:
 

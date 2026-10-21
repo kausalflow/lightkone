@@ -2,3 +2,6 @@
 declare const __LIGHTKONE_VERSION__: { version: string; commit: string; date: string; label: string };
 
 export const BUILD = typeof __LIGHTKONE_VERSION__ === "undefined" ? { version: "", commit: "", date: "", label: "dev" } : __LIGHTKONE_VERSION__;
+
+/** On the staging site (staging.<project>.pages.dev), what every merge reaches before a release. */
+export const STAGING = typeof location !== "undefined" && location.hostname.startsWith("staging.");
