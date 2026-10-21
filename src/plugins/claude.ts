@@ -106,6 +106,7 @@ export async function chatAboutPaper(
   turns: ChatTurn[],
   onText: (soFar: string) => void,
   signal?: AbortSignal,
+  where: "library" | "literature" = "library",
 ): Promise<string> {
   const client = await clientFor(settings);
   const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((t, i) => {
@@ -156,6 +157,14 @@ const LIBRARY =
   "part of it, say so plainly rather than filling in from memory. Compare papers where they agree or differ. " +
   "Write mathematics in LaTeX between $...$ or $$...$$.";
 
+const LITERATURE =
+  SYSTEM +
+  " Answer the researcher's question from the numbered sources, which are the titles and abstracts of published papers " +
+  "found by a search of OpenAlex, not papers they have read. Cite every claim with the number of its source in square brackets, " +
+  "like [3] or [2, 5], right after the claim. Use only what the abstracts say, and say plainly that you have only abstracts; " +
+  "when they do not answer the question, or only part of it, say so rather than filling in from memory. Name the papers that " +
+  "look most worth reading in full for this question. Write mathematics in LaTeX between $...$ or $$...$$.";
+
 export interface LibraryTurn {
   role: "user" | "assistant";
   text: string;
@@ -172,6 +181,7 @@ export async function askLibrary(
   turns: LibraryTurn[],
   onText: (soFar: string) => void,
   signal?: AbortSignal,
+  where: "library" | "literature" = "library",
 ): Promise<string> {
   const client = await clientFor(settings);
   const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((t, i) =>
@@ -188,7 +198,7 @@ export async function askLibrary(
     {
       model: settings["claude.model"] || DEFAULT_MODEL,
       max_tokens: 16000,
-      system: LIBRARY,
+      system: where === "literature" ? LITERATURE : LIBRARY,
       thinking: { type: "adaptive" },
       output_config: { effort: "medium" },
       betas: ["server-side-fallback-2026-07-01"],
@@ -352,3 +362,117 @@ const plugin: LightkonePlugin = {
   ],
 };
 export default plugin;
+
+const EXTRACT =
+  SYSTEM +
+  " Read the paper and fill in one row of a table that compares papers. For each column, give the value as this paper states it, " +
+  "in a few words or a short phrase (keep numbers with their units and uncertainties, and mathematics in LaTeX between $...$), " +
+  'the page it is on (the text marks pages as [page n]; use 0 for the abstract), and a short exact quote it is read from. ' +
+  'When the paper does not say, give the value "not stated" and no quote; never fill in from what is usual in the field. ' +
+  'Reply with only a JSON object, no other text: {"cells": [{"column": "", "value": "", "page": 3, "quote": ""}]}.';
+
+/** One row of a comparison table: the columns' values read out of one paper. */
+export async function extractRow(settings: Record<string, string>, paper: Paper, text: string, full: boolean, columns: string[], signal?: AbortSignal): Promise<string> {
+  const client = await clientFor(settings);
+  const response = await client.beta.messages.create(
+    {
+      model: settings["claude.model"] || DEFAULT_MODEL,
+      max_tokens: 4000,
+      system: EXTRACT,
+      output_config: { effort: "low" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages: [
+        {
+          role: "user",
+          content: `${describe({ ...paper, abstract: full ? paper.abstract : undefined, notes: undefined })}\n\n${full ? `<text>\n${text}\n</text>` : `There is no full text, only this:\n${text || "(no abstract)"}`}\n\nColumns: ${JSON.stringify(columns)}`,
+        },
+      ],
+    },
+    { signal },
+  );
+  if (response.stop_reason === "refusal") {
+    throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
+  }
+  return textOf(response.content);
+}
+
+const WEIGH =
+  SYSTEM +
+  " The researcher gives a claim and numbered passages from papers. Say where the papers support it, qualify it (agree only " +
+  "under conditions, in a regime, or with a different size of effect) or contradict it. Each point is one finding, in a sentence " +
+  "or two with the numbers and conditions that matter, read only from the passages, with the numbers of the passages it rests on. " +
+  "Passages that do not bear on the claim are left out. Then a short summary of where the agreement and the disagreement lie, " +
+  "and why when the passages show it (method, data, assumptions). Write mathematics in LaTeX between $...$. " +
+  'Reply with only a JSON object, no other text: {"summary": "", "points": [{"stance": "supports" | "qualifies" | "contradicts", "text": "", "sources": [1, 4]}]}.';
+
+/** Where the passages agree and disagree on a claim, as Claude reads them. */
+export async function weighClaim(settings: Record<string, string>, claim: string, sources: string, signal?: AbortSignal): Promise<string> {
+  const client = await clientFor(settings);
+  const response = await client.beta.messages.create(
+    {
+      model: settings["claude.model"] || DEFAULT_MODEL,
+      max_tokens: 16000,
+      system: WEIGH,
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages: [{ role: "user", content: `<sources>\n${sources}\n</sources>\n\nThe claim: ${claim}` }],
+    },
+    { signal },
+  );
+  if (response.stop_reason === "refusal") {
+    throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
+  }
+  return textOf(response.content);
+}
+
+const REVIEW = (format: "latex" | "markdown") =>
+  SYSTEM +
+  " Write a draft literature review of the papers given, for the researcher to edit into a paper or thesis. Group the papers by " +
+  "theme or approach rather than one paragraph per paper, compare their methods, assumptions and results, say where they agree " +
+  "and where they differ, and end with what is open. Use only what the papers' details say; do not add papers or results from memory. " +
+  (format === "latex"
+    ? "Write LaTeX body text: \\subsection{} for themes, \\cite{key} with the papers' keys exactly as given, mathematics in $...$ " +
+      "or equation environments. No preamble, no \\begin{document}, no bibliography."
+    : "Write Markdown: ## for themes, pandoc citations like [@key] or [@key1; @key2] with the papers' keys exactly as given, " +
+      "mathematics in $...$ or $$...$$. No bibliography.") +
+  " Reply with the review only.";
+
+/** A draft literature review of a set of papers, streamed. */
+export async function draftReview(
+  settings: Record<string, string>,
+  papers: string,
+  focus: string,
+  format: "latex" | "markdown",
+  onText: (soFar: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const client = await clientFor(settings);
+  const stream = client.beta.messages.stream(
+    {
+      model: settings["claude.model"] || DEFAULT_MODEL,
+      max_tokens: 32000,
+      system: REVIEW(format),
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages: [{ role: "user", content: `<papers>\n${papers}\n</papers>\n\n${focus.trim() ? `What the review is for: ${focus.trim()}` : "Review these papers."}` }],
+    },
+    { signal },
+  );
+  let text = "";
+  for await (const event of stream) {
+    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+      text += event.delta.text;
+      onText(text);
+    }
+  }
+  const final = await stream.finalMessage();
+  if (final.stop_reason === "refusal") {
+    throw new Error(`Claude declined this request${final.stop_details?.explanation ? `: ${final.stop_details.explanation}` : "."}`);
+  }
+  return final.stop_reason === "max_tokens" ? `${text}\n\n% The draft was cut off at the length limit.` : text;
+}

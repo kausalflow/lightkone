@@ -13,7 +13,7 @@ GitHub is untouched. A library kept in this browser only is lost.
 step yet. **Export .bib** and import it into the new storage to carry papers,
 tags and keys, but notes and highlights stay behind.
 
-**Do I need a Claude key?** Only for Ask, Explain, Summarize, Cite this's
+**Do I need a Claude key?** Only for Ask, Compare papers, Explain, Summarize, Cite this's
 check, and adding a paper from a plain description. Everything else works
 without one.
 

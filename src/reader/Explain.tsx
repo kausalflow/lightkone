@@ -5,6 +5,7 @@ import { loadSettings } from "../core/settings";
 import { renderMarkdown } from "../core/markdown";
 import { useMath } from "../core/math";
 import { chatAboutPaper, type ChatTurn } from "../plugins/claude";
+import { newConversationId, type Conversation } from "../core/history";
 
 export interface Subject {
   page: number;
@@ -14,7 +15,7 @@ export interface Subject {
 }
 
 /** Claude explains a selected passage, equation or figure, with follow-up questions. */
-export function Explain(props: { paper: Paper; pdf: Uint8Array | null; subject: Subject; onClose(): void; onSave(answer: string): void }) {
+export function Explain(props: { paper: Paper; pdf: Uint8Array | null; subject: Subject; onClose(): void; onSave(answer: string): void; onRecord?(c: Conversation): void }) {
   const { subject } = props;
   const settings = loadSettings();
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -24,6 +25,7 @@ export function Explain(props: { paper: Paper; pdf: Uint8Array | null; subject: 
   const math = useMath();
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
+  const conv = useRef({ id: newConversationId(), created: new Date().toISOString() });
 
   async function ask(next: ChatTurn[]) {
     setTurns(next);
@@ -32,7 +34,22 @@ export function Explain(props: { paper: Paper; pdf: Uint8Array | null; subject: 
     abort.current = new AbortController();
     try {
       const answer = await chatAboutPaper(settings, props.paper, props.pdf, next, setStreaming, abort.current.signal);
-      setTurns([...next, { role: "assistant", text: answer }]);
+      const done: ChatTurn[] = [...next, { role: "assistant", text: answer }];
+      setTurns(done);
+      // Kept in History without the picture, which only Claude needed.
+      const quote = subject.text.replace(/\s+/g, " ").trim();
+      props.onRecord?.({
+        ...conv.current,
+        kind: "explain",
+        title: quote.length > 120 ? `${quote.slice(0, 117)}…` : quote,
+        updated: new Date().toISOString(),
+        papers: [props.paper.id],
+        preview: "",
+        turns: done.map(({ role, text }) => ({ role, text })),
+        paperId: props.paper.id,
+        page: subject.page,
+        quote: subject.text,
+      });
     } catch (e) {
       if (!abort.current.signal.aborted) setError((e as Error).message);
     } finally {

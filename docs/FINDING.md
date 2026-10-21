@@ -42,6 +42,96 @@ picks the passages that bear on the question from your papers' full text and
 abstracts, and Claude answers citing them as [1], [2]: tap one to open that
 paper at that page.
 
+**From**, above the question, chooses which papers it answers from:
+
+- **Your whole library**.
+- **In view**: the folder, tag, Starred or search open in the list. Open the
+  folder first, then Ask.
+- **Papers you pick**: tick them in a list you can filter by title, author or
+  year.
+- **Published papers beyond your library**: OpenAlex searches all published
+  work for the words of your question and Claude answers from the abstracts
+  of what it finds, saying that it has only abstracts. Each paper it cites has
+  an **Add** button, or says it is already in your library.
+
+## Compare papers
+
+**Compare papers** (side bar, *Discover*) works on the same choice of papers
+as Ask: the whole library, what is in view, or papers you pick. It has three
+tabs, and each needs a Claude key.
+
+- **Table**: name the columns, for example *Method, Data, Main result, Error
+  bars, Assumptions*. Claude reads each paper and fills its row, three papers
+  at a time, with the page each value is on: tap **p. 3** to open it there,
+  and hover a value for the sentence it is read from. A paper whose PDF has
+  not been read for search is read from its abstract, and its row says so.
+  Values the paper does not state say *not stated*. Download the table as
+  **CSV**, or copy it as a **LaTeX table** citing each paper by its key. Up to
+  50 papers at a time; the last table stays until you fill a new one.
+- **Agree or disagree**: state a claim. Lightkone finds the passages in the
+  chosen papers that bear on it, and Claude sorts them into what **supports**,
+  **qualifies** or **contradicts** it, each point linked to its page, with a
+  short summary of where and why the papers differ. Papers with nothing on the
+  claim are listed apart. Copy the result as Markdown.
+- **Review draft**: Claude drafts a literature review of the chosen papers
+  from their abstracts and your notes, grouped by theme, in **LaTeX** with
+  `\cite{key}` or **Markdown** with `[@key]`, using your citation keys so it
+  compiles against your .bib. Say what the review is for to focus it.
+  Lightkone flags any key that is not among the chosen papers, and downloads a
+  .bib of the papers the draft cites. Read it as a first draft and check every
+  claim against the papers. Up to 60 papers.
+
+## History
+
+**History** (the clock at the top, or side bar, *Discover*) keeps every
+conversation with Claude in one place. That covers Ask questions, explanations
+from the reader, Summarize and Ask Claude on a paper, and every comparison
+table, agree-or-disagree weighing and review draft. Conversations are grouped
+by day. Find one by its words, or narrow the list to one kind.
+
+Open a conversation to read it again with its citations still linked to their
+pages. From there:
+
+- **Continue in Ask** picks up the conversation where it stopped, with the
+  same papers and passages. A table, weighing or draft opens again in
+  **Compare papers**.
+- A conversation about one paper continues right there. Follow-ups read the
+  paper's PDF again.
+- **Compare these papers** turns the papers a conversation cites into a
+  comparison table. **Ask about these papers** asks a new question of just
+  those papers.
+- **Markdown** copies the conversation with its citations named, for your
+  notes. **Delete** removes it on every device.
+
+A paper's details list what you **asked about this paper**: every
+conversation about it or citing it. Summarize and Ask Claude results there
+have a **Follow up** button. An Ask answer that cites several papers offers
+to compare them in a table, and a table or weighing offers to ask about its
+papers.
+
+History lives in your own storage, at `lightkone/history/`, one file per
+conversation, so it follows you across devices. In a shared library, or one
+you can only read, your history stays in this browser instead, so the group
+never sees your questions.
+
+## Keeping tools open, and quick questions
+
+On a wide screen, **Ask**, **Compare papers** and **History** can be snapped
+to the right or the bottom edge with the buttons in their top corner. A
+snapped tool stays open beside the list and the reader, so a long
+conversation or a table can be worked on while you read. Drag its inner edge
+to resize it; the size is remembered, and so is where each tool was last
+kept. Two tools snapped to the same edge share it as tabs. The window button
+puts a tool back over the app. On a phone they open as windows.
+
+For a one-off question, the chat button at the bottom right (or **Ctrl J**,
+⌘J on a Mac) pops out a small chat over whatever you are doing, the reader
+included. It asks about the paper you are reading or have selected; remove
+that chip to ask the whole library instead. Quick questions are kept in
+History like everything else. When one turns into real work, **Keep working
+on this** (the snap button in its corner) moves it into Ask, or into History
+for a paper, snapped to the right.
+
 ## New on arXiv
 
 **New on arXiv** ranks each day's preprints, in the categories your library

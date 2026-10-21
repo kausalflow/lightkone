@@ -1,5 +1,5 @@
 import type { LightkonePlugin, PaperDraft } from "../core/types";
-import { invertedToText } from "./lookup";
+import { workToDraft } from "../core/literature";
 
 // "What should I read next?" from Semantic Scholar's recommendations, which
 // need no key, with OpenAlex as a fallback. Works for any paper with an arXiv id or a DOI.
@@ -40,23 +40,7 @@ async function fromOpenAlex(doi: string, limit: number): Promise<PaperDraft[]> {
   const select = "title,authorships,publication_year,primary_location,ids,doi,abstract_inverted_index";
   const w = await fetch(`${api}?filter=openalex:${ids.join("|")}&per-page=${limit}&select=${select}`);
   if (!w.ok) return [];
-  return ((await w.json()).results ?? [])
-    .filter((x: any) => x.title)
-    .map((x: any) => {
-      const doiOut = x.doi?.replace(/^https:\/\/doi\.org\//, "");
-      const arxiv = doiOut?.match(/^10\.48550\/arxiv\.(.+)$/i)?.[1];
-      return {
-        type: "article",
-        title: x.title,
-        authors: (x.authorships ?? []).map((a: any) => flip(a.author?.display_name ?? "")).filter(Boolean),
-        year: x.publication_year ?? undefined,
-        venue: x.primary_location?.source?.display_name ?? undefined,
-        abstract: invertedToText(x.abstract_inverted_index),
-        arxiv,
-        doi: arxiv ? undefined : doiOut,
-        fields: {},
-      } satisfies PaperDraft;
-    });
+  return ((await w.json()).results ?? []).filter((x: any) => x.title).map(workToDraft);
 }
 
 export async function related(p: { arxiv?: string; doi?: string }, limit = 12): Promise<PaperDraft[]> {

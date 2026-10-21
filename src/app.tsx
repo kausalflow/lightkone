@@ -18,6 +18,12 @@ import { QuestionDialog, type Question } from "./QuestionDialog";
 import { byUse, ChipPicker } from "./ChipPicker";
 import { OfflinePanel } from "./OfflinePanel";
 import { WritingPanel } from "./WritingPanel";
+import { ComparePanel } from "./ComparePanel";
+import { HistoryPanel } from "./HistoryPanel";
+import { QuickChat } from "./QuickChat";
+import { dockSize, useWide, type Place } from "./PanelFrame";
+import { browserHistoryStore, dayLabel, KINDS, loadHistory, newConversationId, removeConversation, saveConversation, type Conversation, type Entry } from "./core/history";
+import { chooseStyle, chosenStyles, findStyles, formatBibliography, styleIndex, type CslStyle } from "./core/csl";
 import { CitationMap } from "./CitationMap";
 import { FreshPanel } from "./FreshPanel";
 import { ManuscriptPanel } from "./ManuscriptPanel";
@@ -50,6 +56,28 @@ import { VersionLine } from "./Version";
 const library = new Library();
 
 type SaveState = "idle" | "pending" | "saving" | "saved" | "merged" | "error" | "offline";
+
+type Dockable = "ask" | "compare" | "history";
+const DOCKABLE: Dockable[] = ["ask", "compare", "history"];
+const TOOL_NAMES: Record<Dockable, string> = { ask: "Ask", compare: "Compare", history: "History" };
+const PLACES_KEY = "lightkone.dock.places";
+/** Where a tool was kept last on a wide screen, so a snapped tool comes back snapped. */
+function lastPlace(t: Dockable): Place {
+  try {
+    const p = JSON.parse(localStorage.getItem(PLACES_KEY) || "{}")[t];
+    if (p === "right" || p === "bottom") return p;
+  } catch {
+    // private window
+  }
+  return "modal";
+}
+function rememberPlace(t: Dockable, p: Place) {
+  try {
+    localStorage.setItem(PLACES_KEY, JSON.stringify({ ...JSON.parse(localStorage.getItem(PLACES_KEY) || "{}"), [t]: p }));
+  } catch {
+    // private window
+  }
+}
 
 function download(name: string, text: string, type = "application/x-bibtex") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -92,6 +120,21 @@ export function App() {
   const [reading, setReading] = useState<string | null>(null);
   const [readingWeb, setReadingWeb] = useState<string | null>(null);
   const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | "offline" | null>(null);
+  const [compareTab, setCompareTab] = useState<"table" | "weigh" | "review">("table");
+  // History: every conversation with Claude, and what to open a tool on (one carried on, or papers handed over).
+  const [conversations, setConversations] = useState<Entry[]>([]);
+  const [historyAt, setHistoryAt] = useState<{ id?: string; paperId?: string }>({});
+  const [quick, setQuick] = useState(false);
+  // Ask, Compare and History open as a window, or snapped to the right or bottom edge to stay beside your papers.
+  const [places, setPlaces] = useState<Partial<Record<Dockable, Place>>>({});
+  const [front, setFront] = useState<Partial<Record<"right" | "bottom", Dockable>>>({});
+  // Each opening that carries something (a conversation to continue, papers handed over) starts the tool afresh.
+  const [launch, setLaunch] = useState<Record<Dockable, { n: number; resume?: Conversation; pick?: string[] }>>({ ask: { n: 0 }, compare: { n: 0 }, history: { n: 0 } });
+  const wide = useWide();
+  // Snapped tools are only for screens wide enough to show them beside the papers.
+  const placeOf = (t: Dockable): Place | undefined => (places[t] && !wide ? "modal" : places[t]);
+  const modalTool = DOCKABLE.some((t) => placeOf(t) === "modal");
+  const [resultConv, setResultConv] = useState<string | null>(null);
   // PDFs kept on this device on purpose (Offline papers), by storage path.
   const [keptPdfs, setKeptPdfs] = useState<Map<string, number>>(new Map());
   const [infoPage, setInfoPage] = useState<InfoPage>("start");
@@ -442,7 +485,7 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (panel || welcome || tidying || syncing !== null || reading || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (panel || modalTool || welcome || tidying || syncing !== null || reading || e.metaKey || e.ctrlKey || e.altKey) return;
       if (t.closest("input, textarea, select, [contenteditable]")) return;
       if (e.key === "/") {
         e.preventDefault();
@@ -465,7 +508,18 @@ export function App() {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [visible, selected, panel, welcome, tidying, syncing, reading]);
+  }, [visible, selected, panel, modalTool, welcome, tidying, syncing, reading]);
+
+  // Ctrl/⌘ J pops out a quick question, from anywhere, the reader too.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "j") return;
+      e.preventDefault();
+      setQuick((q) => !q);
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []);
 
   // Ctrl/⌘ K opens the command palette from anywhere but the reader.
   useEffect(() => {
@@ -592,6 +646,24 @@ export function App() {
           }),
       });
       if (r.kind !== "none") setResult(r);
+      setResultConv(null);
+      // What Claude says about a paper is kept in History, where it can be followed up.
+      if (r.kind === "text" && action.plugin === "claude") {
+        const now = new Date().toISOString();
+        const c: Conversation = {
+          id: newConversationId(),
+          kind: "paper",
+          title: r.title === "Summary" ? `Summary of ${p.title}` : r.title,
+          created: now,
+          updated: now,
+          papers: [p.id],
+          preview: "",
+          turns: [{ role: "user", text: r.title === "Summary" ? "Summarize this paper." : r.title }, { role: "assistant", text: r.text }],
+          paperId: p.id,
+        };
+        record(c);
+        setResultConv(c.id);
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -647,11 +719,105 @@ export function App() {
     setKeptPdfs(await offlineStore.kept());
   }
 
+  // Your conversations live with your own library. In a shared or read-only one they stay in this browser, so the group never sees them.
+  const historyStore = useMemo<StorageAdapter | null>(
+    () => (!storage ? null : active.shared || readOnly ? browserHistoryStore(active.shared?.id ?? "read-only") : storage),
+    [storage, readOnly, active.shared?.id],
+  );
+  useEffect(() => {
+    setConversations([]);
+    if (historyStore) loadHistory(historyStore).then(setConversations, () => {});
+  }, [historyStore]);
+  const historyQueue = useRef<Promise<unknown>>(Promise.resolve());
+  function record(c: Conversation) {
+    if (!historyStore) return;
+    // One at a time, so the list never loses a conversation saved a moment before.
+    historyQueue.current = historyQueue.current
+      .then(() => saveConversation(historyStore, c))
+      .then(setConversations, (e) => setError(`Could not keep this in History: ${(e as Error).message}`));
+  }
+  function forget(id: string) {
+    if (!historyStore) return;
+    historyQueue.current = historyQueue.current.then(() => removeConversation(historyStore, id)).then(setConversations, () => {});
+  }
+  function openHistory(at: { id?: string; paperId?: string } = {}) {
+    setHistoryAt(at);
+    openTool("history", {});
+  }
+  function carryOn(c: Conversation) {
+    if (c.kind === "ask" || c.kind === "beyond") openTool("ask", { resume: c });
+    else {
+      setCompareTab(c.kind as "table" | "weigh" | "review");
+      openTool("compare", { resume: c });
+    }
+  }
+  function handTo(tool: "ask" | "compare", ids: string[]) {
+    if (tool === "compare") setCompareTab("table");
+    openTool(tool, { pick: ids });
+  }
+  /** A quick question worth more: snap it to the side as a full conversation. */
+  function keepWorking(c: Conversation) {
+    setQuick(false);
+    if (c.kind === "ask") openTool("ask", { resume: c });
+    else openHistory({ id: c.id });
+    if (wide) placeTool(c.kind === "ask" ? "ask" : "history", "right");
+  }
+  /** Open a tool where it was last kept; `init` starts it afresh on a conversation or on papers. */
+  function openTool(t: Dockable, init?: { resume?: Conversation; pick?: string[] }) {
+    if (init) setLaunch((l) => ({ ...l, [t]: { n: l[t].n + 1, ...init } }));
+    placeTool(t, places[t] ?? (wide ? lastPlace(t) : "modal"));
+    setPanel(null);
+    setSideOpen(false);
+  }
+  function placeTool(t: Dockable, place: Place) {
+    setPlaces((p) => {
+      const next = { ...p, [t]: place };
+      // One window at a time; snapped tools stay.
+      if (place === "modal") for (const o of DOCKABLE) if (o !== t && next[o] === "modal") delete next[o];
+      return next;
+    });
+    if (place !== "modal") setFront((f) => ({ ...f, [place]: t }));
+    if (wide) rememberPlace(t, place);
+  }
+  function closeTool(t: Dockable) {
+    const was = places[t];
+    setPlaces((p) => {
+      const next = { ...p };
+      delete next[t];
+      return next;
+    });
+    if (was && was !== "modal") setFront((f) => ({ ...f, [was]: DOCKABLE.find((o) => o !== t && places[o] === was) }));
+  }
+  // The app and the reader make room for what is snapped.
+  useEffect(() => {
+    const root = document.documentElement.style;
+    for (const where of ["right", "bottom"] as const) {
+      const used = DOCKABLE.some((t) => placeOf(t) === where);
+      root.setProperty(`--dock-${where}`, used ? `${dockSize(where)}px` : "0px");
+    }
+  }, [places, wide]);
+  const dockProps = (t: Dockable) => {
+    const place = placeOf(t)!;
+    if (place === "modal") return { place, hidden: Boolean(reading), onPlace: wide ? (p: Place) => placeTool(t, p) : undefined, onClose: () => closeTool(t) };
+    // Tools snapped to the same edge share it as tabs.
+    const mates = DOCKABLE.filter((o) => placeOf(o) === place);
+    const lead = front[place] && mates.includes(front[place]!) ? front[place]! : mates[0];
+    return {
+      place,
+      hidden: lead !== t,
+      tabs: mates.map((o) => ({ label: TOOL_NAMES[o], active: lead === o, onClick: () => setFront((f) => ({ ...f, [place]: o })) })),
+      onPlace: wide ? (p: Place) => placeTool(t, p) : undefined,
+      onClose: () => closeTool(t),
+    };
+  };
+
   const tools: Tool[] = [
     { id: "fresh", group: "Discover", label: "New on arXiv", icon: "sparkle", hint: "Each day's arXiv preprints near your library", show: Boolean(storage && hasPapers), run: go("fresh") },
     { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: go("map") },
     { id: "dullaby", group: "Discover", label: "Read at night in Dullaby", icon: "moon", hint: "Opens Dullaby with your library, so it finds papers near yours", show: hasPapers, run: () => window.open(nightLink(dullabyBase(settings), library.papers, appAddress(location.href)), "_blank", "noopener") },
     { id: "equation", group: "Discover", label: "Search by equation", icon: "sigma", hint: "Find the papers that use an equation", show: Boolean(storage && library.papers.some((p) => p.arxiv)), run: go("equation") },
+    { id: "history", group: "Discover", label: "History", icon: "clock", hint: "Every question you asked Claude, to read again and follow up", show: Boolean(historyStore), run: () => openHistory() },
+    { id: "compare", group: "Discover", label: "Compare papers", icon: "table", hint: "A table of methods and results, where papers agree or disagree, a review draft", show: hasPapers, run: () => { if (!places.compare) setCompareTab("table"); openTool("compare"); } },
     { id: "writing", group: "Write", label: "Writing helpers", icon: "book", hint: "What to cite for a sentence; a .bib for a manuscript", show: hasPapers, run: go("writing") },
     { id: "manuscript", group: "Write", label: "Watch my manuscript", icon: "sync", hint: "Keep a LaTeX manuscript's .bib in step with what it cites", show: Boolean(storage), run: go("manuscript") },
     { id: "obsidian", group: "Write", label: "Export to Obsidian", icon: "file", hint: "Highlights and notes as Markdown notes", show: Boolean(storage), run: go("obsidian") },
@@ -661,8 +827,32 @@ export function App() {
   ].filter((t) => t.show) as Tool[];
   const commands: Command[] = [
     ...(storage && !readOnly ? [{ id: "add", group: "Actions", label: "Add paper", icon: "plus", keywords: "new import arxiv doi bibtex", run: () => setPanel("add") } as Command] : []),
-    ...(hasPapers ? [{ id: "ask", group: "Actions", label: "Ask your library", icon: "sparkle", keywords: "question claude ai", run: () => setPanel("ask") } as Command] : []),
+    ...(hasPapers ? [{ id: "ask", group: "Actions", label: "Ask your library", icon: "sparkle", keywords: "question claude ai", run: () => openTool("ask") } as Command] : []),
+    ...(hasPapers
+      ? ([
+          ["table", "Compare papers in a table", "extract columns csv methods results"],
+          ["weigh", "Where papers agree or disagree", "claim evidence contradict support"],
+          ["review", "Draft a literature review", "related work latex markdown"],
+        ] as const).map(([tab, label, keywords]) => ({ id: `compare:${tab}`, group: "Actions", label, icon: "table" as IconName, keywords, run: () => { setCompareTab(tab); openTool("compare", {}); } }) as Command)
+      : []),
     { id: "search", group: "Actions", label: "Search the library", icon: "search", keywords: "find filter", run: () => setTimeout(() => searchRef.current?.focus()) },
+    ...(visible.length
+      ? [{
+          id: "reflist",
+          group: "Actions",
+          label: `Copy papers in view as a reference list (${chosenStyles()[0]?.title ?? "APS"})`,
+          icon: "copy",
+          keywords: "bibliography references csl style journal format",
+          run: () => {
+            const style = chosenStyles()[0] ?? { id: "american-physics-society" };
+            setBusy("Formatting the reference list");
+            formatBibliography(visible.filter((p) => !p.trashed), style.id)
+              .then((list) => navigator.clipboard?.writeText(list.join("\n")))
+              .then(() => setError(null), (e) => setError((e as Error).message))
+              .finally(() => setBusy(null));
+          },
+        } as Command]
+      : []),
     ...(visible.length ? [{ id: "bib", group: "Actions", label: "Export papers in view as .bib", icon: "download", keywords: "bibtex download", run: () => download("library.bib", libraryToBibtex(visible)) } as Command] : []),
     { id: "theme", group: "Actions", label: `Theme: ${THEME_NAMES[nextTheme(currentTheme())]}`, icon: "moon", hint: `Now: ${THEME_NAMES[currentTheme()]}`, keywords: "dark light mode appearance", run: () => chooseTheme(nextTheme(currentTheme())) },
     { id: "settings", group: "Actions", label: "Settings", icon: "settings", keywords: "storage key preferences claude openalex", run: () => setPanel("settings") },
@@ -724,7 +914,10 @@ export function App() {
           <button class="icon-btn" onClick={() => setPanel("palette")} title={`Find a tool, folder, tag or paper (${MOD}K)`} aria-label="Commands">
             <Icon name="command" />
           </button>
-          <button class="ask-btn" onClick={() => setPanel("ask")} disabled={!library.papers.length} title="Ask a question across your library">
+          <button class="icon-btn" onClick={() => openHistory()} disabled={!historyStore} title="History: your questions to Claude" aria-label="History">
+            <Icon name="clock" />
+          </button>
+          <button class="ask-btn" onClick={() => openTool("ask")} disabled={!library.papers.length} title="Ask a question across your library">
             <Icon name="sparkle" />
             <span class="label">Ask</span>
           </button>
@@ -975,6 +1168,9 @@ export function App() {
             scheduleSave();
           }}
           onAction={(id) => runAction(id, paper)}
+          conversations={conversations.filter((e) => e.papers.includes(paper.id))}
+          resultConv={resultConv}
+          onHistory={openHistory}
           onRead={() => {
             library.update(paper.id, { opened: new Date().toISOString() });
             scheduleSave();
@@ -1010,6 +1206,7 @@ export function App() {
           onClose={() => setReading(null)}
           onError={setError}
           onText={(id, text) => textIndex?.add(id, text).then(() => setTextVersion((v) => v + 1))}
+          onRecord={record}
         />
       )}
 
@@ -1017,16 +1214,43 @@ export function App() {
         <PageReader paper={library.papers.find((p) => p.id === readingWeb)!} storage={storage} onClose={() => setReadingWeb(null)} onError={setError} />
       )}
 
-      {panel === "ask" && (
-        <AskPanel
+      {quick ? (
+        <QuickChat
           papers={library.papers}
+          texts={textIndex?.texts ?? new Map()}
+          settings={settings}
+          paper={library.papers.find((p) => p.id === (reading ?? readingWeb ?? selected))}
+          pdfOf={async (p) => (p.pdf && storage ? storage.read(p.pdf).catch(() => null) : null)}
+          onRecord={record}
+          onKeep={keepWorking}
+          onOpen={openAt}
+          onClose={() => setQuick(false)}
+        />
+      ) : (
+        library.papers.length > 0 && !welcome && !panel && !modalTool && (
+          <button class="quick-btn" onClick={() => setQuick(true)} title={`Quick question (${MOD}J)`} aria-label="Quick question">
+            <Icon name="chat" size={20} />
+          </button>
+        )
+      )}
+
+      {placeOf("ask") && (
+        <AskPanel
+          key={`ask-${launch.ask.n}`}
+          {...dockProps("ask")}
+          papers={library.papers}
+          inView={visible}
+          viewLabel={view}
           texts={textIndex?.texts ?? new Map()}
           unindexed={textIndex?.missing(library.papers).length ?? 0}
           settings={settings}
-          hidden={Boolean(reading)}
           onIndex={() => { if (!indexing) indexPdfs(); }}
+          onAdd={(d) => addDrafts([d]).length > 0}
+          resume={launch.ask.resume}
+          pick={launch.ask.pick}
+          onRecord={record}
+          onCompare={(ids) => handTo("compare", ids)}
           onOpen={openAt}
-          onClose={() => setPanel(null)}
         />
       )}
 
@@ -1075,6 +1299,44 @@ export function App() {
 
       {panel === "equation" && storage && (
         <EquationPanel papers={library.papers} storage={storage} hidden={Boolean(reading)} onOpen={openAt} onClose={() => setPanel(null)} />
+      )}
+
+      {placeOf("compare") && (
+        <ComparePanel
+          key={`compare-${launch.compare.n}`}
+          {...dockProps("compare")}
+          papers={library.papers}
+          inView={visible}
+          viewLabel={view}
+          texts={textIndex?.texts ?? new Map()}
+          settings={settings}
+          start={compareTab}
+          resume={launch.compare.resume}
+          pick={launch.compare.pick}
+          onRecord={record}
+          onAskAbout={(ids) => handTo("ask", ids)}
+          onOpen={openAt}
+        />
+      )}
+
+      {placeOf("history") && (
+        <HistoryPanel
+          key={`history-${launch.history.n}`}
+          {...dockProps("history")}
+          entries={conversations}
+          storage={historyStore}
+          papers={library.papers}
+          settings={settings}
+          start={historyAt.id}
+          paperId={historyAt.paperId}
+          onResume={carryOn}
+          onRecord={record}
+          onRemove={forget}
+          onAskAbout={(ids) => handTo("ask", ids)}
+          onCompare={(ids) => handTo("compare", ids)}
+          onOpen={openAt}
+          pdfOf={async (p) => (p.pdf && storage ? storage.read(p.pdf).catch(() => null) : null)}
+        />
       )}
 
       {panel === "writing" && (
@@ -1406,6 +1668,11 @@ function Detail(props: {
   /** Whether the PDF is kept on this device; undefined when that can't be chosen. */
   offline?: boolean;
   onOffline(): void;
+  /** Conversations with Claude about or citing this paper. */
+  conversations: Entry[];
+  /** The History entry the result above was kept as. */
+  resultConv: string | null;
+  onHistory(at: { id?: string; paperId?: string }): void;
 }) {
   const { paper: p, storage } = props;
   const math = useMath();
@@ -1562,10 +1829,33 @@ function Detail(props: {
           <div class="result">
             <h3><Icon name="sparkle" size={14} /> {props.result.title}</h3>
             <div class="prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(props.result.text, math) }} />
-            {props.result.again && props.lastAction && (
-              <button class="pill" onClick={() => props.onAction(props.lastAction!)}>
-                <Icon name="sparkle" size={14} /> {props.result.again}
-              </button>
+            <div class="row">
+              {props.resultConv && (
+                <button class="pill" onClick={() => props.onHistory({ id: props.resultConv! })}>
+                  <Icon name="clock" size={14} /> Follow up
+                </button>
+              )}
+              {props.result.again && props.lastAction && (
+                <button class="pill" onClick={() => props.onAction(props.lastAction!)}>
+                  <Icon name="sparkle" size={14} /> {props.result.again}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {props.conversations.length > 0 && (
+          <div class="paper-history">
+            <h3><Icon name="clock" size={14} /> Asked about this paper</h3>
+            <ul>
+              {props.conversations.slice(0, 5).map((e) => (
+                <li key={e.id}>
+                  <a href="#" onClick={(ev) => { ev.preventDefault(); props.onHistory({ id: e.id }); }}>{e.title}</a>
+                  <span class="muted small"> · {KINDS[e.kind]}, {dayLabel(e.updated)}</span>
+                </li>
+              ))}
+            </ul>
+            {props.conversations.length > 5 && (
+              <button class="link small" onClick={() => props.onHistory({ paperId: p.id })}>All {props.conversations.length} in History</button>
             )}
           </div>
         )}
@@ -2000,9 +2290,92 @@ function CiteMenu(props: { paper: Paper }) {
               <span class="cite-preview">{cite(props.paper, s.id)}</span>
             </button>
           ))}
+          <JournalStyles paper={props.paper} onCopied={() => setTimeout(() => setOpen(false), 900)} />
         </div>
       )}
     </div>
+  );
+}
+
+/** One reference on its own needs no number: "[1] A. Author, …" → "A. Author, …". */
+const alone = (text: string) => text.replace(/^\s*(?:\[\d+\]|\(\d+\)|\d+\.)\s+/, "");
+
+/** The paper in journal styles from the Citation Style Language: the few chosen last, and a search over all of them. */
+function JournalStyles(props: { paper: Paper; onCopied(): void }) {
+  const [chosen, setChosen] = useState<CslStyle[]>(chosenStyles);
+  const [shown, setShown] = useState<Map<string, string>>(new Map());
+  const [copied, setCopied] = useState<string | null>(null);
+  const [finding, setFinding] = useState(false);
+  const [q, setQ] = useState("");
+  const [all, setAll] = useState<CslStyle[] | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    for (const s of chosen) {
+      if (shown.has(s.id)) continue;
+      formatBibliography([props.paper], s.id)
+        .then(([text]) => live && setShown((m) => new Map(m).set(s.id, alone(text ?? ""))))
+        .catch((e) => live && setShown((m) => new Map(m).set(s.id, `(${(e as Error).message})`)));
+    }
+    return () => { live = false; };
+  }, [chosen, props.paper]);
+
+  useEffect(() => {
+    if (!finding || all) return;
+    styleIndex().then(setAll, (e) => setNote((e as Error).message));
+  }, [finding]);
+
+  async function copy(s: CslStyle) {
+    try {
+      const [html] = await formatBibliography([props.paper], s.id, "html");
+      const text = shown.get(s.id) ?? alone((await formatBibliography([props.paper], s.id))[0] ?? "");
+      // Rich text keeps italics and bold when pasted into a document; plain text everywhere else.
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
+      } else await navigator.clipboard?.writeText(text);
+      setChosen(chooseStyle(s));
+      setCopied(s.id);
+      props.onCopied();
+    } catch (e) {
+      setNote((e as Error).message);
+    }
+  }
+
+  function pick(s: CslStyle) {
+    setChosen(chooseStyle(s));
+    setFinding(false);
+    setQ("");
+  }
+
+  const found = all ? findStyles(all, q) : [];
+  return (
+    <>
+      {chosen.map((s) => (
+        <button key={s.id} role="menuitem" class="cite-option csl" onClick={() => copy(s)}>
+          <span class="cite-label">{copied === s.id ? "Copied" : s.title}</span>
+          <span class="cite-preview">{shown.get(s.id) ?? "Formatting…"}</span>
+        </button>
+      ))}
+      {finding ? (
+        <div class="cite-find">
+          <input type="search" autoFocus placeholder="Journal or style: Physical Review D, JCAP, Nature…" value={q} onInput={(e) => setQ(e.currentTarget.value)} aria-label="Find a citation style" />
+          {!all && !note && <p class="muted small">Loading the list of styles…</p>}
+          {found.map((s) => (
+            <button key={s.id} role="menuitem" class="cite-option csl" onClick={() => pick(s)}>
+              <span class="cite-label">{s.title}</span>
+            </button>
+          ))}
+          {all && q.trim() && !found.length && <p class="muted small">No style matches. Try a shorter name.</p>}
+        </div>
+      ) : (
+        <button role="menuitem" class="cite-option csl" onClick={() => setFinding(true)}>
+          <span class="cite-label">Another journal's style…</span>
+          <span class="cite-preview">Any of the 10,000+ styles Zotero and Mendeley use</span>
+        </button>
+      )}
+      {note && <p class="error small">{note}</p>}
+    </>
   );
 }
 

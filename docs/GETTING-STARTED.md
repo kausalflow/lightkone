@@ -65,7 +65,7 @@ or (with a Claude key) **Explain** it. See [Reading and highlighting](READING.md
 
 ## 5. Add a Claude key (optional)
 
-Ask, Explain, Summarize, Cite this's check, and finding papers from a plain
+Ask, Compare papers, Explain, Summarize, Cite this's check, and finding papers from a plain
 description use Claude with your own key. Get one at
 [console.anthropic.com](https://console.anthropic.com) and paste it under
 **Settings → Claude → Anthropic API key**. It is kept in this browser only and
@@ -75,6 +75,8 @@ sent only to Anthropic. Everything else works without it.
 
 - **Ctrl K** (⌘K on a Mac), or the ⌘ button at the top, opens a command list:
   type to jump to any tool, folder, tag or paper.
+- **Ctrl J** (⌘J), or the chat button at the bottom right, pops out a quick
+  question about the paper in front of you.
 - The side bar holds your folders and tags, and the tools grouped as
   *Discover*, *Write* and *Organize*.
 - **?** opens Help.
