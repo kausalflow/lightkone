@@ -24,6 +24,12 @@ shared library.
 **Does Lightkone change my Paperpile library or Google Drive?** No. It only
 reads what you export or copy.
 
+**Which version am I using?** The last line of **Settings** and of **Help**
+names it, for example `0.1.0 · 2026-10-21 · ec1bee0`: the release, the day
+of the change it was built from, and that change's short id. The live site
+says the same at `/version.json`. When the site has a newer one than the
+open app, that line says so and offers a reload.
+
 ## When something goes wrong
 
 **"Could not open …: Failed to fetch"** with a bucket: the bucket's CORS rule

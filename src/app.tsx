@@ -45,6 +45,7 @@ import { Icon, type IconName } from "./icons";
 import { site } from "./core/site";
 import { fetchPage, hasPage, htmlPath, isWebLink, markdownFile, markdownPath, pageMarkdown, takePage } from "./core/webpage";
 import { joinPages, textPath } from "./core/fulltext";
+import { VersionLine } from "./Version";
 
 const library = new Library();
 
@@ -2154,6 +2155,7 @@ function SettingsPanel(props: { settings: Settings; onSave(s: Settings): void; o
           <button class="primary" type="submit">Save</button>
           <button type="button" class="ghost" onClick={props.onClose}>Cancel</button>
         </div>
+        <VersionLine />
       </form>
     </div>
   );
