@@ -120,6 +120,7 @@ function Guide() {
         "Search by equation finds arXiv papers in your library that use a formula. Ask answers a question from your papers, citing the pages: from the whole library, a folder or tag, papers you pick, or published papers beyond it.",
         "Compare papers fills a table of values read out of each paper, sorts what supports or contradicts a claim, and drafts a literature review in LaTeX or Markdown.",
         "History (the clock at the top) keeps every conversation with Claude: read it again, follow up, or take its papers to Ask or Compare.",
+        `On a wide screen, snap Ask, Compare or History to the right or bottom edge to keep it open while you read. For a quick question, the chat button at the bottom right (${MOD} J) asks about the paper in front of you.`,
       ],
     ],
     [
@@ -248,6 +249,7 @@ function Data() {
 function Keys() {
   const keys: [string, string][] = [
     [`${MOD} K`, "Find any tool, view, folder, tag or paper"],
+    [`${MOD} J`, "A quick question about the paper in front of you"],
     ["/", "Search the library"],
     ["j  k", "Next and previous paper"],
     ["?", "Open Help"],

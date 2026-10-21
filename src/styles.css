@@ -876,3 +876,70 @@ details.guide ul { margin-top: 8px; }
 @media (max-width: 600px) {
   .history-panel { max-height: 92dvh; }
 }
+
+/* Panels snapped to the right or bottom edge, beside the papers and the reader */
+:root { --dock-right: 0px; --dock-bottom: 0px; }
+.app { margin-right: var(--dock-right); height: calc(100dvh - var(--dock-bottom)); }
+.reader { right: var(--dock-right) !important; bottom: var(--dock-bottom) !important; }
+.panel.docked {
+  position: fixed; z-index: 8; margin: 0; border-radius: 0; box-shadow: none; animation: none;
+  display: flex; flex-direction: column; min-height: 0; max-height: none; overflow: auto; overscroll-behavior: contain;
+  padding: 14px 18px 16px; background: var(--panel);
+}
+.panel.docked[hidden] { display: none; }
+.panel.dock-right { top: 0; right: 0; bottom: 0; width: var(--dock-right); border-left: 1px solid var(--line); }
+.panel.dock-bottom { left: 0; right: var(--dock-right); bottom: 0; height: var(--dock-bottom); width: auto; border-top: 1px solid var(--line); }
+.panel.docked > * { flex-shrink: 0; }
+.panel.docked.ask-panel { overflow: hidden; }
+.panel.docked.ask-panel .ask-turns { flex: 1 1 auto; min-height: 0; }
+.panel.docked .compare-table { max-height: none; }
+.panel.docked h2 { font-size: 18px; }
+.dock-grip { position: absolute; z-index: 1; touch-action: none; }
+.dock-right .dock-grip { left: -3px; top: 0; bottom: 0; width: 7px; cursor: ew-resize; }
+.dock-bottom .dock-grip { top: -3px; left: 0; right: 0; height: 7px; cursor: ns-resize; }
+.dock-grip:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.panel-head { gap: 8px; }
+.panel-head h2 { flex: 1; min-width: 0; }
+.panel-tools { display: flex; align-items: center; gap: 2px; flex: none; }
+.panel-tools .snap { display: inline-flex; gap: 2px; }
+.panel-tools .icon-btn { color: var(--muted); }
+.panel-tools .icon-btn:hover { color: var(--text); }
+.dock-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.dock-tabs button { border: 0; background: none; box-shadow: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 6px 10px; color: var(--muted); font: 600 15px/1.2 var(--serif); }
+.dock-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.history-back { align-self: flex-start; justify-self: start; margin: 0 0 6px; }
+@media (max-width: 899px) {
+  .panel-tools .snap { display: none; }
+}
+
+/* Quick question: a small chat that pops out over anything, the reader too, and never covers a dock. */
+.quick-btn {
+  position: fixed; right: calc(var(--dock-right) + 18px); bottom: calc(var(--dock-bottom) + 18px); z-index: 26;
+  width: 46px; height: 46px; padding: 0; border-radius: 50%;
+  background: var(--panel); color: var(--accent); border: 1px solid var(--line);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 0.18);
+}
+.quick-btn:hover { background: var(--hover); }
+.quick {
+  position: fixed; right: calc(var(--dock-right) + 16px); bottom: calc(var(--dock-bottom) + 16px); z-index: 27;
+  width: min(380px, calc(100vw - 24px)); height: min(520px, calc(100dvh - var(--dock-bottom) - 80px));
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.25); animation: quick-in 0.15s ease-out;
+}
+.quick-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 14px; border-bottom: 1px solid var(--line); }
+.quick-head strong { font-size: 14px; font-weight: 600; }
+.quick-head .spacer { flex: 1; }
+.quick-about { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 14px 0; }
+.quick-about .chip { gap: 2px; max-width: 100%; color: var(--text); }
+.quick-about .chip .icon-btn { width: 18px; height: 18px; padding: 0; min-height: 0; }
+.quick-turns { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 14px; display: grid; gap: 10px; align-content: start; }
+@keyframes quick-in { from { transform: translateY(16px); opacity: 0; } }
+.quick-turns .answer { font-size: 14px; }
+.quick-form { display: flex; gap: 6px; align-items: flex-end; padding: 8px; border-top: 1px solid var(--line); }
+.quick-form textarea { flex: 1; resize: none; min-height: 38px; max-height: 120px; field-sizing: content; }
+.quick-form button { flex-shrink: 0; height: 38px; }
+@media (max-width: 899px) {
+  .quick { right: 8px; left: 8px; bottom: 8px; width: auto; height: min(70dvh, 560px); }
+  .quick-btn { right: 14px; bottom: 14px; }
+}

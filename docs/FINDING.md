@@ -114,6 +114,24 @@ conversation, so it follows you across devices. In a shared library, or one
 you can only read, your history stays in this browser instead, so the group
 never sees your questions.
 
+## Keeping tools open, and quick questions
+
+On a wide screen, **Ask**, **Compare papers** and **History** can be snapped
+to the right or the bottom edge with the buttons in their top corner. A
+snapped tool stays open beside the list and the reader, so a long
+conversation or a table can be worked on while you read. Drag its inner edge
+to resize it; the size is remembered, and so is where each tool was last
+kept. Two tools snapped to the same edge share it as tabs. The window button
+puts a tool back over the app. On a phone they open as windows.
+
+For a one-off question, the chat button at the bottom right (or **Ctrl J**,
+⌘J on a Mac) pops out a small chat over whatever you are doing, the reader
+included. It asks about the paper you are reading or have selected; remove
+that chip to ask the whole library instead. Quick questions are kept in
+History like everything else. When one turns into real work, **Keep working
+on this** (the snap button in its corner) moves it into Ask, or into History
+for a paper, snapped to the right.
+
 ## New on arXiv
 
 **New on arXiv** ranks each day's preprints, in the categories your library

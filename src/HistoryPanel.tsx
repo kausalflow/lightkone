@@ -9,6 +9,7 @@ import { useMath } from "./core/math";
 import { papersText } from "./core/scope";
 import { chatAboutPaper } from "./plugins/claude";
 import { Icon } from "./icons";
+import { PanelFrame, type DockTab, type Place } from "./PanelFrame";
 
 /**
  * Everything asked of Claude, in one place: find a conversation, read it
@@ -25,6 +26,10 @@ export function HistoryPanel(props: {
   /** List only the conversations about this paper. */
   paperId?: string;
   hidden?: boolean;
+  /** A window over the app, or snapped to an edge. */
+  place?: Place;
+  tabs?: DockTab[];
+  onPlace?(p: Place): void;
   onResume(c: Conversation): void;
   onRecord(c: Conversation): void;
   onRemove(id: string): void;
@@ -44,16 +49,8 @@ export function HistoryPanel(props: {
 
   let lastDay = "";
   return (
-    <div class="overlay" hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && props.onClose()}>
-      <section class="panel wide history-panel" aria-label="History">
-        <div class="ask-head">
-          {open ? (
-            <button class="ghost small" onClick={() => setOpen(null)}><Icon name="back" size={15} /> All conversations</button>
-          ) : (
-            <h2>History</h2>
-          )}
-          <button class="icon-btn" onClick={props.onClose} aria-label="Close"><Icon name="x" /></button>
-        </div>
+    <PanelFrame place={props.place ?? "modal"} class="wide history-panel" label="History" title="History" hidden={props.hidden} tabs={props.tabs} onPlace={props.onPlace} onClose={props.onClose}>
+        {open && <button class="ghost small history-back" onClick={() => setOpen(null)}><Icon name="back" size={15} /> All conversations</button>}
         {open ? (
           <ConversationView key={open} id={open} {...props} byId={byId} onRemove={(id) => { props.onRemove(id); setOpen(null); }} />
         ) : (
@@ -92,8 +89,7 @@ export function HistoryPanel(props: {
             </ul>
           </>
         )}
-      </section>
-    </div>
+    </PanelFrame>
   );
 }
 

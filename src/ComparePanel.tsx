@@ -13,6 +13,7 @@ import { useMath } from "./core/math";
 import { draftReview, extractRow, weighClaim } from "./plugins/claude";
 import { newConversationId, type Conversation, type Kind } from "./core/history";
 import { ScopePicker } from "./ScopePicker";
+import { PanelFrame, type DockTab, type Place } from "./PanelFrame";
 import { Icon } from "./icons";
 
 const TABLE_MAX = 50;
@@ -56,6 +57,10 @@ export function ComparePanel(props: {
   texts: Map<string, string>;
   settings: Record<string, string>;
   hidden?: boolean;
+  /** A window over the app, or snapped to an edge. */
+  place?: Place;
+  tabs?: DockTab[];
+  onPlace?(p: Place): void;
   start?: Tab;
   /** A table, weighing or draft from History to open again. */
   resume?: Conversation;
@@ -85,12 +90,7 @@ export function ComparePanel(props: {
   }
 
   return (
-    <div class="overlay" hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && !busy && props.onClose()}>
-      <div class="panel wide compare-panel">
-        <div class="ask-head">
-          <h2>Compare papers</h2>
-          <button class="icon-btn" onClick={props.onClose} disabled={busy} aria-label="Close"><Icon name="x" /></button>
-        </div>
+    <PanelFrame place={props.place ?? "modal"} class="wide compare-panel" label="Compare papers" title="Compare papers" hidden={props.hidden} busy={busy} tabs={props.tabs} onPlace={props.onPlace} onClose={props.onClose}>
         <div class="tabs" role="tablist">
           {([["table", "Table"], ["weigh", "Agree or disagree"], ["review", "Review draft"]] as [Tab, string][]).map(([id, label]) => (
             <button key={id} role="tab" aria-selected={tab === id} class={tab === id ? "on" : ""} disabled={busy} onClick={() => setTab(id)}>{label}</button>
@@ -101,8 +101,7 @@ export function ComparePanel(props: {
         {tab === "table" && <TableTab {...shared} />}
         {tab === "weigh" && <WeighTab {...shared} />}
         {tab === "review" && <ReviewTab {...shared} />}
-      </div>
-    </div>
+    </PanelFrame>
   );
 }
 

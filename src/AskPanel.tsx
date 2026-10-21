@@ -5,6 +5,7 @@ import { inLibrary, outsideOf, searchLiterature, type Outside } from "./core/lit
 import { newConversationId, type Conversation } from "./core/history";
 import { loadScope, saveScope, scoped, type Scope } from "./core/scope";
 import { ScopePicker } from "./ScopePicker";
+import { PanelFrame, type DockTab, type Place } from "./PanelFrame";
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
 import { askLibrary, type LibraryTurn } from "./plugins/claude";
@@ -25,6 +26,10 @@ export function AskPanel(props: {
   unindexed: number;
   settings: Record<string, string>;
   hidden?: boolean;
+  /** A window over the app, or snapped to an edge. */
+  place?: Place;
+  tabs?: DockTab[];
+  onPlace?(p: Place): void;
   onOpen(paperId: string, page: number): void;
   onIndex(): void;
   onAdd(d: PaperDraft): boolean;
@@ -175,12 +180,17 @@ export function AskPanel(props: {
   };
 
   return (
-    <div class="overlay" hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && props.onClose()}>
-      <section class="panel ask-panel" onClick={onClick} aria-label={literature ? "Ask beyond your library" : "Ask your library"}>
-        <div class="ask-head">
-          <h2>{literature ? "Ask beyond your library" : "Ask your library"}</h2>
-          <button class="icon-btn" onClick={props.onClose} aria-label="Close"><Icon name="x" /></button>
-        </div>
+    <PanelFrame
+      place={props.place ?? "modal"}
+      class="ask-panel"
+      label={literature ? "Ask beyond your library" : "Ask your library"}
+      title={literature ? "Ask beyond your library" : "Ask your library"}
+      hidden={props.hidden}
+      tabs={props.tabs}
+      onPlace={props.onPlace}
+      onClose={props.onClose}
+      onClick={onClick}
+    >
         {!turns.length && (
           <ScopePicker papers={props.papers} inView={props.inView} viewLabel={props.viewLabel} value={scope} onChange={pickScope} literature />
         )}
@@ -266,8 +276,7 @@ export function AskPanel(props: {
             )}
           </div>
         </form>
-      </section>
-    </div>
+    </PanelFrame>
   );
 }
 

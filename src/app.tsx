@@ -20,6 +20,8 @@ import { OfflinePanel } from "./OfflinePanel";
 import { WritingPanel } from "./WritingPanel";
 import { ComparePanel } from "./ComparePanel";
 import { HistoryPanel } from "./HistoryPanel";
+import { QuickChat } from "./QuickChat";
+import { dockSize, useWide, type Place } from "./PanelFrame";
 import { browserHistoryStore, dayLabel, KINDS, loadHistory, newConversationId, removeConversation, saveConversation, type Conversation, type Entry } from "./core/history";
 import { chooseStyle, chosenStyles, findStyles, formatBibliography, styleIndex, type CslStyle } from "./core/csl";
 import { CitationMap } from "./CitationMap";
@@ -54,6 +56,28 @@ import { VersionLine } from "./Version";
 const library = new Library();
 
 type SaveState = "idle" | "pending" | "saving" | "saved" | "merged" | "error" | "offline";
+
+type Dockable = "ask" | "compare" | "history";
+const DOCKABLE: Dockable[] = ["ask", "compare", "history"];
+const TOOL_NAMES: Record<Dockable, string> = { ask: "Ask", compare: "Compare", history: "History" };
+const PLACES_KEY = "lightkone.dock.places";
+/** Where a tool was kept last on a wide screen, so a snapped tool comes back snapped. */
+function lastPlace(t: Dockable): Place {
+  try {
+    const p = JSON.parse(localStorage.getItem(PLACES_KEY) || "{}")[t];
+    if (p === "right" || p === "bottom") return p;
+  } catch {
+    // private window
+  }
+  return "modal";
+}
+function rememberPlace(t: Dockable, p: Place) {
+  try {
+    localStorage.setItem(PLACES_KEY, JSON.stringify({ ...JSON.parse(localStorage.getItem(PLACES_KEY) || "{}"), [t]: p }));
+  } catch {
+    // private window
+  }
+}
 
 function download(name: string, text: string, type = "application/x-bibtex") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -95,13 +119,21 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
   const [readingWeb, setReadingWeb] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | "offline" | "compare" | "history" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | "offline" | null>(null);
   const [compareTab, setCompareTab] = useState<"table" | "weigh" | "review">("table");
   // History: every conversation with Claude, and what to open a tool on (one carried on, or papers handed over).
   const [conversations, setConversations] = useState<Entry[]>([]);
-  const [resume, setResume] = useState<Conversation | null>(null);
-  const [handOver, setHandOver] = useState<string[] | null>(null);
   const [historyAt, setHistoryAt] = useState<{ id?: string; paperId?: string }>({});
+  const [quick, setQuick] = useState(false);
+  // Ask, Compare and History open as a window, or snapped to the right or bottom edge to stay beside your papers.
+  const [places, setPlaces] = useState<Partial<Record<Dockable, Place>>>({});
+  const [front, setFront] = useState<Partial<Record<"right" | "bottom", Dockable>>>({});
+  // Each opening that carries something (a conversation to continue, papers handed over) starts the tool afresh.
+  const [launch, setLaunch] = useState<Record<Dockable, { n: number; resume?: Conversation; pick?: string[] }>>({ ask: { n: 0 }, compare: { n: 0 }, history: { n: 0 } });
+  const wide = useWide();
+  // Snapped tools are only for screens wide enough to show them beside the papers.
+  const placeOf = (t: Dockable): Place | undefined => (places[t] && !wide ? "modal" : places[t]);
+  const modalTool = DOCKABLE.some((t) => placeOf(t) === "modal");
   const [resultConv, setResultConv] = useState<string | null>(null);
   // PDFs kept on this device on purpose (Offline papers), by storage path.
   const [keptPdfs, setKeptPdfs] = useState<Map<string, number>>(new Map());
@@ -453,7 +485,7 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (panel || welcome || tidying || syncing !== null || reading || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (panel || modalTool || welcome || tidying || syncing !== null || reading || e.metaKey || e.ctrlKey || e.altKey) return;
       if (t.closest("input, textarea, select, [contenteditable]")) return;
       if (e.key === "/") {
         e.preventDefault();
@@ -476,7 +508,18 @@ export function App() {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [visible, selected, panel, welcome, tidying, syncing, reading]);
+  }, [visible, selected, panel, modalTool, welcome, tidying, syncing, reading]);
+
+  // Ctrl/⌘ J pops out a quick question, from anywhere, the reader too.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "j") return;
+      e.preventDefault();
+      setQuick((q) => !q);
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []);
 
   // Ctrl/⌘ K opens the command palette from anywhere but the reader.
   useEffect(() => {
@@ -699,31 +742,74 @@ export function App() {
   }
   function openHistory(at: { id?: string; paperId?: string } = {}) {
     setHistoryAt(at);
-    setSideOpen(false);
-    setPanel("history");
+    openTool("history", {});
   }
   function carryOn(c: Conversation) {
-    setResume(c);
-    setHandOver(null);
-    if (c.kind === "ask" || c.kind === "beyond") setPanel("ask");
+    if (c.kind === "ask" || c.kind === "beyond") openTool("ask", { resume: c });
     else {
       setCompareTab(c.kind as "table" | "weigh" | "review");
-      setPanel("compare");
+      openTool("compare", { resume: c });
     }
   }
   function handTo(tool: "ask" | "compare", ids: string[]) {
-    setResume(null);
-    setHandOver(ids);
     if (tool === "compare") setCompareTab("table");
-    setPanel(tool);
+    openTool(tool, { pick: ids });
   }
-  // A tool opened plainly starts fresh.
+  /** A quick question worth more: snap it to the side as a full conversation. */
+  function keepWorking(c: Conversation) {
+    setQuick(false);
+    if (c.kind === "ask") openTool("ask", { resume: c });
+    else openHistory({ id: c.id });
+    if (wide) placeTool(c.kind === "ask" ? "ask" : "history", "right");
+  }
+  /** Open a tool where it was last kept; `init` starts it afresh on a conversation or on papers. */
+  function openTool(t: Dockable, init?: { resume?: Conversation; pick?: string[] }) {
+    if (init) setLaunch((l) => ({ ...l, [t]: { n: l[t].n + 1, ...init } }));
+    placeTool(t, places[t] ?? (wide ? lastPlace(t) : "modal"));
+    setPanel(null);
+    setSideOpen(false);
+  }
+  function placeTool(t: Dockable, place: Place) {
+    setPlaces((p) => {
+      const next = { ...p, [t]: place };
+      // One window at a time; snapped tools stay.
+      if (place === "modal") for (const o of DOCKABLE) if (o !== t && next[o] === "modal") delete next[o];
+      return next;
+    });
+    if (place !== "modal") setFront((f) => ({ ...f, [place]: t }));
+    if (wide) rememberPlace(t, place);
+  }
+  function closeTool(t: Dockable) {
+    const was = places[t];
+    setPlaces((p) => {
+      const next = { ...p };
+      delete next[t];
+      return next;
+    });
+    if (was && was !== "modal") setFront((f) => ({ ...f, [was]: DOCKABLE.find((o) => o !== t && places[o] === was) }));
+  }
+  // The app and the reader make room for what is snapped.
   useEffect(() => {
-    if (panel !== "ask" && panel !== "compare") {
-      setResume(null);
-      setHandOver(null);
+    const root = document.documentElement.style;
+    for (const where of ["right", "bottom"] as const) {
+      const used = DOCKABLE.some((t) => placeOf(t) === where);
+      root.setProperty(`--dock-${where}`, used ? `${dockSize(where)}px` : "0px");
     }
-  }, [panel]);
+  }, [places, wide]);
+  const dockProps = (t: Dockable) => {
+    const place = placeOf(t)!;
+    if (place === "modal") return { place, hidden: Boolean(reading), onPlace: wide ? (p: Place) => placeTool(t, p) : undefined, onClose: () => closeTool(t) };
+    // Tools snapped to the same edge share it as tabs.
+    const mates = DOCKABLE.filter((o) => placeOf(o) === place);
+    const lead = front[place] && mates.includes(front[place]!) ? front[place]! : mates[0];
+    return {
+      place,
+      hidden: lead !== t,
+      tabs: mates.map((o) => ({ label: TOOL_NAMES[o], active: lead === o, onClick: () => setFront((f) => ({ ...f, [place]: o })) })),
+      onPlace: wide ? (p: Place) => placeTool(t, p) : undefined,
+      onClose: () => closeTool(t),
+    };
+  };
 
   const tools: Tool[] = [
     { id: "fresh", group: "Discover", label: "New on arXiv", icon: "sparkle", hint: "Each day's arXiv preprints near your library", show: Boolean(storage && hasPapers), run: go("fresh") },
@@ -731,7 +817,7 @@ export function App() {
     { id: "dullaby", group: "Discover", label: "Read at night in Dullaby", icon: "moon", hint: "Opens Dullaby with your library, so it finds papers near yours", show: hasPapers, run: () => window.open(nightLink(dullabyBase(settings), library.papers, appAddress(location.href)), "_blank", "noopener") },
     { id: "equation", group: "Discover", label: "Search by equation", icon: "sigma", hint: "Find the papers that use an equation", show: Boolean(storage && library.papers.some((p) => p.arxiv)), run: go("equation") },
     { id: "history", group: "Discover", label: "History", icon: "clock", hint: "Every question you asked Claude, to read again and follow up", show: Boolean(historyStore), run: () => openHistory() },
-    { id: "compare", group: "Discover", label: "Compare papers", icon: "table", hint: "A table of methods and results, where papers agree or disagree, a review draft", show: hasPapers, run: () => { setCompareTab("table"); go("compare")(); } },
+    { id: "compare", group: "Discover", label: "Compare papers", icon: "table", hint: "A table of methods and results, where papers agree or disagree, a review draft", show: hasPapers, run: () => { if (!places.compare) setCompareTab("table"); openTool("compare"); } },
     { id: "writing", group: "Write", label: "Writing helpers", icon: "book", hint: "What to cite for a sentence; a .bib for a manuscript", show: hasPapers, run: go("writing") },
     { id: "manuscript", group: "Write", label: "Watch my manuscript", icon: "sync", hint: "Keep a LaTeX manuscript's .bib in step with what it cites", show: Boolean(storage), run: go("manuscript") },
     { id: "obsidian", group: "Write", label: "Export to Obsidian", icon: "file", hint: "Highlights and notes as Markdown notes", show: Boolean(storage), run: go("obsidian") },
@@ -741,13 +827,13 @@ export function App() {
   ].filter((t) => t.show) as Tool[];
   const commands: Command[] = [
     ...(storage && !readOnly ? [{ id: "add", group: "Actions", label: "Add paper", icon: "plus", keywords: "new import arxiv doi bibtex", run: () => setPanel("add") } as Command] : []),
-    ...(hasPapers ? [{ id: "ask", group: "Actions", label: "Ask your library", icon: "sparkle", keywords: "question claude ai", run: () => setPanel("ask") } as Command] : []),
+    ...(hasPapers ? [{ id: "ask", group: "Actions", label: "Ask your library", icon: "sparkle", keywords: "question claude ai", run: () => openTool("ask") } as Command] : []),
     ...(hasPapers
       ? ([
           ["table", "Compare papers in a table", "extract columns csv methods results"],
           ["weigh", "Where papers agree or disagree", "claim evidence contradict support"],
           ["review", "Draft a literature review", "related work latex markdown"],
-        ] as const).map(([tab, label, keywords]) => ({ id: `compare:${tab}`, group: "Actions", label, icon: "table" as IconName, keywords, run: () => { setCompareTab(tab); setSideOpen(false); setPanel("compare"); } }) as Command)
+        ] as const).map(([tab, label, keywords]) => ({ id: `compare:${tab}`, group: "Actions", label, icon: "table" as IconName, keywords, run: () => { setCompareTab(tab); openTool("compare", {}); } }) as Command)
       : []),
     { id: "search", group: "Actions", label: "Search the library", icon: "search", keywords: "find filter", run: () => setTimeout(() => searchRef.current?.focus()) },
     ...(visible.length
@@ -831,7 +917,7 @@ export function App() {
           <button class="icon-btn" onClick={() => openHistory()} disabled={!historyStore} title="History: your questions to Claude" aria-label="History">
             <Icon name="clock" />
           </button>
-          <button class="ask-btn" onClick={() => setPanel("ask")} disabled={!library.papers.length} title="Ask a question across your library">
+          <button class="ask-btn" onClick={() => openTool("ask")} disabled={!library.papers.length} title="Ask a question across your library">
             <Icon name="sparkle" />
             <span class="label">Ask</span>
           </button>
@@ -1128,23 +1214,43 @@ export function App() {
         <PageReader paper={library.papers.find((p) => p.id === readingWeb)!} storage={storage} onClose={() => setReadingWeb(null)} onError={setError} />
       )}
 
-      {panel === "ask" && (
+      {quick ? (
+        <QuickChat
+          papers={library.papers}
+          texts={textIndex?.texts ?? new Map()}
+          settings={settings}
+          paper={library.papers.find((p) => p.id === (reading ?? readingWeb ?? selected))}
+          pdfOf={async (p) => (p.pdf && storage ? storage.read(p.pdf).catch(() => null) : null)}
+          onRecord={record}
+          onKeep={keepWorking}
+          onOpen={openAt}
+          onClose={() => setQuick(false)}
+        />
+      ) : (
+        library.papers.length > 0 && !welcome && !panel && !modalTool && (
+          <button class="quick-btn" onClick={() => setQuick(true)} title={`Quick question (${MOD}J)`} aria-label="Quick question">
+            <Icon name="chat" size={20} />
+          </button>
+        )
+      )}
+
+      {placeOf("ask") && (
         <AskPanel
+          key={`ask-${launch.ask.n}`}
+          {...dockProps("ask")}
           papers={library.papers}
           inView={visible}
           viewLabel={view}
           texts={textIndex?.texts ?? new Map()}
           unindexed={textIndex?.missing(library.papers).length ?? 0}
           settings={settings}
-          hidden={Boolean(reading)}
           onIndex={() => { if (!indexing) indexPdfs(); }}
           onAdd={(d) => addDrafts([d]).length > 0}
-          resume={resume ?? undefined}
-          pick={handOver ?? undefined}
+          resume={launch.ask.resume}
+          pick={launch.ask.pick}
           onRecord={record}
           onCompare={(ids) => handTo("compare", ids)}
           onOpen={openAt}
-          onClose={() => setPanel(null)}
         />
       )}
 
@@ -1195,33 +1301,34 @@ export function App() {
         <EquationPanel papers={library.papers} storage={storage} hidden={Boolean(reading)} onOpen={openAt} onClose={() => setPanel(null)} />
       )}
 
-      {panel === "compare" && (
+      {placeOf("compare") && (
         <ComparePanel
+          key={`compare-${launch.compare.n}`}
+          {...dockProps("compare")}
           papers={library.papers}
           inView={visible}
           viewLabel={view}
           texts={textIndex?.texts ?? new Map()}
           settings={settings}
           start={compareTab}
-          resume={resume ?? undefined}
-          pick={handOver ?? undefined}
+          resume={launch.compare.resume}
+          pick={launch.compare.pick}
           onRecord={record}
           onAskAbout={(ids) => handTo("ask", ids)}
-          hidden={Boolean(reading)}
           onOpen={openAt}
-          onClose={() => setPanel(null)}
         />
       )}
 
-      {panel === "history" && (
+      {placeOf("history") && (
         <HistoryPanel
+          key={`history-${launch.history.n}`}
+          {...dockProps("history")}
           entries={conversations}
           storage={historyStore}
           papers={library.papers}
           settings={settings}
           start={historyAt.id}
           paperId={historyAt.paperId}
-          hidden={Boolean(reading)}
           onResume={carryOn}
           onRecord={record}
           onRemove={forget}
@@ -1229,7 +1336,6 @@ export function App() {
           onCompare={(ids) => handTo("compare", ids)}
           onOpen={openAt}
           pdfOf={async (p) => (p.pdf && storage ? storage.read(p.pdf).catch(() => null) : null)}
-          onClose={() => setPanel(null)}
         />
       )}
 
