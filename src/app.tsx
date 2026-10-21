@@ -30,6 +30,7 @@ import { demoDrafts, isDemo, markDemoOffered, markWelcomed, wantsDemo, welcomed 
 import { activeId, activeStorage, copyPapers, readInvite, sharedLibraries, type Invite } from "./core/shared";
 import type { ManuscriptReport } from "./core/manuscript";
 import { browserCache, offlineLimit, withOfflineCache, type OfflineStorage } from "./core/offline";
+import { appAddress, dullabyBase, nightLink } from "./core/night";
 import { bookmarklet, CAPTURE_KEYS, capturedInput, isPdf, SHARED_FILES_KEY, takeSharedFiles } from "./core/capture";
 import { fallbackTitle, identifierIn } from "./core/pdfid";
 import { allFolders, cleanFolder, folderTree, type FolderNode } from "./core/folders";
@@ -648,6 +649,7 @@ export function App() {
   const tools: Tool[] = [
     { id: "fresh", group: "Discover", label: "New on arXiv", icon: "sparkle", hint: "Each day's arXiv preprints near your library", show: Boolean(storage && hasPapers), run: go("fresh") },
     { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: go("map") },
+    { id: "dullaby", group: "Discover", label: "Read at night in Dullaby", icon: "moon", hint: "Opens Dullaby with your library, so it finds papers near yours", show: hasPapers, run: () => window.open(nightLink(dullabyBase(settings), library.papers, appAddress(location.href)), "_blank", "noopener") },
     { id: "equation", group: "Discover", label: "Search by equation", icon: "sigma", hint: "Find the papers that use an equation", show: Boolean(storage && library.papers.some((p) => p.arxiv)), run: go("equation") },
     { id: "writing", group: "Write", label: "Writing helpers", icon: "book", hint: "What to cite for a sentence; a .bib for a manuscript", show: hasPapers, run: go("writing") },
     { id: "manuscript", group: "Write", label: "Watch my manuscript", icon: "sync", hint: "Keep a LaTeX manuscript's .bib in step with what it cites", show: Boolean(storage), run: go("manuscript") },

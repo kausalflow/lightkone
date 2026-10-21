@@ -1,12 +1,14 @@
 import type { LightkonePlugin } from "../core/types";
+import { appAddress, dullabyBase, nightLink } from "../core/night";
 
 // Hands an arXiv paper to Dullaby, the calm night reader, which opens its full
-// text in a dim, slow, scroll-to-sleep view.
+// text in a dim, slow, scroll-to-sleep view. The link also carries the
+// library's identifiers (core/night.ts), so Dullaby finds new papers near it.
 
 const plugin: LightkonePlugin = {
   id: "dullaby",
   name: "Dullaby night reading",
-  description: "Read an arXiv paper at night in Dullaby.",
+  description: "Read an arXiv paper at night in Dullaby, which also finds papers near your library.",
   settings: [{ name: "url", label: "Dullaby address", placeholder: "https://dullaby.lab.leima.is/" }],
   actions: [
     {
@@ -14,9 +16,7 @@ const plugin: LightkonePlugin = {
       label: "Read at night",
       available: (p) => Boolean(p.arxiv),
       async run(p, ctx) {
-        const base = (ctx.settings["dullaby.url"] || "https://dullaby.lab.leima.is/").replace(/\/?$/, "/");
-        const q = new URLSearchParams({ arxiv: p.arxiv!, title: p.title });
-        ctx.open(`${base}#${q}`);
+        ctx.open(nightLink(dullabyBase(ctx.settings), ctx.library, appAddress(location.href), { arxiv: p.arxiv!, title: p.title }));
         return { kind: "none" };
       },
     },

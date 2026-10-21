@@ -4,6 +4,7 @@ import { digest, dismiss, getPreprints, loadFresh, profileIds, rank, saveFresh, 
 import { shortAuthors } from "./core/cite";
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
+import { appAddress, dullabyBase, nightList } from "./core/night";
 
 const dayName = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
 const split = (s: string) => s.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
@@ -85,7 +86,9 @@ export function FreshPanel(props: {
     setTimeout(() => save(dismiss(store!, p.preprint)), 600);
   }
 
-  const dullaby = (props.settings["dullaby.url"] || "https://dullaby.lab.leima.is/").replace(/\/?$/, "/");
+  const dullaby = dullabyBase(props.settings);
+  // Dullaby takes the library with each paper; worked out once, not per row.
+  const night = useMemo(() => ({ lib: nightList(props.papers), from: appAddress(location.href) }), [props.papers.length]);
 
   return (
     <div class="overlay" hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && props.onClose()}>
@@ -153,7 +156,7 @@ export function FreshPanel(props: {
                       </button>
                       <button disabled={Boolean(state)} onClick={() => notForMe(p)}>{state === "dismissed" ? "Not shown again" : "Not for me"}</button>
                       <a class="button" href={`https://arxiv.org/abs/${x.arxiv}`} target="_blank" rel="noopener">arXiv</a>
-                      <a class="button" href={`${dullaby}#${new URLSearchParams({ arxiv: x.arxiv, title: x.title })}`} target="_blank" rel="noopener">Read at night</a>
+                      <a class="button" href={`${dullaby}#${new URLSearchParams({ arxiv: x.arxiv, title: x.title, ...night })}`} target="_blank" rel="noopener">Read at night</a>
                     </div>
                   </li>
                 );

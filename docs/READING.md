@@ -91,3 +91,14 @@ site they came from, so they show only with a network.
 
 With the Dullaby plugin set up (**Settings → Dullaby night reading**), **Read
 at night** opens a paper in Dullaby's calm, dim reading mode.
+
+The link that opens Dullaby also carries your library, as identifiers only:
+arXiv ids (or DOIs), newest first, marked when starred or never opened. No
+titles, authors, notes or PDFs. It travels in the part of the address after
+`#`, which browsers never send to a server, and Dullaby keeps it on that
+device. Dullaby then looks for new papers near yours and skips the ones you
+already have. **Read at night in Dullaby** under Discover opens it with the
+library and no paper, to bring it up to date.
+
+Papers you **Keep** in Dullaby come back here: its list of kept papers has
+**Add to Lightkone**, which opens this app's Add panel with the paper.
