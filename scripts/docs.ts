@@ -12,7 +12,7 @@ import type { Plugin } from "vite";
 export const NAV: [string, string[]][] = [
   ["Start here", ["README", "GETTING-STARTED", "PAPERPILE", "STORAGE"]],
   ["Using Lightkone", ["READING", "FINDING", "WRITING", "SHARING", "MCP", "PRIVACY", "FAQ"]],
-  ["Running your own", ["HOSTING", "PLUGINS", "ARCHITECTURE"]],
+  ["Running your own", ["HOSTING", "RELEASING", "PLUGINS", "ARCHITECTURE"]],
 ];
 
 /** README.md is the docs' home page; every other page is its name in lower case. */

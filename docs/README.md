@@ -24,6 +24,7 @@ your own key.
 ## Running your own
 
 - [Hosting](HOSTING.md): deploy Lightkone for yourself or a team.
+- [Releasing](RELEASING.md): staging, version tags, and checking a site runs a release's exact code.
 - [Plugins](PLUGINS.md): add storage, lookups, importers and actions.
 - [Architecture](ARCHITECTURE.md): how it fits together.
 

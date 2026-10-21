@@ -17,6 +17,7 @@ import { QuestionDialog, type Question } from "./QuestionDialog";
 import { byUse, ChipPicker } from "./ChipPicker";
 import { OfflinePanel } from "./OfflinePanel";
 import { WritingPanel } from "./WritingPanel";
+import { STAGING } from "./core/version";
 import { ChatsPanel, type Start } from "./ChatsPanel";
 import { dockSize, useWide, type Place } from "./PanelFrame";
 import { browserHistoryStore, dayLabel, KINDS, loadHistory, newConversationId, organizeConversation, removeConversation, saveConversation, titleOf, type Conversation, type Entry, type Organize } from "./core/history";
@@ -877,6 +878,7 @@ export function App() {
         <div class="brand">
           <img class="logo" src="../icon.svg" alt="" />
           <span class="brand-name">Lightkone</span>
+          {STAGING && <span class="chip staging" title="Every merge comes here first; the live site gets it with the next release. Your library and settings here are separate from the live site's.">Staging</span>}
         </div>
         <label class="search">
           <Icon name="search" />

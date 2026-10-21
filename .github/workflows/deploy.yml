@@ -1,18 +1,26 @@
 name: Deploy
 
-# Publishes the static app to Cloudflare Pages on every push to main.
-# Needs repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID,
-# and optionally a repository variable PAGES_DOMAIN (see docs/HOSTING.md).
-# Without the secrets the job is skipped.
+# Every merge to main goes to the staging site; a version tag (v0.2.0) goes to
+# the live site. Each deploy is checked in a browser afterwards, and checked to
+# send exactly the files this commit builds. See docs/RELEASING.md.
+#
+# Needs repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID, and
+# optionally the variables PAGES_PROJECT and PAGES_DOMAIN (docs/HOSTING.md).
+# Without the secrets the jobs are skipped.
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'A released tag to put back on the live site (e.g. v0.2.0); empty deploys main to staging'
+        required: false
 
 concurrency:
-  group: deploy
-  cancel-in-progress: true
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   PROJECT: ${{ vars.PAGES_PROJECT || 'lightkone' }}
@@ -22,6 +30,10 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Check for Cloudflare secrets
         id: keys
@@ -31,8 +43,30 @@ jobs:
           else
             echo "::notice::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is not set; skipping deploy."
           fi
+
+      - name: Staging or live
+        id: target
+        if: steps.keys.outputs.ok
+        run: |
+          if [ -n "${{ inputs.release }}" ]; then ref="${{ inputs.release }}"; live=true
+          elif [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = true ]; then ref="$GITHUB_REF_NAME"; live=true
+          else ref="$GITHUB_SHA"; live=false
+          fi
+          if [ "$live" = true ]; then
+            echo "branch=main" >> "$GITHUB_OUTPUT"
+            echo "url=https://$PROJECT.pages.dev/" >> "$GITHUB_OUTPUT"
+            echo "public=${{ vars.PAGES_DOMAIN && format('https://{0}/', vars.PAGES_DOMAIN) || '' }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=staging" >> "$GITHUB_OUTPUT"
+            echo "url=https://staging.$PROJECT.pages.dev/" >> "$GITHUB_OUTPUT"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "live=$live" >> "$GITHUB_OUTPUT"
+
       - if: steps.keys.outputs.ok
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.ref }}
       - if: steps.keys.outputs.ok
         uses: actions/setup-node@v4
         with:
@@ -40,16 +74,52 @@ jobs:
           cache: npm
       - if: steps.keys.outputs.ok
         run: npm ci && npm run check && npm run build
+
+      - name: The tag matches package.json
+        if: steps.target.outputs.live == 'true'
+        run: |
+          want="v$(node -p 'require("./package.json").version')"
+          if [ "${{ steps.target.outputs.ref }}" != "$want" ]; then
+            echo "::error::Tag ${{ steps.target.outputs.ref }} does not match package.json ($want). Bump the version first."
+            exit 1
+          fi
+
       - name: Create the Pages project on first deploy
         if: steps.keys.outputs.ok
         run: npx --yes wrangler@4 pages project create "$PROJECT" --production-branch main || true
       - name: Publish
         if: steps.keys.outputs.ok
-        run: npx --yes wrangler@4 pages deploy dist --project-name "$PROJECT" --branch main
+        run: npx --yes wrangler@4 pages deploy dist --project-name "$PROJECT" --branch "${{ steps.target.outputs.branch }}" --commit-hash "$(git rev-parse HEAD)"
       - name: Attach custom domain
-        if: steps.keys.outputs.ok && vars.PAGES_DOMAIN
+        if: steps.target.outputs.live == 'true' && vars.PAGES_DOMAIN
         run: |
           curl -sS -X POST \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PROJECT/domains" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
             --data "{\"name\":\"${{ vars.PAGES_DOMAIN }}\"}" | jq -c '{success, errors}'
+
+      # The first check right after a deploy can see the old files while the site updates.
+      - name: Check the site in a browser
+        if: steps.keys.outputs.ok
+        run: |
+          npx playwright install --with-deps chromium
+          url="${{ steps.target.outputs.url }}"; commit="$(git rev-parse --short=7 HEAD)"
+          node scripts/smoke.mjs "$url" "$commit" || (sleep 30 && node scripts/smoke.mjs "$url" "$commit")
+          if [ -n "${{ steps.target.outputs.public }}" ]; then
+            node scripts/smoke.mjs "${{ steps.target.outputs.public }}" "$commit" || (sleep 30 && node scripts/smoke.mjs "${{ steps.target.outputs.public }}" "$commit")
+          fi
+      - name: The site sends exactly this build
+        if: steps.keys.outputs.ok
+        run: npm run -s verify -- "${{ steps.target.outputs.url }}" || (sleep 30 && npm run -s verify -- "${{ steps.target.outputs.url }}")
+
+      # A release on GitHub for each version tag, with notes from the merged pull requests and
+      # fingerprints.txt (the SHA-256 of every built file), a public record of what each version is.
+      - name: GitHub release
+        if: steps.target.outputs.live == 'true' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          npm run -s verify -- --list > fingerprints.txt
+          tag="$GITHUB_REF_NAME"
+          if ! gh release view "$tag" > /dev/null 2>&1; then
+            gh release create "$tag" --verify-tag --title "Lightkone ${tag#v}" --generate-notes
+          fi
+          gh release upload "$tag" fingerprints.txt --clobber
