@@ -5,6 +5,8 @@ import { inLibrary, outsideOf, searchLiterature, type Outside } from "./core/lit
 import { newConversationId, type Conversation } from "./core/history";
 import { loadScope, saveScope, scoped, type Scope } from "./core/scope";
 import { ScopePicker } from "./ScopePicker";
+import { MentionBox, QuestionText } from "./MentionBox";
+import { mentionedPassages, mentionsAsNames, mentionsIn } from "./core/mentions";
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
 import { askLibrary, type LibraryTurn } from "./plugins/claude";
@@ -62,7 +64,10 @@ export function AskPanel(props: {
     if (!q || streaming !== null) return;
     // Passages already given to Claude are not sent again; new ones continue the numbering.
     const seen = new Set(sources.map((s) => `${s.paperId}:${s.page}:${s.text.slice(0, 60)}`));
-    const query = turns.length ? `${q} ${turns[0].text}` : q;
+    // Papers named with [[key]] are read whatever the search over the rest finds.
+    const named = mentionsIn(q, props.papers);
+    const words = (t: string) => t.replace(/\[\[[^\]\n]+\]\]/g, " ");
+    const query = words(turns.length ? `${q} ${turns[0].text}` : q);
     let candidates: Source[];
     let more = outside;
     setError(null);
@@ -79,6 +84,12 @@ export function AskPanel(props: {
       }
     } else {
       candidates = retrieve(scoped(props.papers, scope, props.inView), props.texts, query);
+    }
+    if (named.length) {
+      const own = mentionedPassages(named, props.texts, query);
+      const key = (s: Source) => `${s.paperId}:${s.page}:${s.text.slice(0, 60)}`;
+      const have = new Set(own.map(key));
+      candidates = [...own, ...candidates.filter((s) => !have.has(key(s)))];
     }
     const found = candidates
       .filter((s) => !seen.has(`${s.paperId}:${s.page}:${s.text.slice(0, 60)}`))
@@ -104,7 +115,9 @@ export function AskPanel(props: {
     setStreaming("");
     abort.current = new AbortController();
     try {
-      const answer = await askLibrary(props.settings, next, setStreaming, abort.current.signal, literature ? "literature" : "library");
+      // Claude reads each [[key]] as the paper's name, with its key.
+      const sent = next.map((t) => (t.role === "user" ? { ...t, text: mentionsAsNames(t.text, props.papers) } : t));
+      const answer = await askLibrary(props.settings, sent, setStreaming, abort.current.signal, literature ? "literature" : "library");
       const done: LibraryTurn[] = [...next, { role: "assistant", text: answer }];
       setTurns(done);
       record(done, all, more);
@@ -140,11 +153,12 @@ export function AskPanel(props: {
     conv.current ??= { id: newConversationId(), created: now };
     // Library papers it drew on, and found papers it cited, so Chats can list them.
     const cites = new Set(done.filter((t) => t.role === "assistant").flatMap((t) => citedNumbers(t.text)));
-    const used = all.filter((s) => cites.has(s.n));
+    const named = new Set(done.filter((t) => t.role === "user").flatMap((t) => mentionsIn(t.text, props.papers).map((p) => p.id)));
+    const used = all.filter((s) => cites.has(s.n) || named.has(s.paperId));
     props.onRecord({
       id: conv.current.id,
       kind: literature ? "beyond" : "ask",
-      title: done[0].text,
+      title: mentionsAsNames(done[0].text, props.papers, false),
       created: conv.current.created,
       updated: now,
       papers: [...new Set(used.map((s) => s.paperId).filter((id) => !far.has(id)))],
@@ -186,6 +200,7 @@ export function AskPanel(props: {
         {!turns.length && !literature && (
           <p class="muted">
             Claude answers from the {scope.kind === "all" ? "papers in your library" : "chosen papers"} and cites the page each point comes from.
+            {" "}Type [[ to name a paper; it is read whatever else is found.
             {props.unindexed > 0 && (
               <>
                 {" "}{props.unindexed} PDF{props.unindexed > 1 ? "s haven't" : " hasn't"} been read yet, so only {props.unindexed > 1 ? "their" : "its"} abstract counts.{" "}
@@ -198,7 +213,7 @@ export function AskPanel(props: {
         <div class="ask-turns">
           {turns.map((t, i) =>
             t.role === "user" ? (
-              <p key={i} class="ask-q">{t.text}</p>
+              <p key={i} class="ask-q"><QuestionText text={t.text} papers={byId} /></p>
             ) : (
               <div key={i}>
                 <div class="answer" dangerouslySetInnerHTML={{ __html: render(t.text) }} />
@@ -240,13 +255,13 @@ export function AskPanel(props: {
           <div ref={bottom} />
         </div>
         <form class="ask-form" onSubmit={ask}>
-          <textarea
-            rows={2}
+          <MentionBox
             value={question}
+            papers={props.papers}
             autoFocus
-            placeholder={turns.length ? "Ask a follow-up" : literature ? "What bounds exist on the sum of neutrino masses from cosmology?" : "Which papers bound the neutrino mass, and how?"}
-            onInput={(e) => setQuestion(e.currentTarget.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && ask(e)}
+            placeholder={turns.length ? "Ask a follow-up; [[ adds a paper" : literature ? "What bounds exist on the sum of neutrino masses from cosmology?" : "Which papers bound the neutrino mass, and how? [[ adds a paper"}
+            onInput={setQuestion}
+            onSubmit={ask}
           />
           <div class="row">
             {streaming !== null ? (

@@ -119,7 +119,7 @@ function Guide() {
         "Once PDFs have been read for search, the words inside papers are found too, with the page they are on.",
         "Search by equation finds arXiv papers in your library that use a formula. Ask answers a question from your papers, citing the pages: from the whole library, a folder or tag, papers you pick, or published papers beyond it.",
         "A new chat can also fill a table of values read out of chosen papers, sort what supports or contradicts a claim, or draft a literature review in LaTeX or Markdown.",
-        `Chats (the chat button at the top) keeps every conversation with Claude, gathered by the paper or set of papers it was about. Rename, pin and label them with topics, find them by their words, and carry on where they stopped. ${MOD} J starts a chat about the paper in front of you.`,
+        `Chats (the chat button at the top) keeps every conversation with Claude, gathered by the paper or set of papers it was about. Rename, pin and label them with topics, find them by their words, and carry on where they stopped. ${MOD} J starts a chat about the paper in front of you; in any chat, [[ names another paper to bring in.`,
         "On a wide screen, snap Chats to the right or bottom edge to keep it open while you read.",
       ],
     ],

@@ -55,6 +55,14 @@ instead. Then Lightkone picks the passages that bear on the question from
 the papers' full text and abstracts, and Claude answers citing them as [1],
 [2]: tap one to open that paper at that page.
 
+**Name a paper with [[.** In any chat, type `[[` and a few letters of a
+title, author, year or citation key, then pick the paper (arrows and Enter,
+or tap). It goes in as `[[key]]`, as in Obsidian, and shows as the paper's
+short name. A paper named this way is always read for that question: its
+passages that bear on the question, or its title and abstract when none do.
+In a chat about one paper, this brings other papers in beside it, and the
+chat is then listed under that set of papers.
+
 **From**, above the question, chooses which papers it answers from:
 
 - **Your whole library**.
