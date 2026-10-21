@@ -87,6 +87,8 @@ export interface ChatTurn {
   text: string;
   /** A picture of what was selected (base64 PNG), so equations arrive as typeset. */
   image?: string;
+  /** Numbered passages from other papers named in the question. */
+  sources?: string;
 }
 
 const EXPLAIN =
@@ -119,6 +121,7 @@ export async function chatAboutPaper(
       content.push({ type: "text", text: describe(paper) });
     }
     if (t.image) content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: t.image } });
+    if (t.sources) content.push({ type: "text", text: `Passages from other papers in the researcher's library that the question names; cite them by number, like [2].\n<sources>\n${t.sources}\n</sources>` });
     content.push({ type: "text", text: t.text });
     return { role: "user", content };
   });

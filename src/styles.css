@@ -960,3 +960,16 @@ details.guide ul { margin-top: 8px; }
   .compare-cards { display: grid; }
 }
 .overlay.front { z-index: 21; }
+
+/* [[ in a chat: pick a paper to add */
+.mention-box { position: relative; }
+.mention-box textarea { width: 100%; font-family: inherit; font-size: 15px; }
+.mention-list {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); z-index: 5;
+  list-style: none; margin: 0; padding: 4px; max-height: 280px; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: var(--shadow-lg);
+}
+.mention-list li { display: grid; gap: 1px; padding: 7px 9px; border-radius: 5px; cursor: pointer; }
+.mention-list li.on { background: var(--accent-soft); }
+.mention-title { font: 500 14px/1.3 var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip.mention { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); font-size: 0.86em; vertical-align: 1px; }

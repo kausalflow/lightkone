@@ -343,7 +343,7 @@ function Engine(props: WorkProps & { resume?: Conversation; mode?: Mode; pick?: 
 
   if (kind === "paper" || kind === "explain" || (!r && paper)) {
     if (!paper) return <p class="muted">The paper this chat was about is no longer in your library.</p>;
-    return <PaperChat paper={paper} settings={props.settings} resume={r} pdfOf={props.pdfOf} onRecord={props.onRecord} onOpen={props.onOpen} />;
+    return <PaperChat paper={paper} papers={props.papers} texts={props.texts} settings={props.settings} resume={r} pdfOf={props.pdfOf} onRecord={props.onRecord} onOpen={props.onOpen} />;
   }
   if (kind === "table" || kind === "weigh" || kind === "review" || (!r && props.mode && props.mode !== "ask")) {
     return (
