@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { browserHistoryStore, conversationMarkdown, dayLabel, entryOf, findEntries, loadConversation, loadHistory, mergeIndex, newConversationId, removeConversation, saveConversation, type Conversation } from "../src/core/history";
+import { browserHistoryStore, conversationMarkdown, dayLabel, entryOf, findEntries, focusOf, groupEntries, loadConversation, loadHistory, mergeIndex, newConversationId, organizeConversation, removeConversation, saveConversation, titleOf, topicsOf, type Conversation } from "../src/core/history";
 import type { StorageAdapter } from "../src/core/types";
 
 function memory(): StorageAdapter & { files: Map<string, string> } {
@@ -75,5 +75,54 @@ describe("history of conversations", () => {
     await saveConversation(s, conv("a"));
     expect(localStorage.getItem("lightkone.history.group1:lightkone/history/index.json")).toContain('"a"');
     expect(await s.list("lightkone/history/")).toContain("lightkone/history/a.json");
+  });
+});
+
+describe("chats gathered and organized", () => {
+  it("knows what each chat was about", () => {
+    expect(focusOf(conv("a"))).toBe("library");
+    expect(focusOf(conv("a", { kind: "beyond" }))).toBe("beyond");
+    expect(focusOf(conv("a", { kind: "paper", paperId: "p1", papers: ["p1"] }))).toEqual(["p1"]);
+    expect(focusOf(conv("a", { scope: { kind: "picked", ids: ["p2", "p1"] }, papers: ["p1"] }))).toEqual(["p2", "p1"]);
+    expect(focusOf(conv("a", { kind: "table", papers: ["p1", "p3"] }))).toEqual(["p1", "p3"]);
+  });
+
+  it("groups by the paper or set of papers, the same set in any order together, pinned first", () => {
+    const es = [
+      entryOf(conv("a", { kind: "paper", paperId: "p1", papers: ["p1"], updated: "2026-10-21T09:00:00Z" })),
+      entryOf(conv("b", { kind: "table", papers: ["p2", "p1"] })),
+      entryOf(conv("c", { scope: { kind: "picked", ids: ["p1", "p2"] } })),
+      entryOf(conv("d", { pinned: true })),
+    ];
+    const gs = groupEntries(es, "papers", (ids) => ids.join("+"));
+    expect(gs.map((g) => g.label)).toEqual(["Pinned", "p1", "p1+p2", "Whole library"]);
+    expect(gs[2].entries.map((e) => e.id)).toEqual(["b", "c"]);
+    expect(gs[2].papers).toEqual(["p1", "p2"]);
+  });
+
+  it("groups by topic, with the untopical last", () => {
+    const es = [entryOf(conv("a", { topics: ["RG", "Lattice"] })), entryOf(conv("b")), entryOf(conv("c", { topics: ["RG"] }))];
+    expect(groupEntries(es, "topic", String).map((g) => `${g.label}:${g.entries.length}`)).toEqual(["RG:2", "Lattice:1", "No topic:1"]);
+    expect(topicsOf(es)).toEqual(["RG", "Lattice"]);
+  });
+
+  it("renames, pins and labels, and a later follow-up keeps them", async () => {
+    const s = memory();
+    await saveConversation(s, conv("a"));
+    let list = await organizeConversation(s, "a", { name: "Fixed points", pinned: true, topics: ["RG"] }, "2026-10-21T10:00:00Z");
+    expect(list[0]).toMatchObject({ name: "Fixed points", pinned: true, topics: ["RG"] });
+    expect(titleOf(list[0])).toBe("Fixed points");
+    list = await saveConversation(s, conv("a", { updated: "2026-10-21T11:00:00Z" }));
+    expect(list[0]).toMatchObject({ name: "Fixed points", pinned: true, topics: ["RG"] });
+    list = await organizeConversation(s, "a", { name: "", pinned: false, topics: [] }, "2026-10-21T12:00:00Z");
+    expect(list[0].name).toBeUndefined();
+    expect(list[0].pinned).toBeUndefined();
+    expect(titleOf(list[0])).toBe("Question a");
+  });
+
+  it("finds a chat by its name or topic", () => {
+    const es = [entryOf(conv("a", { name: "Renormalization" })), entryOf(conv("b", { topics: ["lattice"] }))];
+    expect(findEntries(es, "renorm").map((e) => e.id)).toEqual(["a"]);
+    expect(findEntries(es, "", "", undefined, "lattice").map((e) => e.id)).toEqual(["b"]);
   });
 });

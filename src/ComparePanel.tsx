@@ -13,12 +13,10 @@ import { useMath } from "./core/math";
 import { draftReview, extractRow, weighClaim } from "./plugins/claude";
 import { newConversationId, type Conversation, type Kind } from "./core/history";
 import { ScopePicker } from "./ScopePicker";
-import { PanelFrame, type DockTab, type Place } from "./PanelFrame";
 import { Icon } from "./icons";
 
 const TABLE_MAX = 50;
 const REVIEW_MAX = 60;
-const TABLE_KEY = "lightkone.compare.table";
 const COLUMNS_KEY = "lightkone.compare.columns";
 const FORMAT_KEY = "lightkone.compare.format";
 
@@ -43,7 +41,9 @@ function download(name: string, text: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-type Tab = "table" | "weigh" | "review";
+export type Tab = "table" | "weigh" | "review";
+
+const SCOPE_LABEL: Record<Scope["kind"], string> = { all: "Whole library", view: "In view", picked: "Papers picked", literature: "Beyond the library" };
 
 /**
  * Compare papers: a table of values read out of each paper, where papers
@@ -56,33 +56,28 @@ export function ComparePanel(props: {
   viewLabel: string;
   texts: Map<string, string>;
   settings: Record<string, string>;
-  hidden?: boolean;
-  /** A window over the app, or snapped to an edge. */
-  place?: Place;
-  tabs?: DockTab[];
-  onPlace?(p: Place): void;
   start?: Tab;
-  /** A table, weighing or draft from History to open again. */
+  /** A table, weighing or draft from Chats to open again. */
   resume?: Conversation;
-  /** Papers to compare, chosen elsewhere (an Ask answer, History). */
+  /** Papers to compare, chosen elsewhere (an Ask answer, a chat). */
   pick?: string[];
   onRecord(c: Conversation): void;
   onAskAbout(ids: string[]): void;
   onOpen(paperId: string, page: number): void;
-  onClose(): void;
 }) {
   const r = props.resume;
-  const [tab, setTab] = useState<Tab>(r ? (r.kind as Tab) : props.start ?? "table");
+  const tab: Tab = r ? (r.kind as Tab) : props.start ?? "table";
+  const [has, setHas] = useState(Boolean(r));
   const [scope, setScope] = useState<Scope>(() => r?.scope ?? (props.pick?.length ? { kind: "picked", ids: props.pick } : loadScope("compare")));
   const [busy, setBusy] = useState(false);
   const chosen = useMemo(() => scoped(props.papers, scope, props.inView), [props.papers, scope, props.inView]);
   const byId = useMemo(() => new Map(props.papers.map((p) => [p.id, p])), [props.papers]);
   const hasKey = Boolean(props.settings["claude.apiKey"]);
-  // Each table, weighing or draft is kept in History once done; one opened from there keeps its place.
+  // Each table, weighing or draft is kept in Chats once done; one opened from there keeps its place.
   function record(kind: Kind, id: { id: string; created: string }, title: string, papers: string[], data: unknown, sources?: Source[]) {
     props.onRecord({ id: id.id, kind, title, created: id.created, updated: new Date().toISOString(), papers, preview: "", turns: [], sources, scope, data });
   }
-  const shared = { ...props, chosen, byId, hasKey, busy, setBusy, record, resume: r && r.kind === tab ? r : undefined };
+  const shared = { ...props, chosen, byId, hasKey, busy, setBusy, setHas, record, resume: r && r.kind === tab ? r : undefined };
 
   function pick(s: Scope) {
     setScope(s);
@@ -90,18 +85,17 @@ export function ComparePanel(props: {
   }
 
   return (
-    <PanelFrame place={props.place ?? "modal"} class="wide compare-panel" label="Compare papers" title="Compare papers" hidden={props.hidden} busy={busy} tabs={props.tabs} onPlace={props.onPlace} onClose={props.onClose}>
-        <div class="tabs" role="tablist">
-          {([["table", "Table"], ["weigh", "Agree or disagree"], ["review", "Review draft"]] as [Tab, string][]).map(([id, label]) => (
-            <button key={id} role="tab" aria-selected={tab === id} class={tab === id ? "on" : ""} disabled={busy} onClick={() => setTab(id)}>{label}</button>
-          ))}
-        </div>
+    <div class="work compare-panel" aria-label="Compare papers">
+      {/* Once there is a result, the papers chosen fold away so the result is in view, on a phone too. */}
+      <details class="compare-setup" open={!has || busy} key={has ? "has" : "none"}>
+        <summary>{SCOPE_LABEL[scope.kind]}: {papersText(chosen.length)}</summary>
         <ScopePicker papers={props.papers} inView={props.inView} viewLabel={props.viewLabel} value={scope} onChange={pick} disabled={busy} max={tab === "table" ? TABLE_MAX : tab === "review" ? REVIEW_MAX : undefined} />
-        {!hasKey && <p class="error">Add your Anthropic API key under Settings → Claude first.</p>}
-        {tab === "table" && <TableTab {...shared} />}
-        {tab === "weigh" && <WeighTab {...shared} />}
-        {tab === "review" && <ReviewTab {...shared} />}
-    </PanelFrame>
+      </details>
+      {!hasKey && <p class="error">Add your Anthropic API key under Settings → Claude first.</p>}
+      {tab === "table" && <TableTab {...shared} />}
+      {tab === "weigh" && <WeighTab {...shared} />}
+      {tab === "review" && <ReviewTab {...shared} />}
+    </div>
   );
 }
 
@@ -113,13 +107,15 @@ interface TabProps {
   hasKey: boolean;
   busy: boolean;
   setBusy(b: boolean): void;
+  /** Whether there is a result to show, so the setup can fold away. */
+  setHas(b: boolean): void;
   resume?: Conversation;
   record(kind: Kind, id: { id: string; created: string }, title: string, papers: string[], data: unknown, sources?: Source[]): void;
   onAskAbout(ids: string[]): void;
   onOpen(paperId: string, page: number): void;
 }
 
-/** A conversation id for a new run, or the one opened from History. */
+/** A conversation id for a new run, or the one opened from Chats. */
 function useConv(resume?: Conversation) {
   const conv = useRef<{ id: string; created: string } | null>(resume ? { id: resume.id, created: resume.created } : null);
   return {
@@ -145,7 +141,7 @@ function copy(text: string, done: (msg: string) => void, what: string) {
 
 /** Pick columns; Claude reads each paper and fills its row, with the page each value is on. */
 function TableTab(props: TabProps) {
-  const saved = (props.resume?.data as { columns: string[]; rows: Row[] } | undefined) ?? load<{ columns: string[]; rows: Row[] } | null>(TABLE_KEY, null);
+  const saved = (props.resume?.data as { columns: string[]; rows: Row[] } | undefined) ?? null;
   const conv = useConv(props.resume);
   const [columnsText, setColumnsText] = useState(() => load<string>(COLUMNS_KEY, "Method, Data, Main result, Assumptions"));
   const [table, setTable] = useState<{ columns: string[]; rows: Row[] } | null>(saved);
@@ -166,7 +162,6 @@ function TableTab(props: TabProps) {
     const show = () => {
       const t = { columns, rows: rows.filter((r) => r.cells || r.error) };
       setTable(t);
-      keep(TABLE_KEY, t);
     };
     setTable({ columns, rows: [] });
     setNote(null);
@@ -203,12 +198,14 @@ function TableTab(props: TabProps) {
   const rows = table?.rows ?? [];
   const cols = table?.columns ?? columns;
   const cell = (s: string) => renderMarkdown(s, math);
+  useEffect(() => props.setHas(rows.length > 0), [rows.length > 0]);
+  const paperName = (p?: Paper) => (p ? `${shortAuthors(p.authors) || p.title.slice(0, 40)}${p.year ? ` ${p.year}` : ""}` : "Removed paper");
 
   return (
     <>
-      <p class="muted">
+      {!rows.length && <p class="muted">
         Name the columns. Claude reads each paper (the PDF's text when it has been read for search, otherwise the abstract) and fills its row, with the page each value comes from.
-      </p>
+      </p>}
       <form onSubmit={fill}>
         <input type="text" value={columnsText} disabled={props.busy} aria-label="Columns, separated by commas" placeholder="Method, Data, Main result, Error bars, Assumptions" onInput={(e) => setColumnsText(e.currentTarget.value)} />
         <div class="row">
@@ -267,6 +264,36 @@ function TableTab(props: TabProps) {
           </table>
         </div>
       )}
+      {rows.length > 0 && (
+        // On a narrow screen, each paper is a card with its values one under another.
+        <ul class="compare-cards">
+          {rows.map((r) => {
+            const p = props.byId.get(r.paperId);
+            return (
+              <li key={r.paperId}>
+                <a href="#" class="compare-card-title" onClick={(e) => { e.preventDefault(); props.onOpen(r.paperId, 0); }}>{paperName(p)}</a>
+                {p && <span class="muted small"> {p.title}</span>}
+                {r.abstractOnly && <span class="muted small"> · abstract only</span>}
+                {r.error && <p class="muted small">{r.error}</p>}
+                <dl>
+                  {cols.map((c, i) => {
+                    const v = r.cells?.[i];
+                    return (
+                      <div key={c}>
+                        <dt>{c}</dt>
+                        <dd>
+                          {v ? <span class="cell" dangerouslySetInnerHTML={{ __html: cell(v.value) }} /> : <span class="muted">…</span>}
+                          {v?.page ? <> <button class="link small" onClick={() => props.onOpen(r.paperId, v.page)}>p. {v.page}</button></> : null}
+                        </dd>
+                      </div>
+                    );
+                  })}
+                </dl>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </>
   );
 }
@@ -276,6 +303,7 @@ function WeighTab(props: TabProps) {
   const back = props.resume?.data as { claim: string; weighing: Weighing } | undefined;
   const [claim, setClaim] = useState(back?.claim ?? "");
   const [result, setResult] = useState<{ claim: string; weighing: Weighing; sources: Source[] } | null>(back ? { ...back, sources: props.resume!.sources ?? [] } : null);
+  useEffect(() => props.setHas(Boolean(result)), [Boolean(result)]);
   const conv = useConv(props.resume);
   const [note, setNote] = useState<string | null>(null);
   const math = useMath();
@@ -394,6 +422,7 @@ function ReviewTab(props: TabProps) {
   const [focus, setFocus] = useState(back?.focus ?? "");
   const [format, setFormat] = useState<ReviewFormat>(() => back?.format ?? load<ReviewFormat>(FORMAT_KEY, "latex"));
   const [draft, setDraft] = useState(back?.draft ?? "");
+  useEffect(() => props.setHas(Boolean(draft)), [Boolean(draft)]);
   const conv = useConv(props.resume);
   const [note, setNote] = useState<string | null>(null);
   const stop = useStop();

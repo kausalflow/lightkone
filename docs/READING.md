@@ -31,10 +31,11 @@ paper. It is searched along with everything else.
 
 ## Summaries and questions
 
-With a Claude key, a paper's details offer **Summarize** and **Ask Claude…**.
-When the PDF is stored, Claude reads the whole paper, not only the abstract.
-To ask across your whole library, use **Ask** at the top (see
-[Finding papers](FINDING.md#ask-your-library)).
+With a Claude key, a paper's details offer **Summarize** and **Chat about
+it**, which opens a chat about the paper in Chats. **Ctrl J** (⌘J) does the
+same while you read. When the PDF is stored, Claude reads the whole paper,
+not only the abstract. To ask across your whole library, use **Ask** at the
+top (see [Finding papers](FINDING.md#chats-with-claude)).
 
 ## Export to Obsidian
 

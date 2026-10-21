@@ -352,7 +352,7 @@ const plugin: LightkonePlugin = {
     },
     {
       id: "ask",
-      label: "Ask Claude…",
+      label: "Chat about it",
       async run(p, ctx) {
         const q = await ctx.ask("What would you like to know about this paper?", "How does this relate to the renormalization group?");
         if (!q) return { kind: "none" };

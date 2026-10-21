@@ -62,6 +62,8 @@ export function PanelFrame(props: {
   onResize?(): void;
   onClose(): void;
   onClick?(e: MouseEvent): void;
+  /** As a window, over the reader too. */
+  front?: boolean;
   children: ComponentChildren;
 }) {
   const docked = props.place !== "modal";
@@ -126,7 +128,7 @@ export function PanelFrame(props: {
 
   if (!docked) {
     return (
-      <div class="overlay" hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && !props.busy && props.onClose()}>
+      <div class={`overlay ${props.front ? "front" : ""}`} hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && !props.busy && props.onClose()}>
         <section ref={self} class={`panel ${props.class ?? ""}`} aria-label={props.label} onClick={props.onClick}>
           {head}
           {props.children}

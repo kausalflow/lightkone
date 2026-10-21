@@ -75,8 +75,9 @@ sent only to Anthropic. Everything else works without it.
 
 - **Ctrl K** (⌘K on a Mac), or the ⌘ button at the top, opens a command list:
   type to jump to any tool, folder, tag or paper.
-- **Ctrl J** (⌘J), or the chat button at the bottom right, pops out a quick
-  question about the paper in front of you.
+- **Ctrl J** (⌘J) starts a chat with Claude about the paper in front of you.
+  Every chat is kept in **Chats** (the chat button at the top), gathered by
+  paper.
 - The side bar holds your folders and tags, and the tools grouped as
   *Discover*, *Write* and *Organize*.
 - **?** opens Help.

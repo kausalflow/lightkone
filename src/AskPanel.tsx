@@ -5,7 +5,6 @@ import { inLibrary, outsideOf, searchLiterature, type Outside } from "./core/lit
 import { newConversationId, type Conversation } from "./core/history";
 import { loadScope, saveScope, scoped, type Scope } from "./core/scope";
 import { ScopePicker } from "./ScopePicker";
-import { PanelFrame, type DockTab, type Place } from "./PanelFrame";
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
 import { askLibrary, type LibraryTurn } from "./plugins/claude";
@@ -25,23 +24,17 @@ export function AskPanel(props: {
   texts: Map<string, string>;
   unindexed: number;
   settings: Record<string, string>;
-  hidden?: boolean;
-  /** A window over the app, or snapped to an edge. */
-  place?: Place;
-  tabs?: DockTab[];
-  onPlace?(p: Place): void;
   onOpen(paperId: string, page: number): void;
   onIndex(): void;
   onAdd(d: PaperDraft): boolean;
-  /** A conversation from History to carry on. */
+  /** A conversation from Chats to carry on. */
   resume?: Conversation;
-  /** Papers to ask about, chosen elsewhere (History, a comparison table). */
+  /** Papers to ask about, chosen elsewhere (a chat, a comparison table). */
   pick?: string[];
-  /** Keep the conversation in History, after each answer. */
+  /** Keep the conversation in Chats, after each answer. */
   onRecord(c: Conversation): void;
   /** Compare the papers an answer cites. */
   onCompare(ids: string[]): void;
-  onClose(): void;
 }) {
   const r = props.resume;
   const [scope, setScope] = useState<Scope>(() => r?.scope ?? (props.pick?.length ? { kind: "picked", ids: props.pick } : loadScope("ask", true)));
@@ -145,7 +138,7 @@ export function AskPanel(props: {
   function record(done: LibraryTurn[], all: Source[], far: Map<string, Outside>) {
     const now = new Date().toISOString();
     conv.current ??= { id: newConversationId(), created: now };
-    // Library papers it drew on, and found papers it cited, so History can list them.
+    // Library papers it drew on, and found papers it cited, so Chats can list them.
     const cites = new Set(done.filter((t) => t.role === "assistant").flatMap((t) => citedNumbers(t.text)));
     const used = all.filter((s) => cites.has(s.n));
     props.onRecord({
@@ -180,17 +173,7 @@ export function AskPanel(props: {
   };
 
   return (
-    <PanelFrame
-      place={props.place ?? "modal"}
-      class="ask-panel"
-      label={literature ? "Ask beyond your library" : "Ask your library"}
-      title={literature ? "Ask beyond your library" : "Ask your library"}
-      hidden={props.hidden}
-      tabs={props.tabs}
-      onPlace={props.onPlace}
-      onClose={props.onClose}
-      onClick={onClick}
-    >
+    <div class="work ask-panel" aria-label={literature ? "Ask beyond your library" : "Ask your library"} onClick={onClick}>
         {!turns.length && (
           <ScopePicker papers={props.papers} inView={props.inView} viewLabel={props.viewLabel} value={scope} onChange={pickScope} literature />
         )}
@@ -276,7 +259,7 @@ export function AskPanel(props: {
             )}
           </div>
         </form>
-    </PanelFrame>
+    </div>
   );
 }
 

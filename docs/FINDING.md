@@ -35,12 +35,25 @@ and it finds an equation however it was spaced, braced or named. Reading
 the equations of a large library takes a while the first time (arXiv asks to
 be read gently). It can be stopped and picked up later.
 
-## Ask your library
+## Chats with Claude
 
-**Ask** at the top answers a question from your papers, with a Claude key. It
-picks the passages that bear on the question from your papers' full text and
-abstracts, and Claude answers citing them as [1], [2]: tap one to open that
-paper at that page.
+Everything you ask Claude happens in **Chats** and is kept there. That covers
+questions to your library, chats about one paper, explanations from the
+reader, comparison tables, agree-or-disagree weighings and review drafts.
+Open it with the chat button at the top or **Ask**. **Ctrl J** (⌘J on a Mac)
+starts a chat about the paper you are reading or have selected, from
+anywhere, the reader included. A paper's **Chat about it** does the same.
+
+A new chat has four kinds, as tabs: **Ask**, **Table**, **Agree or
+disagree** and **Review draft**. Each needs a Claude key.
+
+### Ask
+
+About one paper, Claude reads the whole PDF (or the abstract, without one)
+with each question. **Choose other papers** asks more of the library
+instead. Then Lightkone picks the passages that bear on the question from
+the papers' full text and abstracts, and Claude answers citing them as [1],
+[2]: tap one to open that paper at that page.
 
 **From**, above the question, chooses which papers it answers from:
 
@@ -54,20 +67,22 @@ paper at that page.
   of what it finds, saying that it has only abstracts. Each paper it cites has
   an **Add** button, or says it is already in your library.
 
-## Compare papers
+### Compare papers
 
-**Compare papers** (side bar, *Discover*) works on the same choice of papers
-as Ask: the whole library, what is in view, or papers you pick. It has three
-tabs, and each needs a Claude key.
+The other three tabs work on the same choice of papers: the whole library,
+what is in view, or papers you pick. Once there is a result, the choice
+folds into one line above it, so the result is in view; tap the line to
+change it.
 
 - **Table**: name the columns, for example *Method, Data, Main result, Error
   bars, Assumptions*. Claude reads each paper and fills its row, three papers
   at a time, with the page each value is on: tap **p. 3** to open it there,
-  and hover a value for the sentence it is read from. A paper whose PDF has
-  not been read for search is read from its abstract, and its row says so.
-  Values the paper does not state say *not stated*. Download the table as
-  **CSV**, or copy it as a **LaTeX table** citing each paper by its key. Up to
-  50 papers at a time; the last table stays until you fill a new one.
+  and hover a value for the sentence it is read from. On a phone, or in a
+  narrow panel, each paper is a card with its values one under another. A
+  paper whose PDF has not been read for search is read from its abstract, and
+  its row says so. Values the paper does not state say *not stated*. Download
+  the table as **CSV**, or copy it as a **LaTeX table** citing each paper by
+  its key. Up to 50 papers at a time.
 - **Agree or disagree**: state a claim. Lightkone finds the passages in the
   chosen papers that bear on it, and Claude sorts them into what **supports**,
   **qualifies** or **contradicts** it, each point linked to its page, with a
@@ -81,56 +96,42 @@ tabs, and each needs a Claude key.
   .bib of the papers the draft cites. Read it as a first draft and check every
   claim against the papers. Up to 60 papers.
 
-## History
+### Finding and organizing chats
 
-**History** (the clock at the top, or side bar, *Discover*) keeps every
-conversation with Claude in one place. That covers Ask questions, explanations
-from the reader, Summarize and Ask Claude on a paper, and every comparison
-table, agree-or-disagree weighing and review draft. Conversations are grouped
-by day. Find one by its words, or narrow the list to one kind.
+The list gathers chats **by papers**: each paper, or each set of papers asked
+about together, is a group, and so are the whole library and beyond it. The
+same set in any order is one group. The **+** on a group starts a new chat
+about those papers. The list can gather **by date** or **by topic** instead.
+It can be narrowed to one kind, or one topic, and searched by words in a
+chat's name, question, answer or topics.
 
-Open a conversation to read it again with its citations still linked to their
-pages. From there:
+Open a chat to read it again with its citations linked, and carry on where it
+stopped. Above it:
 
-- **Continue in Ask** picks up the conversation where it stopped, with the
-  same papers and passages. A table, weighing or draft opens again in
-  **Compare papers**.
-- A conversation about one paper continues right there. Follow-ups read the
-  paper's PDF again.
-- **Compare these papers** turns the papers a conversation cites into a
-  comparison table. **Ask about these papers** asks a new question of just
-  those papers.
-- **Markdown** copies the conversation with its citations named, for your
-  notes. **Delete** removes it on every device.
+- the pencil **renames** it (or double-click the title);
+- the pin keeps it at the top of the list, under **Pinned**;
+- **+ Topic** labels it, for example *RG flow* or *thesis ch. 3*, so chats on
+  one subject gather together whatever papers they were about;
+- copy it as **Markdown** for your notes, with its citations named, or
+  delete it on every device;
+- **Table of these papers**, **Where they agree** and **Ask about these**
+  take its papers on to a new chat of another kind.
 
-A paper's details list what you **asked about this paper**: every
-conversation about it or citing it. Summarize and Ask Claude results there
-have a **Follow up** button. An Ask answer that cites several papers offers
-to compare them in a table, and a table or weighing offers to ask about its
-papers.
+A paper's details list its **chats about this paper**. A Summarize result
+there has **Follow up in Chats**. An Ask answer that cites several papers
+offers to compare them in a table.
 
-History lives in your own storage, at `lightkone/history/`, one file per
-conversation, so it follows you across devices. In a shared library, or one
-you can only read, your history stays in this browser instead, so the group
-never sees your questions.
+On a wide screen, the chat button's panel shows the list and the open chat
+side by side. It can be snapped to the right or the bottom edge with the
+buttons in its top corner. It then stays open beside the list and the reader,
+so a long chat or a table can be worked on while you read. Drag its inner edge
+to resize it; the size and the place are remembered. The window button puts
+it back over the app. On a phone it opens as a sheet.
 
-## Keeping tools open, and quick questions
-
-On a wide screen, **Ask**, **Compare papers** and **History** can be snapped
-to the right or the bottom edge with the buttons in their top corner. A
-snapped tool stays open beside the list and the reader, so a long
-conversation or a table can be worked on while you read. Drag its inner edge
-to resize it; the size is remembered, and so is where each tool was last
-kept. Two tools snapped to the same edge share it as tabs. The window button
-puts a tool back over the app. On a phone they open as windows.
-
-For a one-off question, the chat button at the bottom right (or **Ctrl J**,
-⌘J on a Mac) pops out a small chat over whatever you are doing, the reader
-included. It asks about the paper you are reading or have selected; remove
-that chip to ask the whole library instead. Quick questions are kept in
-History like everything else. When one turns into real work, **Keep working
-on this** (the snap button in its corner) moves it into Ask, or into History
-for a paper, snapped to the right.
+Chats live in your own storage, at `lightkone/history/`, one file per chat,
+so they follow you across devices. In a shared library, or one you can only
+read, your chats stay in this browser instead, so the group never sees your
+questions.
 
 ## New on arXiv
 
