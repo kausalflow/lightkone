@@ -467,7 +467,8 @@ label.file input, label.button input { display: none; }
 .panel > p.muted:first-of-type { margin-top: 0; }
 .panel textarea { font-family: var(--mono); font-size: 13px; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
-.panel > .row:last-child { margin-top: 24px; }
+.panel > .row:last-child, .panel > .row:has(+ .version:last-child) { margin-top: 24px; }
+.panel > .version { margin: 14px 0 0; }
 .message { margin-bottom: 0; padding: 10px 12px; border-radius: var(--r-sm); background: var(--sunken); }
 .field { display: grid; gap: 5px; margin: 12px 0; }
 .field > span:first-child { font-size: 13px; font-weight: 560; }

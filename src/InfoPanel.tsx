@@ -1,4 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
+import { VersionLine } from "./Version";
 
 export type InfoPage = "start" | "guide" | "how" | "data" | "keys";
 
@@ -43,6 +44,7 @@ export function InfoPanel(props: { page: InfoPage; onTour(): void; onClose(): vo
           </a>
           <button onClick={props.onClose}>Close</button>
         </div>
+        <VersionLine />
       </div>
     </div>
   );
