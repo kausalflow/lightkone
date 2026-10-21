@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Paper, PaperDraft } from "./core/types";
 import { linkCitations, retrieve, sourceLabel, sourcesPrompt, type Source } from "./core/ask";
-import { inLibrary, searchLiterature, type Outside } from "./core/literature";
+import { inLibrary, outsideOf, searchLiterature, type Outside } from "./core/literature";
+import { newConversationId, type Conversation } from "./core/history";
 import { loadScope, saveScope, scoped, type Scope } from "./core/scope";
 import { ScopePicker } from "./ScopePicker";
 import { renderMarkdown } from "./core/markdown";
@@ -27,14 +28,24 @@ export function AskPanel(props: {
   onOpen(paperId: string, page: number): void;
   onIndex(): void;
   onAdd(d: PaperDraft): boolean;
+  /** A conversation from History to carry on. */
+  resume?: Conversation;
+  /** Papers to ask about, chosen elsewhere (History, a comparison table). */
+  pick?: string[];
+  /** Keep the conversation in History, after each answer. */
+  onRecord(c: Conversation): void;
+  /** Compare the papers an answer cites. */
+  onCompare(ids: string[]): void;
   onClose(): void;
 }) {
-  const [scope, setScope] = useState<Scope>(() => loadScope("ask", true));
-  const [outside, setOutside] = useState<Map<string, Outside>>(new Map());
+  const r = props.resume;
+  const [scope, setScope] = useState<Scope>(() => r?.scope ?? (props.pick?.length ? { kind: "picked", ids: props.pick } : loadScope("ask", true)));
+  const [outside, setOutside] = useState<Map<string, Outside>>(() => new Map((r?.outside ?? []).map((o) => [o.id, outsideOf(o.id, o.draft, o.cited)])));
   const [added, setAdded] = useState<Set<string>>(new Set());
   const literature = scope.kind === "literature";
-  const [turns, setTurns] = useState<LibraryTurn[]>([]);
-  const [sources, setSources] = useState<Source[]>([]);
+  const [turns, setTurns] = useState<LibraryTurn[]>(() => (r?.turns as LibraryTurn[]) ?? []);
+  const [sources, setSources] = useState<Source[]>(() => r?.sources ?? []);
+  const conv = useRef<{ id: string; created: string } | null>(r ? { id: r.id, created: r.created } : null);
   const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
@@ -96,7 +107,9 @@ export function AskPanel(props: {
     abort.current = new AbortController();
     try {
       const answer = await askLibrary(props.settings, next, setStreaming, abort.current.signal, literature ? "literature" : "library");
-      setTurns([...next, { role: "assistant", text: answer }]);
+      const done: LibraryTurn[] = [...next, { role: "assistant", text: answer }];
+      setTurns(done);
+      record(done, all, more);
     } catch (err) {
       if (!abort.current.signal.aborted) setError((err as Error).message);
     } finally {
@@ -124,6 +137,27 @@ export function AskPanel(props: {
     } else props.onOpen(own?.id ?? s.paperId, own ? 0 : s.page);
   }
 
+  function record(done: LibraryTurn[], all: Source[], far: Map<string, Outside>) {
+    const now = new Date().toISOString();
+    conv.current ??= { id: newConversationId(), created: now };
+    // Library papers it drew on, and found papers it cited, so History can list them.
+    const cites = new Set(done.filter((t) => t.role === "assistant").flatMap((t) => citedNumbers(t.text)));
+    const used = all.filter((s) => cites.has(s.n));
+    props.onRecord({
+      id: conv.current.id,
+      kind: literature ? "beyond" : "ask",
+      title: done[0].text,
+      created: conv.current.created,
+      updated: now,
+      papers: [...new Set(used.map((s) => s.paperId).filter((id) => !far.has(id)))],
+      preview: "",
+      turns: done,
+      sources: all,
+      outside: [...far.values()].filter((o) => used.some((s) => s.paperId === o.id)).map((o) => ({ id: o.id, draft: o.draft, cited: o.cited })),
+      scope,
+    });
+  }
+
   function pickScope(s: Scope) {
     setScope(s);
     saveScope("ask", s);
@@ -135,7 +169,7 @@ export function AskPanel(props: {
 
   // The papers each answer drew on, for a list under it.
   const cited = (md: string) => {
-    const ns = new Set([...md.matchAll(/\[(\d+(?:\s*[,;]\s*\d+)*)\]/g)].flatMap((m) => m[1].split(/\s*[,;]\s*/).map(Number)));
+    const ns = new Set(citedNumbers(md));
     const ids = [...new Set([...ns].map((n) => sources[n - 1]?.paperId).filter(Boolean))] as string[];
     return ids.map((id) => byId.get(id)).filter(Boolean) as Paper[];
   };
@@ -198,6 +232,11 @@ export function AskPanel(props: {
                     })}
                   </ul>
                 )}
+                {i === turns.length - 1 && cited(t.text).filter((p) => !outside.has(p.id)).length > 1 && (
+                  <button class="link small" onClick={() => props.onCompare(cited(t.text).filter((p) => !outside.has(p.id)).map((p) => p.id))}>
+                    Compare these {cited(t.text).filter((p) => !outside.has(p.id)).length} papers in a table
+                  </button>
+                )}
               </div>
             ),
           )}
@@ -223,11 +262,16 @@ export function AskPanel(props: {
               <button class="primary" type="submit" disabled={!question.trim() || !hasKey}>Ask</button>
             )}
             {turns.length > 0 && streaming === null && (
-              <button type="button" onClick={() => { setTurns([]); setSources([]); setOutside(new Map()); setError(null); }}>New question</button>
+              <button type="button" onClick={() => { setTurns([]); setSources([]); setOutside(new Map()); setError(null); conv.current = null; }}>New question</button>
             )}
           </div>
         </form>
       </section>
     </div>
   );
+}
+
+/** The source numbers an answer cites: [3], [2, 5]. */
+function citedNumbers(md: string): number[] {
+  return [...md.matchAll(/\[(\d+(?:\s*[,;]\s*\d+)*)\]/g)].flatMap((m) => m[1].split(/\s*[,;]\s*/).map(Number));
 }

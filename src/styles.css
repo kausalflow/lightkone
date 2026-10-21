@@ -847,3 +847,32 @@ details.guide ul { margin-top: 8px; }
 .stance.qualifies h3 { color: var(--warm); }
 .silent ul { font-size: 13px; padding-left: 18px; }
 .review-draft { width: 100%; margin-top: 12px; font-family: var(--mono); font-size: 13px; }
+
+/* History of conversations with Claude */
+.history-panel { display: flex; flex-direction: column; max-height: calc(100dvh - 48px); }
+.history-filters { display: flex; gap: 8px; margin: 4px 0 8px; }
+.history-filters input { flex: 1; min-width: 0; }
+.history-filters select { width: auto; flex: none; }
+.history-list { list-style: none; margin: 0; padding: 0; overflow: auto; min-height: 0; flex: 1; overscroll-behavior: contain; }
+.history-day { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); padding: 12px 2px 4px; }
+.history-item { display: grid; justify-content: stretch; justify-items: start; gap: 2px; width: 100%; text-align: left; white-space: normal; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; box-shadow: none; padding: 8px 4px; font-weight: 400; min-height: 0; }
+.history-item:hover, .history-item:focus-visible { background: var(--sunken); }
+.history-kind { font-size: 12px; color: var(--accent); font-weight: 560; margin: 0; }
+.history-title { font: 560 15px/1.35 var(--serif); }
+.history-preview { font-size: 13px; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.history-view { overflow: auto; min-height: 0; flex: 1; display: grid; gap: 10px; align-content: start; overscroll-behavior: contain; padding-bottom: 4px; }
+.panel .history-view .history-heading { margin: 0; padding: 0; border: 0; font: 600 19px/1.3 var(--serif); }
+.history-view p.small a { color: inherit; text-decoration-color: var(--line-strong); }
+.history-view .quote { margin: 0; padding-left: 10px; border-left: 3px solid var(--line-strong); color: var(--muted); font-size: 14px; }
+.history-view p.small { margin: 0; }
+.history-view pre.review-draft { white-space: pre-wrap; margin: 0; padding: 10px; background: var(--sunken); border-radius: var(--r-sm); }
+.history-actions { border-top: 1px solid var(--line); padding-top: 10px; }
+.link.danger { color: var(--danger); margin-left: auto; }
+.paper-history { margin-top: 18px; }
+.paper-history h3 { display: flex; align-items: center; gap: 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 6px; }
+.paper-history ul { margin: 0; padding-left: 18px; font-size: 14px; }
+.paper-history li { margin: 3px 0; }
+.paper-history a { color: inherit; }
+@media (max-width: 600px) {
+  .history-panel { max-height: 92dvh; }
+}

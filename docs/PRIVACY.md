@@ -9,6 +9,7 @@ app talks to it from your browser.
 | Your papers, notes, highlights and PDFs | Only your own storage. The site never receives them, except when you use the AI app address (MCP): then the site's server reads your library from your storage for each request, with your storage keys sealed inside your private address. |
 | Keys and tokens (Claude, GitHub, bucket, OpenAlex) | Only this browser's settings. Each is sent only to the service it belongs to. Invite links never carry them. |
 | Ask, Explain, Summarize, Compare papers and Cite this's check | When you use them, your question and the passages picked from your papers (for a comparison table, each chosen paper's text) go from your browser straight to Anthropic, with your own Claude key. |
+| History of your conversations with Claude | Your own storage (`lightkone/history/`). In a shared or read-only library, this browser only. |
 | Asking beyond your library | The words of your question go to OpenAlex's search. |
 | Journal citation styles | The style's name goes to the Citation Style Language project on GitHub, and the list of styles is fetched from Zotero. Your papers are formatted in your browser. |
 | Adding and looking up papers | The DOI, arXiv id or title goes to Crossref, OpenAlex, Semantic Scholar or arXiv. For open-access PDFs, the DOI and your contact email go to Unpaywall through the site. A web page you add is fetched through the site, which passes only its address to the page's own server. |

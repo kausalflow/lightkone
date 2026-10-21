@@ -81,6 +81,39 @@ tabs, and each needs a Claude key.
   .bib of the papers the draft cites. Read it as a first draft and check every
   claim against the papers. Up to 60 papers.
 
+## History
+
+**History** (the clock at the top, or side bar, *Discover*) keeps every
+conversation with Claude in one place. That covers Ask questions, explanations
+from the reader, Summarize and Ask Claude on a paper, and every comparison
+table, agree-or-disagree weighing and review draft. Conversations are grouped
+by day. Find one by its words, or narrow the list to one kind.
+
+Open a conversation to read it again with its citations still linked to their
+pages. From there:
+
+- **Continue in Ask** picks up the conversation where it stopped, with the
+  same papers and passages. A table, weighing or draft opens again in
+  **Compare papers**.
+- A conversation about one paper continues right there. Follow-ups read the
+  paper's PDF again.
+- **Compare these papers** turns the papers a conversation cites into a
+  comparison table. **Ask about these papers** asks a new question of just
+  those papers.
+- **Markdown** copies the conversation with its citations named, for your
+  notes. **Delete** removes it on every device.
+
+A paper's details list what you **asked about this paper**: every
+conversation about it or citing it. Summarize and Ask Claude results there
+have a **Follow up** button. An Ask answer that cites several papers offers
+to compare them in a table, and a table or weighing offers to ask about its
+papers.
+
+History lives in your own storage, at `lightkone/history/`, one file per
+conversation, so it follows you across devices. In a shared library, or one
+you can only read, your history stays in this browser instead, so the group
+never sees your questions.
+
 ## New on arXiv
 
 **New on arXiv** ranks each day's preprints, in the categories your library

@@ -119,6 +119,7 @@ function Guide() {
         "Once PDFs have been read for search, the words inside papers are found too, with the page they are on.",
         "Search by equation finds arXiv papers in your library that use a formula. Ask answers a question from your papers, citing the pages: from the whole library, a folder or tag, papers you pick, or published papers beyond it.",
         "Compare papers fills a table of values read out of each paper, sorts what supports or contradicts a claim, and drafts a literature review in LaTeX or Markdown.",
+        "History (the clock at the top) keeps every conversation with Claude: read it again, follow up, or take its papers to Ask or Compare.",
       ],
     ],
     [
@@ -217,6 +218,7 @@ function Data() {
     ["Your papers, notes, highlights and PDFs", "Only your own storage. This site never receives them, except when you use the AI app address (MCP): then its server reads your library from your storage for each request, with your storage keys sealed inside your private address."],
     ["Keys and tokens (Claude, GitHub, bucket, OpenAlex)", "Only this browser's settings. Each is sent only to the service it belongs to. Invite links for shared libraries never carry them."],
     ["Ask, Explain, Compare papers and the check in Cite this", "When you use them, your question and the passages picked from your papers (for a comparison table, each chosen paper's text) go from your browser straight to Anthropic, with your own Claude key."],
+    ["History of your conversations with Claude", "Your own storage. In a shared or read-only library, this browser only, so the group never sees your questions."],
     ["Asking beyond your library", "The words of your question go to OpenAlex's search."],
     ["Journal citation styles", "The style's name goes to the Citation Style Language project on GitHub, and the list of styles is fetched from Zotero. Your papers are formatted in your browser."],
     ["Adding and looking up papers", "The DOI, arXiv id or title goes to Crossref, OpenAlex, Semantic Scholar or arXiv. For open-access PDFs, the DOI and your contact email go to Unpaywall through this site."],

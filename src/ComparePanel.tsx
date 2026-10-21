@@ -11,6 +11,7 @@ import { shortAuthors } from "./core/cite";
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
 import { draftReview, extractRow, weighClaim } from "./plugins/claude";
+import { newConversationId, type Conversation, type Kind } from "./core/history";
 import { ScopePicker } from "./ScopePicker";
 import { Icon } from "./icons";
 
@@ -56,16 +57,27 @@ export function ComparePanel(props: {
   settings: Record<string, string>;
   hidden?: boolean;
   start?: Tab;
+  /** A table, weighing or draft from History to open again. */
+  resume?: Conversation;
+  /** Papers to compare, chosen elsewhere (an Ask answer, History). */
+  pick?: string[];
+  onRecord(c: Conversation): void;
+  onAskAbout(ids: string[]): void;
   onOpen(paperId: string, page: number): void;
   onClose(): void;
 }) {
-  const [tab, setTab] = useState<Tab>(props.start ?? "table");
-  const [scope, setScope] = useState<Scope>(() => loadScope("compare"));
+  const r = props.resume;
+  const [tab, setTab] = useState<Tab>(r ? (r.kind as Tab) : props.start ?? "table");
+  const [scope, setScope] = useState<Scope>(() => r?.scope ?? (props.pick?.length ? { kind: "picked", ids: props.pick } : loadScope("compare")));
   const [busy, setBusy] = useState(false);
   const chosen = useMemo(() => scoped(props.papers, scope, props.inView), [props.papers, scope, props.inView]);
   const byId = useMemo(() => new Map(props.papers.map((p) => [p.id, p])), [props.papers]);
   const hasKey = Boolean(props.settings["claude.apiKey"]);
-  const shared = { ...props, chosen, byId, hasKey, busy, setBusy };
+  // Each table, weighing or draft is kept in History once done; one opened from there keeps its place.
+  function record(kind: Kind, id: { id: string; created: string }, title: string, papers: string[], data: unknown, sources?: Source[]) {
+    props.onRecord({ id: id.id, kind, title, created: id.created, updated: new Date().toISOString(), papers, preview: "", turns: [], sources, scope, data });
+  }
+  const shared = { ...props, chosen, byId, hasKey, busy, setBusy, record, resume: r && r.kind === tab ? r : undefined };
 
   function pick(s: Scope) {
     setScope(s);
@@ -102,7 +114,24 @@ interface TabProps {
   hasKey: boolean;
   busy: boolean;
   setBusy(b: boolean): void;
+  resume?: Conversation;
+  record(kind: Kind, id: { id: string; created: string }, title: string, papers: string[], data: unknown, sources?: Source[]): void;
+  onAskAbout(ids: string[]): void;
   onOpen(paperId: string, page: number): void;
+}
+
+/** A conversation id for a new run, or the one opened from History. */
+function useConv(resume?: Conversation) {
+  const conv = useRef<{ id: string; created: string } | null>(resume ? { id: resume.id, created: resume.created } : null);
+  return {
+    fresh() {
+      conv.current = { id: newConversationId(), created: new Date().toISOString() };
+      return conv.current;
+    },
+    get current() {
+      return conv.current;
+    },
+  };
 }
 
 function useStop() {
@@ -117,7 +146,8 @@ function copy(text: string, done: (msg: string) => void, what: string) {
 
 /** Pick columns; Claude reads each paper and fills its row, with the page each value is on. */
 function TableTab(props: TabProps) {
-  const saved = load<{ columns: string[]; rows: Row[] } | null>(TABLE_KEY, null);
+  const saved = (props.resume?.data as { columns: string[]; rows: Row[] } | undefined) ?? load<{ columns: string[]; rows: Row[] } | null>(TABLE_KEY, null);
+  const conv = useConv(props.resume);
   const [columnsText, setColumnsText] = useState(() => load<string>(COLUMNS_KEY, "Method, Data, Main result, Assumptions"));
   const [table, setTable] = useState<{ columns: string[]; rows: Row[] } | null>(saved);
   const [progress, setProgress] = useState<[number, number] | null>(null);
@@ -141,6 +171,7 @@ function TableTab(props: TabProps) {
     };
     setTable({ columns, rows: [] });
     setNote(null);
+    const id = conv.fresh();
     props.setBusy(true);
     let done = 0;
     setProgress([0, todo.length]);
@@ -161,6 +192,8 @@ function TableTab(props: TabProps) {
         show();
       }, signal);
       if (signal.aborted) setNote("Stopped.");
+      const kept = rows.filter((r) => r.cells || r.error);
+      if (kept.length) props.record("table", id, columns.join(", "), kept.map((r) => r.paperId), { columns, rows: kept });
     } finally {
       props.setBusy(false);
       setProgress(null);
@@ -192,6 +225,7 @@ function TableTab(props: TabProps) {
             <>
               <button type="button" onClick={() => download("papers-table.csv", toCsv(rows, cols, props.byId), "text/csv")}><Icon name="download" size={15} /> CSV</button>
               <button type="button" onClick={() => copy(toLatex(rows, cols, props.byId), setNote, "the LaTeX table")}><Icon name="copy" size={15} /> LaTeX table</button>
+              {rows.length > 1 && <button type="button" onClick={() => props.onAskAbout(rows.map((r) => r.paperId))}><Icon name="sparkle" size={15} /> Ask about these</button>}
             </>
           )}
         </div>
@@ -240,8 +274,10 @@ function TableTab(props: TabProps) {
 
 /** A claim, and where the chosen papers support, qualify or contradict it. */
 function WeighTab(props: TabProps) {
-  const [claim, setClaim] = useState("");
-  const [result, setResult] = useState<{ claim: string; weighing: Weighing; sources: Source[] } | null>(null);
+  const back = props.resume?.data as { claim: string; weighing: Weighing } | undefined;
+  const [claim, setClaim] = useState(back?.claim ?? "");
+  const [result, setResult] = useState<{ claim: string; weighing: Weighing; sources: Source[] } | null>(back ? { ...back, sources: props.resume!.sources ?? [] } : null);
+  const conv = useConv(props.resume);
   const [note, setNote] = useState<string | null>(null);
   const math = useMath();
   const stop = useStop();
@@ -263,7 +299,13 @@ function WeighTab(props: TabProps) {
       const reply = await weighClaim(props.settings, c, sourcesPrompt(sources, props.byId), stop.current.signal);
       const w = parseWeighing(reply, new Set(sources.map((s) => s.n)));
       if (!w) setNote("Claude's reply could not be read. Try again.");
-      else setResult({ claim: c, weighing: w, sources });
+      else {
+        setResult({ claim: c, weighing: w, sources });
+        const used = new Set(w.points.flatMap((p) => p.sources));
+        // A new claim is a new conversation; the same one weighed again replaces it.
+        const id = conv.current && back?.claim === c ? conv.current : conv.fresh();
+        props.record("weigh", id, c, [...new Set(sources.filter((s) => used.has(s.n)).map((s) => s.paperId))], { claim: c, weighing: w }, sources.filter((s) => used.has(s.n)));
+      }
     } catch (err) {
       if (!stop.current?.signal.aborted) setNote((err as Error).message);
     } finally {
@@ -293,6 +335,11 @@ function WeighTab(props: TabProps) {
           {result && !props.busy && (
             <button type="button" onClick={() => copy(weighingMarkdown(result.claim, result.weighing, result.sources, props.byId), setNote, "as Markdown")}>
               <Icon name="copy" size={15} /> Markdown
+            </button>
+          )}
+          {result && !props.busy && result.weighing.points.length > 0 && (
+            <button type="button" onClick={() => props.onAskAbout([...new Set(result.weighing.points.flatMap((p) => p.sources).map((n) => result.sources.find((s) => s.n === n)?.paperId).filter(Boolean) as string[])])}>
+              <Icon name="sparkle" size={15} /> Ask about these
             </button>
           )}
         </div>
@@ -344,9 +391,11 @@ function WeighTab(props: TabProps) {
 
 /** A draft literature review of the chosen papers, in LaTeX or Markdown, citing them by their keys. */
 function ReviewTab(props: TabProps) {
-  const [focus, setFocus] = useState("");
-  const [format, setFormat] = useState<ReviewFormat>(() => load<ReviewFormat>(FORMAT_KEY, "latex"));
-  const [draft, setDraft] = useState("");
+  const back = props.resume?.data as { focus: string; format: ReviewFormat; draft: string } | undefined;
+  const [focus, setFocus] = useState(back?.focus ?? "");
+  const [format, setFormat] = useState<ReviewFormat>(() => back?.format ?? load<ReviewFormat>(FORMAT_KEY, "latex"));
+  const [draft, setDraft] = useState(back?.draft ?? "");
+  const conv = useConv(props.resume);
   const [note, setNote] = useState<string | null>(null);
   const stop = useStop();
   const papers = props.chosen.slice(0, REVIEW_MAX);
@@ -359,7 +408,10 @@ function ReviewTab(props: TabProps) {
     props.setBusy(true);
     stop.current = new AbortController();
     try {
-      setDraft(await draftReview(props.settings, reviewSources(papers, props.texts), focus, format, setDraft, stop.current.signal));
+      const text = await draftReview(props.settings, reviewSources(papers, props.texts), focus, format, setDraft, stop.current.signal);
+      setDraft(text);
+      const cited = new Set(keysIn(text));
+      props.record("review", conv.fresh(), focus.trim() || `Review of ${papersText(papers.length)}`, papers.filter((p) => cited.has(p.key)).map((p) => p.id), { focus, format, draft: text });
     } catch (err) {
       if (!stop.current?.signal.aborted) setNote((err as Error).message);
     } finally {

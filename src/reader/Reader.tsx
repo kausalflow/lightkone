@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
+import type { Conversation } from "../core/history";
 import type { Paper, StorageAdapter } from "../core/types";
 import {
   annotationsPath,
@@ -24,7 +25,7 @@ function download(name: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: number; onClose(): void; onError(msg: string): void; onText?(paperId: string, text: string): void }) {
+export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: number; onClose(): void; onError(msg: string): void; onText?(paperId: string, text: string): void; onRecord?(c: Conversation): void }) {
   const { paper, storage } = props;
   const pagesRef = useRef<HTMLDivElement>(null);
   const view = useRef<PdfView | null>(null);
@@ -236,7 +237,7 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
           <button onClick={() => explain(selection)} title="Claude explains this in the context of the paper">Explain</button>
         </div>
       )}
-      {explaining && <Explain paper={paper} pdf={pdfBytes.current} subject={explaining} onClose={() => setExplaining(null)} onSave={saveExplanation} />}
+      {explaining && <Explain paper={paper} pdf={pdfBytes.current} subject={explaining} onClose={() => setExplaining(null)} onSave={saveExplanation} onRecord={props.onRecord} />}
       {open && (
         <div class="reader-sheet note-sheet">
           <p class="quote">{open.text}</p>

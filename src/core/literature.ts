@@ -39,6 +39,11 @@ export interface Outside extends Paper {
   cited?: number;
 }
 
+/** A found paper as the Ask panel holds it; also how one kept in History comes back. */
+export function outsideOf(id: string, draft: PaperDraft, cited?: number): Outside {
+  return { ...draft, type: "article", authors: draft.authors ?? [], fields: {}, id, key: "", tags: [], added: "", draft, cited };
+}
+
 /** Published papers that match a question, best first, each with an abstract. */
 export async function searchLiterature(question: string, o: { key?: string; fetch?: typeof fetch; signal?: AbortSignal; limit?: number } = {}): Promise<Outside[]> {
   const words = terms(question);
@@ -50,9 +55,7 @@ export async function searchLiterature(question: string, o: { key?: string; fetc
   return ((await r.json()).results ?? [])
     .filter((x: any) => x.title && x.abstract_inverted_index)
     .map((x: any) => {
-      const draft = workToDraft(x);
-      const out: Outside = { ...draft, type: "article", authors: draft.authors ?? [], fields: {}, id: `oa:${String(x.id).split("/").pop()}`, key: "", tags: [], added: "", draft, cited: x.cited_by_count ?? undefined };
-      return out;
+      return outsideOf(`oa:${String(x.id).split("/").pop()}`, workToDraft(x), x.cited_by_count ?? undefined);
     });
 }
 
