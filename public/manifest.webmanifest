@@ -22,7 +22,7 @@
       "title": "title",
       "text": "text",
       "url": "url",
-      "files": [{ "name": "pdf", "accept": ["application/pdf", ".pdf"] }]
+      "files": [{ "name": "pdf", "accept": ["application/pdf", ".pdf", "text/html", ".html", ".htm", "multipart/related", "message/rfc822", ".mhtml", ".mht"] }]
     }
   }
 }

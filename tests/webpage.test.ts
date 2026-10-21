@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { fetchPage, linkDraft, linkOnlyReason, markdownFile, pageDraft, PageError, pageMarkdown, paperIdentifier, personName, toMarkdown, isWebLink } from "../src/core/webpage";
+import { fetchPage, isPageFile, pageFromFile, savedFrom, linkDraft, linkOnlyReason, markdownFile, pageDraft, PageError, pageMarkdown, paperIdentifier, personName, toMarkdown, isWebLink } from "../src/core/webpage";
 import { renderMarkdown, type MathRenderer } from "../src/core/markdown";
 import { sandboxedHtml } from "../src/reader/PageReader";
 import { charsetOf, handle, isPublicUrl } from "../functions/api/page";
@@ -207,5 +207,52 @@ describe("a page that can't be read", () => {
     expect(linkOnlyReason(d.url)).toBeNull();
     expect(linkDraft("https://www.example.com/").title).toBe("example.com");
     expect(linkDraft("https://example.com/posts/1234").title).toBe("example.com");
+  });
+});
+
+describe("a page saved from the browser", () => {
+  const MHTML = [
+    "From: <Saved by Blink>",
+    "Snapshot-Content-Location: https://press.example.edu/ideas/on-software",
+    "Subject: On software",
+    "MIME-Version: 1.0",
+    'Content-Type: multipart/related;\r\n\ttype="text/html";\r\n\tboundary="----MultipartBoundary--abc----"',
+    "",
+    "",
+    "------MultipartBoundary--abc----",
+    "Content-Type: text/html",
+    "Content-Transfer-Encoding: quoted-printable",
+    "Content-Location: https://press.example.edu/ideas/on-software",
+    "",
+    '<html><head><meta charset=3D"utf-8"><title>On software</title></head><body><p>Caf=C3=A9 =\r\nconcepts.</p></body></html>',
+    "------MultipartBoundary--abc----",
+    "Content-Type: image/png",
+    "Content-Transfer-Encoding: base64",
+    "",
+    "iVBORw0KGgo=",
+    "------MultipartBoundary--abc------",
+    "",
+  ].join("\r\n");
+
+  it("reads the page out of Chrome's MHTML file", async () => {
+    const page = await pageFromFile(new File([MHTML], "On software.mhtml", { type: "multipart/related" }));
+    expect(page.url).toBe("https://press.example.edu/ideas/on-software");
+    expect(page.html).toContain("<p>Café concepts.</p>");
+    expect(page.html).toContain('<meta charset="utf-8">');
+  });
+
+  it("finds where an HTML file came from, and says so when it can't", async () => {
+    expect(savedFrom('<link rel="canonical" href="https://a.org/p">')).toBe("https://a.org/p");
+    expect(savedFrom('<meta property="og:url" content="https://a.org/q">')).toBe("https://a.org/q");
+    expect(savedFrom("<!-- saved from url=(0018)https://a.org/r/ -->\n<html></html>")).toBe("https://a.org/r/");
+    const page = await pageFromFile(new File(['<html><head><link rel="canonical" href="https://a.org/p"></head><body>x</body></html>'], "p.html", { type: "text/html" }));
+    expect(page.url).toBe("https://a.org/p");
+    await expect(pageFromFile(new File(["<html><body>x</body></html>"], "p.html"))).rejects.toThrow(/which web page/);
+  });
+
+  it("knows a saved page file from a PDF", () => {
+    expect(isPageFile(new File([""], "a.mhtml"))).toBe(true);
+    expect(isPageFile(new File([""], "a", { type: "text/html" }))).toBe(true);
+    expect(isPageFile(new File([""], "a.pdf", { type: "application/pdf" }))).toBe(false);
   });
 });

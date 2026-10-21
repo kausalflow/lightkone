@@ -47,7 +47,7 @@ import { findDuplicates, findPublished, mergeInto, pickKeeper, type Published } 
 import { annotationsPath } from "./core/annotations";
 import { Icon, type IconName } from "./icons";
 import { site } from "./core/site";
-import { fetchPage, hasPage, htmlPath, isWebLink, linkOnlyReason, markdownFile, markdownPath, pageMarkdown, takePage } from "./core/webpage";
+import { fetchPage, hasPage, htmlPath, isPageFile, isWebLink, linkDraft, linkOnlyReason, markdownFile, markdownPath, pageDraft, pageFromFile, pageMarkdown, takePage, type FetchedPage } from "./core/webpage";
 import { joinPages, textPath } from "./core/fulltext";
 import { VersionLine } from "./Version";
 
@@ -305,12 +305,12 @@ export function App() {
     if (!new URLSearchParams(location.search).has(SHARED_FILES_KEY)) return;
     takeSharedFiles().then((files) => files.length && setSharedFiles(files));
   }, []);
-  // Dropping PDFs anywhere on the window adds them.
+  // Dropping PDFs or saved pages anywhere on the window adds them.
   useEffect(() => {
     const isFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files");
     const over = (e: DragEvent) => { if (isFiles(e)) e.preventDefault(); };
     const drop = (e: DragEvent) => {
-      const pdfs = [...(e.dataTransfer?.files ?? [])].filter(isPdf);
+      const pdfs = [...(e.dataTransfer?.files ?? [])].filter((f) => isPdf(f) || isPageFile(f));
       if (!pdfs.length || (e.target as HTMLElement).closest?.(".reader")) return;
       e.preventDefault();
       setSharedFiles(pdfs);
@@ -554,11 +554,11 @@ export function App() {
   }
 
   /** Save a web page: its raw HTML, its text as Markdown, and that text for search and Ask. */
-  async function savePage(p: Paper, quiet = false): Promise<boolean> {
+  async function savePage(p: Paper, quiet = false, given?: FetchedPage): Promise<boolean> {
     if (!storage || !p.url) return false;
     if (!quiet) setBusy("Saving the page");
     try {
-      const page = takePage(p.url) ?? (await fetchPage(p.url));
+      const page = given ?? takePage(p.url) ?? (await fetchPage(p.url));
       const doc = new DOMParser().parseFromString(page.html, "text/html");
       const text = markdownFile(p, await pageMarkdown(doc, page.url));
       const html = htmlPath(p.id);
@@ -592,6 +592,24 @@ export function App() {
     scheduleSave();
     if (added.length) setSelected(p.id);
     return added.length ? "added" : "attached";
+  }
+
+  /** Add a page saved from the browser; a page already in the library (kept as a link, say) gets the copy if it has none. */
+  async function addSavedPage(page: FetchedPage): Promise<"added" | "attached" | "had"> {
+    const draft = pageDraft(new DOMParser().parseFromString(page.html, "text/html"), page.url);
+    const plain = (u?: string) => u?.replace(/^https?:\/\/(www\.)?/i, "").replace(/[/#?]+$/, "");
+    const existing = library.papers.find((q) => q.url && (plain(q.url) === plain(page.url) || plain(q.url) === plain(draft.url))) ?? library.findDuplicate(draft);
+    if (existing?.html) return "had";
+    // A page kept as a link has a title made from its address; the page itself says better.
+    if (existing?.url && existing.title === linkDraft(existing.url).title) {
+      const { title, authors, year, venue, abstract } = draft;
+      library.update(existing.id, { title, authors, year, venue, abstract });
+    }
+    const p = existing ?? addDrafts([draft], false)[0];
+    if (!storage || !p) throw new Error("Could not add it to the library.");
+    if (!(await savePage(p.url ? p : { ...p, url: draft.url }, true, page))) throw new Error("Could not save the page.");
+    setSelected(p.id);
+    return existing ? "attached" : "added";
   }
 
   /** Download a free PDF into storage. Quiet when it runs on its own. */
@@ -1303,6 +1321,7 @@ export function App() {
           initial={captured ?? undefined}
           files={sharedFiles}
           onAddPdf={addWithPdf}
+          onAddPage={addSavedPage}
           onClose={() => { setPanel(null); setCaptured(null); setSharedFiles([]); }}
           onAdd={(drafts) => {
             const added = addDrafts(drafts);
@@ -2051,6 +2070,7 @@ function AddPanel(props: {
   onClose(): void;
   onAdd(d: PaperDraft[]): number;
   onAddPdf(d: PaperDraft, bytes: Uint8Array): Promise<"added" | "attached" | "had">;
+  onAddPage(page: FetchedPage): Promise<"added" | "attached" | "had">;
   canAdd: boolean;
 }) {
   const [text, setText] = useState(props.initial ?? "");
@@ -2066,16 +2086,25 @@ function AddPanel(props: {
     if (props.files?.length && props.canAdd) addPdfs(props.files);
   }, [props.files, props.canAdd]);
 
-  /** Each PDF becomes a paper: found from the DOI or arXiv id it prints, else by Claude, else under its own title. */
+  /**
+   * Each PDF becomes a paper: found from the DOI or arXiv id it prints, else by Claude, else under its own title.
+   * A page saved from the browser (.html or .mhtml) is added as a saved web page.
+   */
   async function addPdfs(files: File[]) {
     setWorking(true);
     setMessage(null);
     const { pdfFirstPages } = await import("./reader/view");
     const counts = { added: 0, attached: 0, had: 0 };
+    const saved = { added: 0, attached: 0, had: 0 };
     const failed: string[] = [];
     for (const [i, file] of files.entries()) {
       if (files.length > 1) setMessage(`Reading ${i + 1} of ${files.length}: ${file.name}`);
       try {
+        // Shared files can come with a wrong type, so the first bytes decide.
+        if (isPageFile(file) && (await file.slice(0, 5).text()) !== "%PDF-") {
+          saved[await props.onAddPage(await pageFromFile(file))]++;
+          continue;
+        }
         const bytes = new Uint8Array(await file.arrayBuffer());
         const { pages, title } = await pdfFirstPages(bytes);
         const id = identifierIn(pages);
@@ -2098,6 +2127,9 @@ function AddPanel(props: {
         counts.added && `Added ${counts.added} paper${counts.added > 1 ? "s" : ""} with ${counts.added > 1 ? "their PDFs" : "its PDF"}.`,
         counts.attached && `Attached ${counts.attached} PDF${counts.attached > 1 ? "s" : ""} to papers already in your library.`,
         counts.had && `${counts.had} already in your library with a PDF, left unchanged.`,
+        saved.added && `Added ${saved.added} saved page${saved.added > 1 ? "s" : ""}.`,
+        saved.attached && `Kept a copy of ${saved.attached} page${saved.attached > 1 ? "s" : ""} already in your library.`,
+        saved.had && `${saved.had} page${saved.had > 1 ? "s" : ""} already saved, left unchanged.`,
         failed.length && `Couldn't read: ${failed.join(", ")}`,
       ]
         .filter(Boolean)
@@ -2139,7 +2171,7 @@ function AddPanel(props: {
             added ? `Added ${added} paper${added > 1 ? "s" : ""}.` : "",
             missed.length ? `Couldn't find: ${missed.join(", ")}` : "",
             linksOnly.length
-              ? `${linksOnly.join(" ")} ${linksOnly.length > 1 ? "Those were" : "It was"} kept as a link, without a copy of the page. To keep a copy, save the page as a PDF from your browser (Share or menu, then Print) and add it with Add PDF files.`
+              ? `${linksOnly.join(" ")} ${linksOnly.length > 1 ? "Those were" : "It was"} kept as a link, without a copy of the page. To keep a copy, open the page in your browser, save it (on a phone: menu, then Download), and add the saved file here with Add files.`
               : "",
           ]
             .filter(Boolean)
@@ -2166,7 +2198,7 @@ function AddPanel(props: {
       <form class="panel" onSubmit={submit}>
         <h2>Add papers</h2>
         <p class="muted">
-          Paste DOIs, arXiv ids or links (one per line), or BibTeX entries.
+          Paste DOIs, arXiv ids or links (one per line), or BibTeX entries. Add files takes PDFs and pages saved from your browser.
           {lookups().some((l) => l.id === "claude-find")
             ? " With a Claude key you can also paste any paper's page, or describe it: \"the 2017 transformer paper by Vaswani\"."
             : ""}
@@ -2175,8 +2207,8 @@ function AddPanel(props: {
         <div class="row">
           <button class="primary" type="submit" disabled={working || !props.canAdd}>{working ? "Looking up…" : "Add"}</button>
           <label class="button">
-            Add PDF files
-            <input type="file" accept="application/pdf,.pdf" multiple onChange={(e) => { const fs = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ""; fs.length && addPdfs(fs); }} />
+            Add files
+            <input type="file" accept="application/pdf,.pdf,text/html,.html,.htm,.mhtml,.mht,multipart/related" multiple onChange={(e) => { const fs = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ""; fs.length && addPdfs(fs); }} />
           </label>
           <label class="button">
             Import a .bib file
@@ -2186,7 +2218,7 @@ function AddPanel(props: {
         </div>
         {message && <p class="message">{message}</p>}
         <p class="muted small">
-          On your phone, install Lightkone (browser menu → Install app), then share a paper's page or a PDF file to it. On a computer, drop PDF files anywhere on Lightkone, or drag this button to
+          On your phone, install Lightkone (browser menu → Install app), then share a paper's page or a PDF file to it. On a computer, drop PDF files or saved pages anywhere on Lightkone, or drag this button to
           your bookmarks bar and click it on any paper's page:{" "}
           <a class="bookmarklet" href={bookmarklet(location.origin + location.pathname)} onClick={(e) => e.preventDefault()}>
             + Lightkone

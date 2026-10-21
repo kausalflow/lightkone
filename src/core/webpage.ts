@@ -51,6 +51,115 @@ export async function fetchPage(url: string, f: typeof fetch = fetch.bind(global
   );
 }
 
+// ---------------------------------------------------------------- saved page files
+
+// A page some sites won't hand to the page service can be opened in the
+// browser and saved there: Chrome on a phone saves it (menu, Download) as an
+// MHTML file, and a computer's browser as .html. Either file is added as if
+// the page had been fetched.
+
+/** A saved page file: .html, .htm, .mhtml or .mht. */
+export const isPageFile = (f: File) => /^(text\/html|multipart\/related|message\/rfc822|application\/x-mimearchive)$/.test(f.type) || /\.(html?|mhtml?|mht)$/i.test(f.name);
+
+const latin1 = (bytes: Uint8Array) => new TextDecoder("latin1").decode(bytes);
+
+/** Quoted-printable text (as latin1) to its bytes. */
+function unquote(text: string): Uint8Array {
+  const s = text.replace(/=\r?\n/g, "");
+  const out = new Uint8Array(s.length);
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "=" && /^[0-9A-F]{2}$/i.test(s.slice(i + 1, i + 3))) {
+      out[n++] = parseInt(s.slice(i + 1, i + 3), 16);
+      i += 2;
+    } else out[n++] = s.charCodeAt(i) & 0xff;
+  }
+  return out.subarray(0, n);
+}
+
+/** The headers of a MIME part, by lowercase name, with folded lines joined. */
+function headers(block: string): Record<string, string> {
+  const h: Record<string, string> = {};
+  for (const line of block.replace(/\r?\n[ \t]+/g, " ").split(/\r?\n/)) {
+    const i = line.indexOf(":");
+    if (i > 0) h[line.slice(0, i).trim().toLowerCase()] ??= line.slice(i + 1).trim();
+  }
+  return h;
+}
+
+/** The page inside an MHTML file: its first HTML part, decoded, and the address it was saved from. */
+export function fromMhtml(bytes: Uint8Array): { html: string; url?: string } | null {
+  const text = latin1(bytes);
+  const split = /\r?\n\r?\n/.exec(text);
+  if (!split) return null;
+  const top = headers(text.slice(0, split.index));
+  const boundary = /boundary="?([^";]+)"?/i.exec(top["content-type"] ?? "")?.[1];
+  if (!boundary) return null;
+  for (const part of text.split(`--${boundary}`).slice(1)) {
+    const at = /\r?\n\r?\n/.exec(part);
+    if (!at) continue;
+    const h = headers(part.slice(0, at.index));
+    if (!/^text\/html/i.test(h["content-type"] ?? "")) continue;
+    const body = part.slice(at.index + at[0].length);
+    const encoding = (h["content-transfer-encoding"] ?? "").toLowerCase();
+    const raw =
+      encoding === "quoted-printable"
+        ? unquote(body)
+        : encoding === "base64"
+          ? Uint8Array.from(atob(body.replace(/\s+/g, "")), (c) => c.charCodeAt(0))
+          : Uint8Array.from(body, (c) => c.charCodeAt(0) & 0xff);
+    const charset = /charset="?([\w-]+)/i.exec(h["content-type"] ?? "")?.[1] ?? /<meta[^>]+charset=["']?([\w-]+)/i.exec(latin1(raw.subarray(0, 4096)))?.[1] ?? "utf-8";
+    let decoder: TextDecoder;
+    try {
+      decoder = new TextDecoder(charset);
+    } catch {
+      decoder = new TextDecoder();
+    }
+    const url = top["snapshot-content-location"] ?? h["content-location"];
+    return { html: decoder.decode(raw), url: url && /^https?:/i.test(url) ? url : undefined };
+  }
+  return null;
+}
+
+/** The address an HTML file says it came from: its canonical link, og:url, or a browser's "saved from" note. */
+export function savedFrom(html: string): string | undefined {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const found = [
+    doc.querySelector('link[rel="canonical"]')?.getAttribute("href"),
+    meta(doc, "og:url", "twitter:url", "citation_public_url"),
+    /<!--\s*saved from url=\(\d+\)(\S+?)\s*-->/i.exec(html.slice(0, 2000))?.[1],
+  ];
+  return found.find((u): u is string => Boolean(u && /^https?:\/\//i.test(u)));
+}
+
+/** A saved page file read as a page; throws when it holds no web page or doesn't say where it came from. */
+export async function pageFromFile(file: File): Promise<FetchedPage> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const head = latin1(bytes.subarray(0, 4096));
+  let html: string;
+  let url: string | undefined;
+  if (/^(from|mime-version|content-type|snapshot-content-location|subject|date):/im.test(head.split(/\r?\n\r?\n/)[0]) && /multipart\/related/i.test(head)) {
+    const page = fromMhtml(bytes);
+    if (!page) throw new Error("no web page in this file");
+    ({ html, url } = page);
+  } else {
+    html = new TextDecoder(charsetOf(head)).decode(bytes);
+  }
+  url ??= savedFrom(html);
+  if (!url) throw new Error("it doesn't say which web page it came from");
+  return { url, html };
+}
+
+const charsetOf = (head: string) => {
+  const c = /<meta[^>]+charset=["']?([\w-]+)/i.exec(head)?.[1] ?? "utf-8";
+  try {
+    new TextDecoder(c);
+    return c;
+  } catch {
+    return "utf-8";
+  }
+};
+
 // ---------------------------------------------------------------- link only
 
 // A page the service couldn't read is kept as a link: its title comes from the

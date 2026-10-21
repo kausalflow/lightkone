@@ -28,7 +28,7 @@ export function bookmarklet(app: string): string {
   return `javascript:${encodeURI(code)}`;
 }
 
-// PDF files shared to the installed app arrive as a POST, which a static site
+// PDF files (and saved pages) shared to the installed app arrive as a POST, which a static site
 // can't receive, so the service worker (public/sw.js) keeps them in this cache
 // and opens the app with ?shared-files.
 export const SHARED_FILES_KEY = "shared-files";
@@ -43,7 +43,7 @@ export async function takeSharedFiles(): Promise<File[]> {
   const files: File[] = [];
   for (const req of await cache.keys()) {
     const res = await cache.match(req);
-    if (res) files.push(new File([await res.blob()], decodeURIComponent(res.headers.get("x-name") ?? "shared.pdf"), { type: "application/pdf" }));
+    if (res) files.push(new File([await res.blob()], decodeURIComponent(res.headers.get("x-name") ?? "shared.pdf"), { type: res.headers.get("content-type") ?? "application/pdf" }));
     await cache.delete(req);
   }
   return files;
