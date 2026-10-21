@@ -12,6 +12,18 @@ copy it.
 **Cite**, in a paper's details, copies it formatted as a short post line,
 APA, Markdown, a LaTeX `\cite{…}`, or a BibTeX entry.
 
+Below those come journal styles from the Citation Style Language, the same
+10,000+ styles Zotero and Mendeley use. The American Physical Society style
+is there to start. **Another journal's style…** searches all of them by name,
+for example *Physical Review D*, *JCAP* or *Nature*; the ones you use most
+recently stay in the menu. A style is fetched from the CSL project the first
+time and kept in your browser. When pasted into a document, the citation
+keeps its italics and bold.
+
+To copy a whole reference list, open a folder or search, then choose **Copy
+papers in view as a reference list** in the command palette. It uses the
+journal style you used last.
+
 ## The library as BibTeX
 
 `lightkone/library.bib` in your storage is rewritten on every save, with the

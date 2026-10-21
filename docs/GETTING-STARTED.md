@@ -65,7 +65,7 @@ or (with a Claude key) **Explain** it. See [Reading and highlighting](READING.md
 
 ## 5. Add a Claude key (optional)
 
-Ask, Explain, Summarize, Cite this's check, and finding papers from a plain
+Ask, Compare papers, Explain, Summarize, Cite this's check, and finding papers from a plain
 description use Claude with your own key. Get one at
 [console.anthropic.com](https://console.anthropic.com) and paste it under
 **Settings → Claude → Anthropic API key**. It is kept in this browser only and

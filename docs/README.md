@@ -14,8 +14,8 @@ your own key.
 ## Using Lightkone
 
 - [Reading and highlighting](READING.md): the PDF reader, highlights, notes, Explain, and export to Obsidian.
-- [Finding papers](FINDING.md): search and its filters, full text, equations, Ask, New on arXiv and the citation map.
-- [Writing with your library](WRITING.md): citations, LaTeX and Overleaf, a .bib for a manuscript.
+- [Finding papers](FINDING.md): search and its filters, full text, equations, Ask, comparing papers, New on arXiv and the citation map.
+- [Writing with your library](WRITING.md): citations in any journal style, LaTeX and Overleaf, a .bib for a manuscript.
 - [Sharing and devices](SHARING.md): several devices, shared libraries, the phone app.
 - [Claude and other AI apps (MCP)](MCP.md): use your library from Claude, Claude Code or any MCP app.
 - [Your data](PRIVACY.md): what is processed where, and what leaves your browser.

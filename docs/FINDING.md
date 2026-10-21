@@ -42,6 +42,45 @@ picks the passages that bear on the question from your papers' full text and
 abstracts, and Claude answers citing them as [1], [2]: tap one to open that
 paper at that page.
 
+**From**, above the question, chooses which papers it answers from:
+
+- **Your whole library**.
+- **In view**: the folder, tag, Starred or search open in the list. Open the
+  folder first, then Ask.
+- **Papers you pick**: tick them in a list you can filter by title, author or
+  year.
+- **Published papers beyond your library**: OpenAlex searches all published
+  work for the words of your question and Claude answers from the abstracts
+  of what it finds, saying that it has only abstracts. Each paper it cites has
+  an **Add** button, or says it is already in your library.
+
+## Compare papers
+
+**Compare papers** (side bar, *Discover*) works on the same choice of papers
+as Ask: the whole library, what is in view, or papers you pick. It has three
+tabs, and each needs a Claude key.
+
+- **Table**: name the columns, for example *Method, Data, Main result, Error
+  bars, Assumptions*. Claude reads each paper and fills its row, three papers
+  at a time, with the page each value is on: tap **p. 3** to open it there,
+  and hover a value for the sentence it is read from. A paper whose PDF has
+  not been read for search is read from its abstract, and its row says so.
+  Values the paper does not state say *not stated*. Download the table as
+  **CSV**, or copy it as a **LaTeX table** citing each paper by its key. Up to
+  50 papers at a time; the last table stays until you fill a new one.
+- **Agree or disagree**: state a claim. Lightkone finds the passages in the
+  chosen papers that bear on it, and Claude sorts them into what **supports**,
+  **qualifies** or **contradicts** it, each point linked to its page, with a
+  short summary of where and why the papers differ. Papers with nothing on the
+  claim are listed apart. Copy the result as Markdown.
+- **Review draft**: Claude drafts a literature review of the chosen papers
+  from their abstracts and your notes, grouped by theme, in **LaTeX** with
+  `\cite{key}` or **Markdown** with `[@key]`, using your citation keys so it
+  compiles against your .bib. Say what the review is for to focus it.
+  Lightkone flags any key that is not among the chosen papers, and downloads a
+  .bib of the papers the draft cites. Read it as a first draft and check every
+  claim against the papers. Up to 60 papers.
+
 ## New on arXiv
 
 **New on arXiv** ranks each day's preprints, in the categories your library
