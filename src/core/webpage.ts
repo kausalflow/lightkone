@@ -19,12 +19,65 @@ export interface FetchedPage {
   html: string;
 }
 
-/** The page's HTML, through the page service. Throws with the service's reason when it can't. */
+/** The page service couldn't fetch the page; status 424 means the site itself failed or refused. */
+export class PageError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly blocked = false,
+  ) {
+    super(message);
+  }
+  /** The link is fine but its page couldn't be read, so it can still be kept as a link. */
+  get keepAsLink() {
+    return this.status === 424 || this.status >= 500;
+  }
+}
+
+/** The page's HTML, through the page service. Throws a PageError with the service's reason when it can't. */
 export async function fetchPage(url: string, f: typeof fetch = fetch.bind(globalThis)): Promise<FetchedPage> {
-  const r = await f(site(`api/page?url=${encodeURIComponent(url)}`));
-  const body = (await r.json().catch(() => null)) as (FetchedPage & { error?: string }) | null;
-  if (!r.ok || !body?.html) throw new Error(body?.error ?? `The page service answered ${r.status}.`);
-  return body;
+  let r: Response;
+  try {
+    r = await f(site(`api/page?url=${encodeURIComponent(url)}`));
+  } catch {
+    throw new PageError("Lightkone's page service can't be reached. Are you offline?", 0);
+  }
+  const body = (await r.json().catch(() => null)) as (FetchedPage & { error?: string; blocked?: boolean }) | null;
+  if (r.ok && body?.html) return body;
+  if (body?.error) throw new PageError(body.error, r.status, Boolean(body.blocked));
+  throw new PageError(
+    r.status === 404 ? "This copy of Lightkone has no page service (it runs on Cloudflare Pages)." : `The page service failed (${r.status}). Try again in a moment.`,
+    r.status || 500,
+  );
+}
+
+// ---------------------------------------------------------------- link only
+
+// A page the service couldn't read is kept as a link: its title comes from the
+// address, and the reason is kept for a moment so Add papers can say why.
+const linkOnly = new Map<string, string>();
+
+/** Why this link was just added without a copy of its page; null if it wasn't. Asking clears it. */
+export function linkOnlyReason(url: string | undefined): string | null {
+  const why = url ? linkOnly.get(url) : undefined;
+  if (url) linkOnly.delete(url);
+  return why ?? null;
+}
+
+/** A library entry for a page that couldn't be read: just its link, a title made from the address, and the site. */
+export function linkDraft(url: string, reason?: string): PaperDraft {
+  const u = new URL(url);
+  const host = u.hostname.replace(/^www\./, "");
+  const slug = decodeURIComponent(u.pathname.split("/").filter(Boolean).pop() ?? "")
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/[-_+]+/g, " ")
+    .trim();
+  const title = slug && !/^\d+$/.test(slug) ? slug[0].toUpperCase() + slug.slice(1) : host;
+  if (reason) {
+    linkOnly.set(url, reason);
+    while (linkOnly.size > 10) linkOnly.delete(linkOnly.keys().next().value!);
+  }
+  return { type: "misc", title, authors: [], venue: host, url, fields: { howpublished: `\\url{${url}}`, urldate: new Date().toISOString().slice(0, 10) } };
 }
 
 // A page fetched to look it up is kept for a moment, so saving it right after

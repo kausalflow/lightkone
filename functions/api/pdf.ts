@@ -31,7 +31,7 @@ export async function handle(request: Request, f: typeof fetch = fetch): Promise
   if (!EMAIL.test(email)) return json(400, "Unpaywall needs a contact email: pass ?email=you@example.org");
 
   const meta = await f(`https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`);
-  if (!meta.ok) return json(meta.status === 404 ? 404 : 502, `Unpaywall answered ${meta.status}`);
+  if (!meta.ok) return json(meta.status === 404 ? 404 : 424, `Unpaywall answered ${meta.status}`);
   const work = (await meta.json()) as UnpaywallWork;
   const urls = [work.best_oa_location, ...(work.oa_locations ?? [])]
     .map((l) => l?.url_for_pdf)

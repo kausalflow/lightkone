@@ -59,7 +59,7 @@ export async function handle(request: Request, f: typeof fetch = fetch): Promise
   if (!ID.test(arxiv)) return json(400, { error: "Pass an arXiv id as ?arxiv=1706.03762" });
   const r = await f(`https://arxiv.org/e-print/${arxiv}`, { headers: { "user-agent": "Lightkone (equation search)" } });
   if (r.status === 404) return json(404, { error: "arXiv has no such paper." });
-  if (!r.ok) return json(r.status === 429 ? 429 : 502, { error: `arXiv answered ${r.status}.` });
+  if (!r.ok) return json(r.status === 429 ? 429 : 424, { error: `arXiv answered ${r.status}.` });
   const bytes = new Uint8Array(await r.arrayBuffer());
   if (bytes.length > LARGEST) return json(200, { arxiv, equations: [] }, 604800);
   return json(200, { arxiv, equations: extractEquations(await sourceOf(bytes)) }, 604800);

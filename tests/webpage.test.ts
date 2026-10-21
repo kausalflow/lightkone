@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { markdownFile, pageDraft, pageMarkdown, paperIdentifier, personName, toMarkdown, isWebLink } from "../src/core/webpage";
+import { fetchPage, linkDraft, linkOnlyReason, markdownFile, pageDraft, PageError, pageMarkdown, paperIdentifier, personName, toMarkdown, isWebLink } from "../src/core/webpage";
 import { renderMarkdown, type MathRenderer } from "../src/core/markdown";
 import { sandboxedHtml } from "../src/reader/PageReader";
 import { charsetOf, handle, isPublicUrl } from "../functions/api/page";
@@ -150,5 +150,62 @@ describe("the page service", () => {
     expect((await handle(new Request("https://site/api/page?url=" + encodeURIComponent("https://a.org/bad")), f)).status).toBe(400);
     expect((await handle(new Request("https://site/api/page?url=" + encodeURIComponent("https://a.org/file")), f)).status).toBe(415);
     expect((await handle(new Request("https://site/api/page?url=http%3A%2F%2Flocalhost%2F"), f)).status).toBe(400);
+  });
+
+  it("says why a site refused, with a status Cloudflare doesn't replace with its own page", async () => {
+    const pages: Record<string, Response> = {
+      "https://press.example.edu/ideas/x": new Response("<title>Just a moment...</title>", { status: 403, headers: { "content-type": "text/html", "cf-mitigated": "challenge" } }),
+      "https://a.org/down": new Response("", { status: 500 }),
+      "https://a.org/gone": new Response("", { status: 404 }),
+    };
+    const f = (async (u: string) => {
+      if (u.startsWith("https://nowhere")) throw new TypeError("fetch failed");
+      return pages[u];
+    }) as unknown as typeof fetch;
+    const ask = (u: string) => handle(new Request("https://site/api/page?url=" + encodeURIComponent(u)), f);
+
+    const blocked = await ask("https://press.example.edu/ideas/x");
+    expect(blocked.status).toBe(424);
+    const body = await blocked.json();
+    expect(body.blocked).toBe(true);
+    expect(body.error).toMatch(/press\.example\.edu turned the page reader away \(it answered 403 with a "checking your browser" page\)/);
+
+    const down = await ask("https://a.org/down");
+    expect(down.status).toBe(424);
+    expect((await down.json()).error).toMatch(/a\.org answered 500, a problem on its side/);
+    expect((await ask("https://a.org/gone")).status).toBe(404);
+
+    const unreachable = await ask("https://nowhere.example/");
+    expect(unreachable.status).toBe(424);
+    expect((await unreachable.json()).error).toBe("Couldn't reach nowhere.example. Check the link.");
+  });
+});
+
+describe("a page that can't be read", () => {
+  it("passes on the service's reason, and explains an answer that isn't the service's", async () => {
+    const answer = (r: Response) => (async () => r) as unknown as typeof fetch;
+    const refused = await fetchPage("https://x.org/a", answer(new Response(JSON.stringify({ error: "x.org turned the page reader away.", blocked: true }), { status: 424 }))).catch((e) => e);
+    expect(refused).toBeInstanceOf(PageError);
+    expect(refused.message).toBe("x.org turned the page reader away.");
+    expect(refused.blocked).toBe(true);
+    expect(refused.keepAsLink).toBe(true);
+
+    const cloudflare = await fetchPage("https://x.org/a", answer(new Response("error code: 502", { status: 502 }))).catch((e) => e);
+    expect(cloudflare.message).toBe("The page service failed (502). Try again in a moment.");
+    expect(cloudflare.keepAsLink).toBe(true);
+
+    const notPage = await fetchPage("https://x.org/a", answer(new Response(JSON.stringify({ error: "This link is not a web page." }), { status: 415 }))).catch((e) => e);
+    expect(notPage.keepAsLink).toBe(false);
+  });
+
+  it("is kept as a link, titled from its address", () => {
+    const d = linkDraft("https://press.princeton.edu/ideas/daniel-jackson-on-the-essence-of-software", "Turned away.");
+    expect(d.title).toBe("Daniel jackson on the essence of software");
+    expect(d.venue).toBe("press.princeton.edu");
+    expect(d.url).toBe("https://press.princeton.edu/ideas/daniel-jackson-on-the-essence-of-software");
+    expect(linkOnlyReason(d.url)).toBe("Turned away.");
+    expect(linkOnlyReason(d.url)).toBeNull();
+    expect(linkDraft("https://www.example.com/").title).toBe("example.com");
+    expect(linkDraft("https://example.com/posts/1234").title).toBe("example.com");
   });
 });

@@ -47,7 +47,7 @@ import { findDuplicates, findPublished, mergeInto, pickKeeper, type Published } 
 import { annotationsPath } from "./core/annotations";
 import { Icon, type IconName } from "./icons";
 import { site } from "./core/site";
-import { fetchPage, hasPage, htmlPath, isWebLink, markdownFile, markdownPath, pageMarkdown, takePage } from "./core/webpage";
+import { fetchPage, hasPage, htmlPath, isWebLink, linkOnlyReason, markdownFile, markdownPath, pageMarkdown, takePage } from "./core/webpage";
 import { joinPages, textPath } from "./core/fulltext";
 import { VersionLine } from "./Version";
 
@@ -2125,14 +2125,23 @@ function AddPanel(props: {
         const lines = input.split(/\n+/).map((l) => l.trim()).filter(Boolean);
         let added = 0;
         const missed: string[] = [];
+        const linksOnly: string[] = [];
         for (const line of lines) {
           const lookup = lookups().find((l) => l.matches(line));
           const draft = lookup ? await lookup.resolve(line) : null;
           if (draft) added += props.onAdd([draft]);
           else missed.push(line);
+          const why = linkOnlyReason(draft?.url);
+          if (why) linksOnly.push(why);
         }
         setMessage(
-          [added ? `Added ${added} paper${added > 1 ? "s" : ""}.` : "", missed.length ? `Couldn't find: ${missed.join(", ")}` : ""]
+          [
+            added ? `Added ${added} paper${added > 1 ? "s" : ""}.` : "",
+            missed.length ? `Couldn't find: ${missed.join(", ")}` : "",
+            linksOnly.length
+              ? `${linksOnly.join(" ")} ${linksOnly.length > 1 ? "Those were" : "It was"} kept as a link, without a copy of the page. To keep a copy, save the page as a PDF from your browser (Share or menu, then Print) and add it with Add PDF files.`
+              : "",
+          ]
             .filter(Boolean)
             .join(" ") || "Already in your library.",
         );

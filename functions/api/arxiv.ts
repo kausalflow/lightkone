@@ -77,7 +77,7 @@ export async function handle(request: Request, f: typeof fetch = fetch): Promise
     return json(400, { error: "Pass ?cats=hep-th,astro-ph.CO or ?ids=1706.03762" });
   }
   const r = await f(url);
-  if (!r.ok) return json(502, { error: `arXiv answered ${r.status}. Try again in a few minutes.` });
+  if (!r.ok) return json(424, { error: `arXiv answered ${r.status}. Try again in a few minutes.` });
   return json(200, parseFeed(await r.text()), cats.length && !ids.length ? 3600 : 86400);
 }
 

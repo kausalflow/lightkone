@@ -88,6 +88,12 @@ PDF's text is. Pages that build their content with scripts after they load
 may save little text; their raw HTML is kept all the same. Figures stay on the
 site they came from, so they show only with a network.
 
+Some sites turn away anything that isn't a person's browser, often with a
+"checking your browser" page. Such a page is still added, as a link with a
+title made from its address, and Add papers says why no copy was kept. To keep
+a copy, save the page as a PDF from your browser (Share or the menu, then
+Print) and add it with **Add PDF files**.
+
 ## Reading at night
 
 With the Dullaby plugin set up (**Settings → Dullaby night reading**), **Read
