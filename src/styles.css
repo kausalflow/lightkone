@@ -798,3 +798,17 @@ details.guide ul { margin-top: 8px; }
 .picker-list li { display: flex; align-items: center; gap: 8px; padding: 10px 10px; border-radius: 5px; cursor: pointer; font-size: 15px; }
 .picker-list li .icon, .picker-list .hash { color: var(--faint); width: 14px; text-align: center; }
 .picker-list li.on, .picker-list li:hover { background: var(--accent-soft); }
+
+/* Which papers a tool works on */
+.scope { margin: 6px 0 10px; }
+.scope-row { display: flex; align-items: center; gap: 8px; }
+.scope-row select { flex: 1; min-width: 0; font-size: 14px; }
+.scope p.small { margin: 6px 0 0; }
+.scope-pick { margin-top: 8px; }
+.scope-pick-head { display: flex; align-items: center; gap: 8px; }
+.scope-pick-head input { flex: 1; min-width: 0; }
+.scope-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 30vh; overflow: auto; border-top: 1px solid var(--line); overscroll-behavior: contain; }
+.scope-list li { border-bottom: 1px solid var(--line); }
+.scope-list label { display: flex; align-items: baseline; gap: 8px; padding: 6px 2px; cursor: pointer; }
+.scope-list .title { flex: 1; min-width: 0; font-family: var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scope-list .small { flex: none; }

@@ -106,6 +106,7 @@ export async function chatAboutPaper(
   turns: ChatTurn[],
   onText: (soFar: string) => void,
   signal?: AbortSignal,
+  where: "library" | "literature" = "library",
 ): Promise<string> {
   const client = await clientFor(settings);
   const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((t, i) => {
@@ -156,6 +157,14 @@ const LIBRARY =
   "part of it, say so plainly rather than filling in from memory. Compare papers where they agree or differ. " +
   "Write mathematics in LaTeX between $...$ or $$...$$.";
 
+const LITERATURE =
+  SYSTEM +
+  " Answer the researcher's question from the numbered sources, which are the titles and abstracts of published papers " +
+  "found by a search of OpenAlex, not papers they have read. Cite every claim with the number of its source in square brackets, " +
+  "like [3] or [2, 5], right after the claim. Use only what the abstracts say, and say plainly that you have only abstracts; " +
+  "when they do not answer the question, or only part of it, say so rather than filling in from memory. Name the papers that " +
+  "look most worth reading in full for this question. Write mathematics in LaTeX between $...$ or $$...$$.";
+
 export interface LibraryTurn {
   role: "user" | "assistant";
   text: string;
@@ -172,6 +181,7 @@ export async function askLibrary(
   turns: LibraryTurn[],
   onText: (soFar: string) => void,
   signal?: AbortSignal,
+  where: "library" | "literature" = "library",
 ): Promise<string> {
   const client = await clientFor(settings);
   const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((t, i) =>
@@ -188,7 +198,7 @@ export async function askLibrary(
     {
       model: settings["claude.model"] || DEFAULT_MODEL,
       max_tokens: 16000,
-      system: LIBRARY,
+      system: where === "literature" ? LITERATURE : LIBRARY,
       thinking: { type: "adaptive" },
       output_config: { effort: "medium" },
       betas: ["server-side-fallback-2026-07-01"],

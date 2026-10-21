@@ -1020,11 +1020,14 @@ export function App() {
       {panel === "ask" && (
         <AskPanel
           papers={library.papers}
+          inView={visible}
+          viewLabel={view}
           texts={textIndex?.texts ?? new Map()}
           unindexed={textIndex?.missing(library.papers).length ?? 0}
           settings={settings}
           hidden={Boolean(reading)}
           onIndex={() => { if (!indexing) indexPdfs(); }}
+          onAdd={(d) => addDrafts([d]).length > 0}
           onOpen={openAt}
           onClose={() => setPanel(null)}
         />
