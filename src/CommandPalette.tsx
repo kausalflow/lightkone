@@ -167,7 +167,7 @@ export function CommandPalette(props: { commands: Command[]; papers: Paper[]; on
                 </span>
               </li>
             );
-            return head ? [<li key={`g:${head}`} class="palette-group" role="presentation">{head}</li>, row] : [row];
+            return head ? [<li key={`g:${head}:${i}`} class="palette-group" role="presentation">{head}</li>, row] : [row];
           })}
           {!items.length && <li class="palette-none muted">Nothing matches “{query}”.</li>}
         </ul>

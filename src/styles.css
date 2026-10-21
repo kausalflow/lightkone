@@ -816,7 +816,8 @@ details.guide ul { margin-top: 8px; }
 .scope-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 30vh; overflow: auto; border-top: 1px solid var(--line); overscroll-behavior: contain; }
 .scope-list li { border-bottom: 1px solid var(--line); }
 .scope-list label { display: flex; align-items: baseline; gap: 8px; padding: 6px 2px; cursor: pointer; }
-.scope-list .title { flex: 1; min-width: 0; font-family: var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scope-list input[type="checkbox"] { width: auto; flex: none; margin: 0; align-self: center; }
+.scope-list .title { flex: 1; min-width: 0; font: 500 14.5px/1.35 var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scope-list .small { flex: none; }
 
 /* Compare papers */
@@ -837,6 +838,10 @@ details.guide ul { margin-top: 8px; }
 .stance li p { display: inline; margin: 0; }
 .stance .srcs { margin-left: 6px; font-size: 13px; }
 .stance .srcs a + a::before { content: "; "; color: var(--muted); }
+.stance a.src { color: var(--accent); text-decoration: none; }
+.stance a.src:hover { text-decoration: underline; }
+.compare-panel textarea { font-family: inherit; font-size: 15px; width: 100%; }
+.compare-panel textarea.review-draft { font-family: var(--mono); font-size: 13px; }
 .stance.supports h3 { color: var(--accent); }
 .stance.contradicts h3 { color: var(--danger); }
 .stance.qualifies h3 { color: var(--warm); }

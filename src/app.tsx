@@ -2052,6 +2052,9 @@ function CiteMenu(props: { paper: Paper }) {
   );
 }
 
+/** One reference on its own needs no number: "[1] A. Author, …" → "A. Author, …". */
+const alone = (text: string) => text.replace(/^\s*(?:\[\d+\]|\(\d+\)|\d+\.)\s+/, "");
+
 /** The paper in journal styles from the Citation Style Language: the few chosen last, and a search over all of them. */
 function JournalStyles(props: { paper: Paper; onCopied(): void }) {
   const [chosen, setChosen] = useState<CslStyle[]>(chosenStyles);
@@ -2067,7 +2070,7 @@ function JournalStyles(props: { paper: Paper; onCopied(): void }) {
     for (const s of chosen) {
       if (shown.has(s.id)) continue;
       formatBibliography([props.paper], s.id)
-        .then(([text]) => live && setShown((m) => new Map(m).set(s.id, text ?? "")))
+        .then(([text]) => live && setShown((m) => new Map(m).set(s.id, alone(text ?? ""))))
         .catch((e) => live && setShown((m) => new Map(m).set(s.id, `(${(e as Error).message})`)));
     }
     return () => { live = false; };
@@ -2081,7 +2084,7 @@ function JournalStyles(props: { paper: Paper; onCopied(): void }) {
   async function copy(s: CslStyle) {
     try {
       const [html] = await formatBibliography([props.paper], s.id, "html");
-      const text = shown.get(s.id) ?? (await formatBibliography([props.paper], s.id))[0];
+      const text = shown.get(s.id) ?? alone((await formatBibliography([props.paper], s.id))[0] ?? "");
       // Rich text keeps italics and bold when pasted into a document; plain text everywhere else.
       if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
         await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
@@ -2111,7 +2114,7 @@ function JournalStyles(props: { paper: Paper; onCopied(): void }) {
       ))}
       {finding ? (
         <div class="cite-find">
-          <input type="search" autoFocus placeholder="Journal or style: Physical Review D, MNRAS, Nature…" value={q} onInput={(e) => setQ(e.currentTarget.value)} aria-label="Find a citation style" />
+          <input type="search" autoFocus placeholder="Journal or style: Physical Review D, JCAP, Nature…" value={q} onInput={(e) => setQ(e.currentTarget.value)} aria-label="Find a citation style" />
           {!all && !note && <p class="muted small">Loading the list of styles…</p>}
           {found.map((s) => (
             <button key={s.id} role="menuitem" class="cite-option csl" onClick={() => pick(s)}>

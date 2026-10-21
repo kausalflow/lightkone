@@ -149,7 +149,8 @@ function TableTab(props: TabProps) {
         const { text, full, cut } = paperText(p, props.texts.get(p.id));
         try {
           const reply = await extractRow(props.settings, p, text, full, columns, signal);
-          const cells = parseRow(reply, columns);
+          // Without the PDF's text there are no pages to point to.
+          const cells = parseRow(reply, columns)?.map((c) => (full ? c : { ...c, page: 0 })) ?? null;
           rows[i] = cells ? { paperId: p.id, cells, abstractOnly: !full || undefined } : { paperId: p.id, cells: null, error: "Claude's reply could not be read." };
           if (cut && cells) rows[i].error = "Only the first part of a long paper was read.";
         } catch (err) {
