@@ -19,6 +19,7 @@ import { byUse, ChipPicker } from "./ChipPicker";
 import { OfflinePanel } from "./OfflinePanel";
 import { WritingPanel } from "./WritingPanel";
 import { ComparePanel } from "./ComparePanel";
+import { chooseStyle, chosenStyles, findStyles, formatBibliography, styleIndex, type CslStyle } from "./core/csl";
 import { CitationMap } from "./CitationMap";
 import { FreshPanel } from "./FreshPanel";
 import { ManuscriptPanel } from "./ManuscriptPanel";
@@ -673,6 +674,23 @@ export function App() {
         ] as const).map(([tab, label, keywords]) => ({ id: `compare:${tab}`, group: "Actions", label, icon: "table" as IconName, keywords, run: () => { setCompareTab(tab); setSideOpen(false); setPanel("compare"); } }) as Command)
       : []),
     { id: "search", group: "Actions", label: "Search the library", icon: "search", keywords: "find filter", run: () => setTimeout(() => searchRef.current?.focus()) },
+    ...(visible.length
+      ? [{
+          id: "reflist",
+          group: "Actions",
+          label: `Copy papers in view as a reference list (${chosenStyles()[0]?.title ?? "APS"})`,
+          icon: "copy",
+          keywords: "bibliography references csl style journal format",
+          run: () => {
+            const style = chosenStyles()[0] ?? { id: "american-physics-society" };
+            setBusy("Formatting the reference list");
+            formatBibliography(visible.filter((p) => !p.trashed), style.id)
+              .then((list) => navigator.clipboard?.writeText(list.join("\n")))
+              .then(() => setError(null), (e) => setError((e as Error).message))
+              .finally(() => setBusy(null));
+          },
+        } as Command]
+      : []),
     ...(visible.length ? [{ id: "bib", group: "Actions", label: "Export papers in view as .bib", icon: "download", keywords: "bibtex download", run: () => download("library.bib", libraryToBibtex(visible)) } as Command] : []),
     { id: "theme", group: "Actions", label: `Theme: ${THEME_NAMES[nextTheme(currentTheme())]}`, icon: "moon", hint: `Now: ${THEME_NAMES[currentTheme()]}`, keywords: "dark light mode appearance", run: () => chooseTheme(nextTheme(currentTheme())) },
     { id: "settings", group: "Actions", label: "Settings", icon: "settings", keywords: "storage key preferences claude openalex", run: () => setPanel("settings") },
@@ -2027,9 +2045,89 @@ function CiteMenu(props: { paper: Paper }) {
               <span class="cite-preview">{cite(props.paper, s.id)}</span>
             </button>
           ))}
+          <JournalStyles paper={props.paper} onCopied={() => setTimeout(() => setOpen(false), 900)} />
         </div>
       )}
     </div>
+  );
+}
+
+/** The paper in journal styles from the Citation Style Language: the few chosen last, and a search over all of them. */
+function JournalStyles(props: { paper: Paper; onCopied(): void }) {
+  const [chosen, setChosen] = useState<CslStyle[]>(chosenStyles);
+  const [shown, setShown] = useState<Map<string, string>>(new Map());
+  const [copied, setCopied] = useState<string | null>(null);
+  const [finding, setFinding] = useState(false);
+  const [q, setQ] = useState("");
+  const [all, setAll] = useState<CslStyle[] | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    for (const s of chosen) {
+      if (shown.has(s.id)) continue;
+      formatBibliography([props.paper], s.id)
+        .then(([text]) => live && setShown((m) => new Map(m).set(s.id, text ?? "")))
+        .catch((e) => live && setShown((m) => new Map(m).set(s.id, `(${(e as Error).message})`)));
+    }
+    return () => { live = false; };
+  }, [chosen, props.paper]);
+
+  useEffect(() => {
+    if (!finding || all) return;
+    styleIndex().then(setAll, (e) => setNote((e as Error).message));
+  }, [finding]);
+
+  async function copy(s: CslStyle) {
+    try {
+      const [html] = await formatBibliography([props.paper], s.id, "html");
+      const text = shown.get(s.id) ?? (await formatBibliography([props.paper], s.id))[0];
+      // Rich text keeps italics and bold when pasted into a document; plain text everywhere else.
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
+      } else await navigator.clipboard?.writeText(text);
+      setChosen(chooseStyle(s));
+      setCopied(s.id);
+      props.onCopied();
+    } catch (e) {
+      setNote((e as Error).message);
+    }
+  }
+
+  function pick(s: CslStyle) {
+    setChosen(chooseStyle(s));
+    setFinding(false);
+    setQ("");
+  }
+
+  const found = all ? findStyles(all, q) : [];
+  return (
+    <>
+      {chosen.map((s) => (
+        <button key={s.id} role="menuitem" class="cite-option csl" onClick={() => copy(s)}>
+          <span class="cite-label">{copied === s.id ? "Copied" : s.title}</span>
+          <span class="cite-preview">{shown.get(s.id) ?? "Formatting…"}</span>
+        </button>
+      ))}
+      {finding ? (
+        <div class="cite-find">
+          <input type="search" autoFocus placeholder="Journal or style: Physical Review D, MNRAS, Nature…" value={q} onInput={(e) => setQ(e.currentTarget.value)} aria-label="Find a citation style" />
+          {!all && !note && <p class="muted small">Loading the list of styles…</p>}
+          {found.map((s) => (
+            <button key={s.id} role="menuitem" class="cite-option csl" onClick={() => pick(s)}>
+              <span class="cite-label">{s.title}</span>
+            </button>
+          ))}
+          {all && q.trim() && !found.length && <p class="muted small">No style matches. Try a shorter name.</p>}
+        </div>
+      ) : (
+        <button role="menuitem" class="cite-option csl" onClick={() => setFinding(true)}>
+          <span class="cite-label">Another journal's style…</span>
+          <span class="cite-preview">Any of the 10,000+ styles Zotero and Mendeley use</span>
+        </button>
+      )}
+      {note && <p class="error small">{note}</p>}
+    </>
   );
 }
 

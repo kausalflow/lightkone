@@ -556,6 +556,12 @@ label.file input, label.button input { display: none; }
 .cite-option:hover, .cite-option:focus-visible { background: var(--sunken); }
 .cite-label { font-weight: 600; font-size: 13px; }
 .cite-preview { font-size: 12.5px; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.cite-pop { max-height: min(70vh, 560px); overflow: auto; overscroll-behavior: contain; }
+.cite-option.csl { grid-template-columns: 1fr; gap: 2px; border-top: 1px solid var(--line); border-radius: 0; }
+.cite-find { border-top: 1px solid var(--line); padding: 8px 6px 4px; }
+.cite-find input { width: 100%; }
+.cite-find .cite-option.csl { border-top: 0; border-radius: var(--r-sm); }
+.cite-find p, .cite-pop > p { margin: 6px 4px; }
 @media (max-width: 600px) {
   .cite-pop { position: fixed; left: 16px; right: 16px; top: 56px; width: auto; }
 }
