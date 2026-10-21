@@ -12,17 +12,14 @@ import { matchPaperpilePdfs, PDF_DIR } from "./core/paperpile";
 import { canFindOpenPdf, findOpenPdf, type OpenPdfOptions } from "./core/openpdf";
 import { Reader } from "./reader/Reader";
 import { PageReader } from "./reader/PageReader";
-import { AskPanel } from "./AskPanel";
 import { ObsidianPanel } from "./ObsidianPanel";
 import { QuestionDialog, type Question } from "./QuestionDialog";
 import { byUse, ChipPicker } from "./ChipPicker";
 import { OfflinePanel } from "./OfflinePanel";
 import { WritingPanel } from "./WritingPanel";
-import { ComparePanel } from "./ComparePanel";
-import { HistoryPanel } from "./HistoryPanel";
-import { QuickChat } from "./QuickChat";
+import { ChatsPanel, type Start } from "./ChatsPanel";
 import { dockSize, useWide, type Place } from "./PanelFrame";
-import { browserHistoryStore, dayLabel, KINDS, loadHistory, newConversationId, removeConversation, saveConversation, type Conversation, type Entry } from "./core/history";
+import { browserHistoryStore, dayLabel, KINDS, loadHistory, newConversationId, organizeConversation, removeConversation, saveConversation, titleOf, type Conversation, type Entry, type Organize } from "./core/history";
 import { chooseStyle, chosenStyles, findStyles, formatBibliography, styleIndex, type CslStyle } from "./core/csl";
 import { CitationMap } from "./CitationMap";
 import { FreshPanel } from "./FreshPanel";
@@ -57,9 +54,9 @@ const library = new Library();
 
 type SaveState = "idle" | "pending" | "saving" | "saved" | "merged" | "error" | "offline";
 
-type Dockable = "ask" | "compare" | "history";
-const DOCKABLE: Dockable[] = ["ask", "compare", "history"];
-const TOOL_NAMES: Record<Dockable, string> = { ask: "Ask", compare: "Compare", history: "History" };
+type Dockable = "chats";
+const DOCKABLE: Dockable[] = ["chats"];
+const TOOL_NAMES: Record<Dockable, string> = { chats: "Chats" };
 const PLACES_KEY = "lightkone.dock.places";
 /** Where a tool was kept last on a wide screen, so a snapped tool comes back snapped. */
 function lastPlace(t: Dockable): Place {
@@ -120,16 +117,15 @@ export function App() {
   const [reading, setReading] = useState<string | null>(null);
   const [readingWeb, setReadingWeb] = useState<string | null>(null);
   const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | "offline" | null>(null);
-  const [compareTab, setCompareTab] = useState<"table" | "weigh" | "review">("table");
-  // History: every conversation with Claude, and what to open a tool on (one carried on, or papers handed over).
+  // Chats: every conversation with Claude, gathered by paper, in one panel.
   const [conversations, setConversations] = useState<Entry[]>([]);
-  const [historyAt, setHistoryAt] = useState<{ id?: string; paperId?: string }>({});
-  const [quick, setQuick] = useState(false);
-  // Ask, Compare and History open as a window, or snapped to the right or bottom edge to stay beside your papers.
+  // Chats open as a window, or snapped to the right or bottom edge to stay beside your papers.
   const [places, setPlaces] = useState<Partial<Record<Dockable, Place>>>({});
   const [front, setFront] = useState<Partial<Record<"right" | "bottom", Dockable>>>({});
   // Each opening that carries something (a conversation to continue, papers handed over) starts the tool afresh.
-  const [launch, setLaunch] = useState<Record<Dockable, { n: number; resume?: Conversation; pick?: string[] }>>({ ask: { n: 0 }, compare: { n: 0 }, history: { n: 0 } });
+  const [launch, setLaunch] = useState<Record<Dockable, { n: number; open?: string; start?: Start; paperId?: string }>>({ chats: { n: 0 } });
+  // Chats opened from the reader show over it; a citation followed from Chats opens the reader over them.
+  const [overReader, setOverReader] = useState(false);
   const wide = useWide();
   // Snapped tools are only for screens wide enough to show them beside the papers.
   const placeOf = (t: Dockable): Place | undefined => (places[t] && !wide ? "modal" : places[t]);
@@ -510,16 +506,17 @@ export function App() {
     return () => removeEventListener("keydown", onKey);
   }, [visible, selected, panel, modalTool, welcome, tidying, syncing, reading]);
 
-  // Ctrl/⌘ J pops out a quick question, from anywhere, the reader too.
+  // Ctrl/⌘ J starts a chat about the paper in front of you, from anywhere, the reader too.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "j") return;
       e.preventDefault();
-      setQuick((q) => !q);
+      const about = reading ?? readingWeb ?? selected;
+      openChats({ start: { mode: "ask", ids: about ? [about] : undefined } });
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, []);
+  });
 
   // Ctrl/⌘ K opens the command palette from anywhere but the reader.
   useEffect(() => {
@@ -620,6 +617,8 @@ export function App() {
   }
 
   async function runAction(id: string, p: Paper) {
+    // Asking Claude about a paper is a chat, kept and carried on in Chats.
+    if (id === "claude.ask") return openChats({ start: { mode: "ask", ids: [p.id] } });
     const action = actions().find((a) => `${a.plugin}.${a.id}` === id);
     if (!action) return;
     setLastAction(id);
@@ -647,7 +646,7 @@ export function App() {
       });
       if (r.kind !== "none") setResult(r);
       setResultConv(null);
-      // What Claude says about a paper is kept in History, where it can be followed up.
+      // What Claude says about a paper is kept in Chats, where it can be followed up.
       if (r.kind === "text" && action.plugin === "claude") {
         const now = new Date().toISOString();
         const c: Conversation = {
@@ -734,36 +733,25 @@ export function App() {
     // One at a time, so the list never loses a conversation saved a moment before.
     historyQueue.current = historyQueue.current
       .then(() => saveConversation(historyStore, c))
-      .then(setConversations, (e) => setError(`Could not keep this in History: ${(e as Error).message}`));
+      .then(setConversations, (e) => setError(`Could not keep this chat: ${(e as Error).message}`));
   }
   function forget(id: string) {
     if (!historyStore) return;
     historyQueue.current = historyQueue.current.then(() => removeConversation(historyStore, id)).then(setConversations, () => {});
   }
-  function openHistory(at: { id?: string; paperId?: string } = {}) {
-    setHistoryAt(at);
-    openTool("history", {});
+  function organize(id: string, change: Organize) {
+    if (!historyStore) return;
+    // Shown at once; kept in storage in turn.
+    setConversations((es) => es.map((e) => (e.id === id ? { ...e, ...change } : e)));
+    historyQueue.current = historyQueue.current.then(() => organizeConversation(historyStore, id, change)).then(setConversations, () => {});
   }
-  function carryOn(c: Conversation) {
-    if (c.kind === "ask" || c.kind === "beyond") openTool("ask", { resume: c });
-    else {
-      setCompareTab(c.kind as "table" | "weigh" | "review");
-      openTool("compare", { resume: c });
-    }
-  }
-  function handTo(tool: "ask" | "compare", ids: string[]) {
-    if (tool === "compare") setCompareTab("table");
-    openTool(tool, { pick: ids });
-  }
-  /** A quick question worth more: snap it to the side as a full conversation. */
-  function keepWorking(c: Conversation) {
-    setQuick(false);
-    if (c.kind === "ask") openTool("ask", { resume: c });
-    else openHistory({ id: c.id });
-    if (wide) placeTool(c.kind === "ask" ? "ask" : "history", "right");
+  /** Open Chats: on a conversation, on a new chat, or on the list (of one paper's chats). */
+  function openChats(at: { open?: string; start?: Start; paperId?: string } = {}) {
+    setOverReader(Boolean(reading || readingWeb));
+    openTool("chats", at);
   }
   /** Open a tool where it was last kept; `init` starts it afresh on a conversation or on papers. */
-  function openTool(t: Dockable, init?: { resume?: Conversation; pick?: string[] }) {
+  function openTool(t: Dockable, init?: { open?: string; start?: Start; paperId?: string }) {
     if (init) setLaunch((l) => ({ ...l, [t]: { n: l[t].n + 1, ...init } }));
     placeTool(t, places[t] ?? (wide ? lastPlace(t) : "modal"));
     setPanel(null);
@@ -798,7 +786,7 @@ export function App() {
   }, [places, wide]);
   const dockProps = (t: Dockable) => {
     const place = placeOf(t)!;
-    if (place === "modal") return { place, hidden: Boolean(reading), onPlace: wide ? (p: Place) => placeTool(t, p) : undefined, onClose: () => closeTool(t) };
+    if (place === "modal") return { place, hidden: Boolean(reading || readingWeb) && !overReader, front: overReader, onPlace: wide ? (p: Place) => placeTool(t, p) : undefined, onClose: () => closeTool(t) };
     // Tools snapped to the same edge share it as tabs.
     const mates = DOCKABLE.filter((o) => placeOf(o) === place);
     const lead = front[place] && mates.includes(front[place]!) ? front[place]! : mates[0];
@@ -816,8 +804,8 @@ export function App() {
     { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: go("map") },
     { id: "dullaby", group: "Discover", label: "Read at night in Dullaby", icon: "moon", hint: "Opens Dullaby with your library, so it finds papers near yours", show: hasPapers, run: () => window.open(nightLink(dullabyBase(settings), library.papers, appAddress(location.href)), "_blank", "noopener") },
     { id: "equation", group: "Discover", label: "Search by equation", icon: "sigma", hint: "Find the papers that use an equation", show: Boolean(storage && library.papers.some((p) => p.arxiv)), run: go("equation") },
-    { id: "history", group: "Discover", label: "History", icon: "clock", hint: "Every question you asked Claude, to read again and follow up", show: Boolean(historyStore), run: () => openHistory() },
-    { id: "compare", group: "Discover", label: "Compare papers", icon: "table", hint: "A table of methods and results, where papers agree or disagree, a review draft", show: hasPapers, run: () => { if (!places.compare) setCompareTab("table"); openTool("compare"); } },
+    { id: "chats", group: "Discover", label: "Chats", icon: "chat", hint: "Every conversation with Claude, gathered by paper: carry on, rename, pin, find", show: Boolean(historyStore), run: () => openChats() },
+    { id: "compare", group: "Discover", label: "Compare papers", icon: "table", hint: "A table of methods and results, where papers agree or disagree, a review draft", show: hasPapers, run: () => openChats({ start: { mode: "table" } }) },
     { id: "writing", group: "Write", label: "Writing helpers", icon: "book", hint: "What to cite for a sentence; a .bib for a manuscript", show: hasPapers, run: go("writing") },
     { id: "manuscript", group: "Write", label: "Watch my manuscript", icon: "sync", hint: "Keep a LaTeX manuscript's .bib in step with what it cites", show: Boolean(storage), run: go("manuscript") },
     { id: "obsidian", group: "Write", label: "Export to Obsidian", icon: "file", hint: "Highlights and notes as Markdown notes", show: Boolean(storage), run: go("obsidian") },
@@ -827,13 +815,13 @@ export function App() {
   ].filter((t) => t.show) as Tool[];
   const commands: Command[] = [
     ...(storage && !readOnly ? [{ id: "add", group: "Actions", label: "Add paper", icon: "plus", keywords: "new import arxiv doi bibtex", run: () => setPanel("add") } as Command] : []),
-    ...(hasPapers ? [{ id: "ask", group: "Actions", label: "Ask your library", icon: "sparkle", keywords: "question claude ai", run: () => openTool("ask") } as Command] : []),
+    ...(hasPapers ? [{ id: "ask", group: "Actions", label: "Ask your library", icon: "sparkle", keywords: "question claude ai", run: () => openChats({ start: { mode: "ask" } }) } as Command] : []),
     ...(hasPapers
       ? ([
           ["table", "Compare papers in a table", "extract columns csv methods results"],
           ["weigh", "Where papers agree or disagree", "claim evidence contradict support"],
           ["review", "Draft a literature review", "related work latex markdown"],
-        ] as const).map(([tab, label, keywords]) => ({ id: `compare:${tab}`, group: "Actions", label, icon: "table" as IconName, keywords, run: () => { setCompareTab(tab); openTool("compare", {}); } }) as Command)
+        ] as const).map(([tab, label, keywords]) => ({ id: `compare:${tab}`, group: "Actions", label, icon: "table" as IconName, keywords, run: () => openChats({ start: { mode: tab } }) }) as Command)
       : []),
     { id: "search", group: "Actions", label: "Search the library", icon: "search", keywords: "find filter", run: () => setTimeout(() => searchRef.current?.focus()) },
     ...(visible.length
@@ -914,10 +902,10 @@ export function App() {
           <button class="icon-btn" onClick={() => setPanel("palette")} title={`Find a tool, folder, tag or paper (${MOD}K)`} aria-label="Commands">
             <Icon name="command" />
           </button>
-          <button class="icon-btn" onClick={() => openHistory()} disabled={!historyStore} title="History: your questions to Claude" aria-label="History">
-            <Icon name="clock" />
+          <button class="icon-btn" onClick={() => openChats()} disabled={!historyStore} title="Chats: every conversation with Claude, by paper" aria-label="Chats">
+            <Icon name="chat" />
           </button>
-          <button class="ask-btn" onClick={() => openTool("ask")} disabled={!library.papers.length} title="Ask a question across your library">
+          <button class="ask-btn" onClick={() => openChats({ start: { mode: "ask" } })} disabled={!library.papers.length} title={`Ask a question across your library (${MOD}J asks about the paper in front of you)`}>
             <Icon name="sparkle" />
             <span class="label">Ask</span>
           </button>
@@ -1168,9 +1156,9 @@ export function App() {
             scheduleSave();
           }}
           onAction={(id) => runAction(id, paper)}
-          conversations={conversations.filter((e) => e.papers.includes(paper.id))}
+          conversations={conversations.filter((e) => e.papers.includes(paper.id) || (Array.isArray(e.focus) && e.focus.includes(paper.id)))}
           resultConv={resultConv}
-          onHistory={openHistory}
+          onHistory={(at) => openChats(at.id ? { open: at.id } : at.paperId ? { paperId: at.paperId } : {})}
           onRead={() => {
             library.update(paper.id, { opened: new Date().toISOString() });
             scheduleSave();
@@ -1212,46 +1200,6 @@ export function App() {
 
       {readingWeb && storage && library.papers.find((p) => p.id === readingWeb)?.markdown && (
         <PageReader paper={library.papers.find((p) => p.id === readingWeb)!} storage={storage} onClose={() => setReadingWeb(null)} onError={setError} />
-      )}
-
-      {quick ? (
-        <QuickChat
-          papers={library.papers}
-          texts={textIndex?.texts ?? new Map()}
-          settings={settings}
-          paper={library.papers.find((p) => p.id === (reading ?? readingWeb ?? selected))}
-          pdfOf={async (p) => (p.pdf && storage ? storage.read(p.pdf).catch(() => null) : null)}
-          onRecord={record}
-          onKeep={keepWorking}
-          onOpen={openAt}
-          onClose={() => setQuick(false)}
-        />
-      ) : (
-        library.papers.length > 0 && !welcome && !panel && !modalTool && (
-          <button class="quick-btn" onClick={() => setQuick(true)} title={`Quick question (${MOD}J)`} aria-label="Quick question">
-            <Icon name="chat" size={20} />
-          </button>
-        )
-      )}
-
-      {placeOf("ask") && (
-        <AskPanel
-          key={`ask-${launch.ask.n}`}
-          {...dockProps("ask")}
-          papers={library.papers}
-          inView={visible}
-          viewLabel={view}
-          texts={textIndex?.texts ?? new Map()}
-          unindexed={textIndex?.missing(library.papers).length ?? 0}
-          settings={settings}
-          onIndex={() => { if (!indexing) indexPdfs(); }}
-          onAdd={(d) => addDrafts([d]).length > 0}
-          resume={launch.ask.resume}
-          pick={launch.ask.pick}
-          onRecord={record}
-          onCompare={(ids) => handTo("compare", ids)}
-          onOpen={openAt}
-        />
       )}
 
       {panel === "map" && storage && (
@@ -1301,40 +1249,27 @@ export function App() {
         <EquationPanel papers={library.papers} storage={storage} hidden={Boolean(reading)} onOpen={openAt} onClose={() => setPanel(null)} />
       )}
 
-      {placeOf("compare") && (
-        <ComparePanel
-          key={`compare-${launch.compare.n}`}
-          {...dockProps("compare")}
+      {placeOf("chats") && (
+        <ChatsPanel
+          key={`chats-${launch.chats.n}`}
+          {...dockProps("chats")}
+          entries={conversations}
+          storage={historyStore}
           papers={library.papers}
           inView={visible}
           viewLabel={view}
           texts={textIndex?.texts ?? new Map()}
+          unindexed={textIndex?.missing(library.papers).length ?? 0}
           settings={settings}
-          start={compareTab}
-          resume={launch.compare.resume}
-          pick={launch.compare.pick}
+          open={launch.chats.open}
+          start={launch.chats.start}
+          paperId={launch.chats.paperId}
           onRecord={record}
-          onAskAbout={(ids) => handTo("ask", ids)}
-          onOpen={openAt}
-        />
-      )}
-
-      {placeOf("history") && (
-        <HistoryPanel
-          key={`history-${launch.history.n}`}
-          {...dockProps("history")}
-          entries={conversations}
-          storage={historyStore}
-          papers={library.papers}
-          settings={settings}
-          start={historyAt.id}
-          paperId={historyAt.paperId}
-          onResume={carryOn}
-          onRecord={record}
+          onOrganize={organize}
           onRemove={forget}
-          onAskAbout={(ids) => handTo("ask", ids)}
-          onCompare={(ids) => handTo("compare", ids)}
-          onOpen={openAt}
+          onOpen={(id, page) => { setOverReader(false); openAt(id, page); }}
+          onIndex={() => { if (!indexing) indexPdfs(); }}
+          onAdd={(d) => addDrafts([d]).length > 0}
           pdfOf={async (p) => (p.pdf && storage ? storage.read(p.pdf).catch(() => null) : null)}
         />
       )}
@@ -1670,7 +1605,7 @@ function Detail(props: {
   onOffline(): void;
   /** Conversations with Claude about or citing this paper. */
   conversations: Entry[];
-  /** The History entry the result above was kept as. */
+  /** The chat the result above was kept as. */
   resultConv: string | null;
   onHistory(at: { id?: string; paperId?: string }): void;
 }) {
@@ -1832,7 +1767,7 @@ function Detail(props: {
             <div class="row">
               {props.resultConv && (
                 <button class="pill" onClick={() => props.onHistory({ id: props.resultConv! })}>
-                  <Icon name="clock" size={14} /> Follow up
+                  <Icon name="chat" size={14} /> Follow up in Chats
                 </button>
               )}
               {props.result.again && props.lastAction && (
@@ -1845,17 +1780,17 @@ function Detail(props: {
         )}
         {props.conversations.length > 0 && (
           <div class="paper-history">
-            <h3><Icon name="clock" size={14} /> Asked about this paper</h3>
+            <h3><Icon name="chat" size={14} /> Chats about this paper</h3>
             <ul>
               {props.conversations.slice(0, 5).map((e) => (
                 <li key={e.id}>
-                  <a href="#" onClick={(ev) => { ev.preventDefault(); props.onHistory({ id: e.id }); }}>{e.title}</a>
+                  <a href="#" onClick={(ev) => { ev.preventDefault(); props.onHistory({ id: e.id }); }}>{titleOf(e)}</a>
                   <span class="muted small"> · {KINDS[e.kind]}, {dayLabel(e.updated)}</span>
                 </li>
               ))}
             </ul>
             {props.conversations.length > 5 && (
-              <button class="link small" onClick={() => props.onHistory({ paperId: p.id })}>All {props.conversations.length} in History</button>
+              <button class="link small" onClick={() => props.onHistory({ paperId: p.id })}>All {props.conversations.length} chats</button>
             )}
           </div>
         )}
