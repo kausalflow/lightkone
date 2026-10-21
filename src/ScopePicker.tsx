@@ -1,86 +1,121 @@
-import { useMemo, useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 import type { Paper } from "./core/types";
-import { papersText, scoped, type Scope } from "./core/scope";
-import { shortAuthors } from "./core/cite";
+import { type Scope } from "./core/scope";
+import { mentionLabel, mentionMatches } from "./core/mentions";
+import { Icon } from "./icons";
 
 /**
- * Choose which papers a tool works on: the whole library, what is in view
- * (a folder, a tag, Starred or a search), papers picked one by one, or,
- * for questions, published papers beyond the library.
+ * Choose the papers a chat reads: they are added one at a time, from a search
+ * of the library, and each can be taken out again. There is no "whole
+ * library" and no "select all", because every paper Claude reads is paid for
+ * with the user's own API key. Questions can instead look at published
+ * papers beyond the library.
  */
 export function ScopePicker(props: {
   papers: Paper[];
-  inView: Paper[];
-  /** What the view is called: "Physics/QFT", "tag: lattice", "All papers". */
-  viewLabel: string;
   value: Scope;
   onChange(s: Scope): void;
   literature?: boolean;
-  /** The most papers the tool takes; more are cut, and the picker says so. */
+  /** The most papers the tool takes. */
   max?: number;
   disabled?: boolean;
 }) {
   const live = useMemo(() => props.papers.filter((p) => !p.trashed), [props.papers]);
-  const viewing = props.inView.filter((p) => !p.trashed).length;
-  const picked = props.value.kind === "picked" ? props.value.ids : [];
-  const n = scoped(props.papers, props.value, props.inView).length;
-  const showView = viewing !== live.length || props.value.kind === "view";
+  const byId = useMemo(() => new Map(live.map((p) => [p.id, p])), [live]);
+  const beyond = props.value.kind === "literature";
+  const ids = props.value.kind === "picked" ? props.value.ids.filter((id) => byId.has(id)) : [];
+  const full = props.max !== undefined && ids.length >= props.max;
+  const [query, setQuery] = useState("");
+  const [at, setAt] = useState(0);
+  const box = useRef<HTMLInputElement>(null);
+  const on = new Set(ids);
+  const matches = query.trim() ? mentionMatches(live.filter((p) => !on.has(p.id)), query.trim()) : [];
 
-  function choose(kind: Scope["kind"]) {
-    if (kind === "picked") props.onChange({ kind, ids: picked.length ? picked : props.inView.filter((p) => !p.trashed).slice(0, props.max ?? 20).map((p) => p.id) });
-    else props.onChange({ kind } as Scope);
+  function add(p: Paper) {
+    props.onChange({ kind: "picked", ids: [...ids, p.id] });
+    setQuery("");
+    setAt(0);
+    box.current?.focus();
+  }
+
+  function onKeyDown(e: KeyboardEvent) {
+    if (!matches.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      setAt((at + (e.key === "ArrowDown" ? 1 : matches.length - 1)) % matches.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      add(matches[Math.min(at, matches.length - 1)]);
+    } else if (e.key === "Escape") {
+      e.stopPropagation();
+      setQuery("");
+    }
   }
 
   return (
     <div class="scope">
-      <label class="scope-row">
-        <span class="muted small">From</span>
-        <select value={props.value.kind} disabled={props.disabled} onChange={(e) => choose(e.currentTarget.value as Scope["kind"])} aria-label="Which papers">
-          <option value="all">Your whole library ({papersText(live.length)})</option>
-          {showView && <option value="view">In view: {props.viewLabel} ({papersText(viewing)})</option>}
-          <option value="picked">Papers you pick{props.value.kind === "picked" ? ` (${picked.length})` : ""}</option>
-          {props.literature && <option value="literature">Published papers beyond your library</option>}
-        </select>
-      </label>
-      {props.max && n > props.max && props.value.kind !== "literature" && (
-        <p class="muted small">Only the first {props.max} are used. Pick a folder, a tag or a few papers to narrow it.</p>
+      {props.literature && (
+        <div class="scope-kind" role="radiogroup" aria-label="What Claude reads">
+          <button type="button" role="radio" aria-checked={!beyond} class={!beyond ? "on" : ""} disabled={props.disabled} onClick={() => beyond && props.onChange({ kind: "picked", ids: [] })}>
+            Papers you add
+          </button>
+          <button type="button" role="radio" aria-checked={beyond} class={beyond ? "on" : ""} disabled={props.disabled} onClick={() => !beyond && props.onChange({ kind: "literature" })}>
+            Published papers beyond your library
+          </button>
+        </div>
       )}
-      {props.value.kind === "picked" && <PaperChecklist papers={live} ids={picked} disabled={props.disabled} onChange={(ids) => props.onChange({ kind: "picked", ids })} />}
-    </div>
-  );
-}
-
-function PaperChecklist(props: { papers: Paper[]; ids: string[]; disabled?: boolean; onChange(ids: string[]): void }) {
-  const [filter, setFilter] = useState("");
-  const on = new Set(props.ids);
-  const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = props.papers
-    .filter((p) => !words.length || words.every((w) => `${p.title} ${p.authors.join(" ")} ${p.year ?? ""} ${p.key}`.toLowerCase().includes(w)))
-    // Picked papers first, so they are easy to find and untick.
-    .sort((a, b) => Number(on.has(b.id)) - Number(on.has(a.id)))
-    .slice(0, 200);
-
-  function toggle(id: string) {
-    props.onChange(on.has(id) ? props.ids.filter((x) => x !== id) : [...props.ids, id]);
-  }
-
-  return (
-    <div class="scope-pick">
-      <div class="scope-pick-head">
-        <input type="search" placeholder="Filter by title, author or year" value={filter} onInput={(e) => setFilter(e.currentTarget.value)} aria-label="Filter papers" />
-        {props.ids.length > 0 && <button type="button" class="link small" disabled={props.disabled} onClick={() => props.onChange([])}>Clear</button>}
-      </div>
-      <ul class="scope-list">
-        {shown.map((p) => (
-          <li key={p.id}>
-            <label>
-              <input type="checkbox" checked={on.has(p.id)} disabled={props.disabled} onChange={() => toggle(p.id)} />
-              <span class="title">{p.title}</span>
-              <span class="muted small">{[shortAuthors(p.authors), p.year].filter(Boolean).join(" ")}</span>
-            </label>
-          </li>
-        ))}
-      </ul>
+      {!beyond && (
+        <>
+          {ids.length > 0 && (
+            <ul class="scope-chips" aria-label="Papers Claude reads">
+              {ids.map((id) => {
+                const p = byId.get(id)!;
+                return (
+                  <li key={id} class="chip" title={p.title}>
+                    <span>{mentionLabel(p)}</span>
+                    <button type="button" class="chip-x" disabled={props.disabled} onClick={() => props.onChange({ kind: "picked", ids: ids.filter((x) => x !== id) })} aria-label={`Take out ${p.title}`}>
+                      <Icon name="x" size={12} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {full ? (
+            <p class="muted small">That is the most this takes ({props.max}). Take one out to add another.</p>
+          ) : (
+            <div class="scope-add">
+              <input
+                ref={box}
+                type="search"
+                value={query}
+                disabled={props.disabled}
+                placeholder={ids.length ? "Add another paper: title, author, year or key" : "Add a paper: title, author, year or key"}
+                aria-label="Add a paper"
+                onInput={(e) => { setQuery(e.currentTarget.value); setAt(0); }}
+                onKeyDown={onKeyDown}
+              />
+              {query.trim() !== "" && (
+                <ul class="mention-list scope-found" role="listbox" aria-label="Papers to add">
+                  {matches.length ? (
+                    matches.map((p, i) => (
+                      <li key={p.id} role="option" aria-selected={i === at} class={i === at ? "on" : ""} onMouseDown={(e) => { e.preventDefault(); add(p); }} onMouseEnter={() => setAt(i)}>
+                        <span class="mention-title">{p.title}</span>
+                        <span class="muted small">{mentionLabel(p)} · {p.key}</span>
+                      </li>
+                    ))
+                  ) : (
+                    <li class="muted small">
+                      {mentionMatches(live, query.trim()).length ? "Already added." : `No paper matches “${query.trim()}”.`}
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
+          {!ids.length && <p class="muted small">Add the papers Claude should read, one at a time.</p>}
+        </>
+      )}
     </div>
   );
 }
