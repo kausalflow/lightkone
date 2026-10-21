@@ -18,6 +18,7 @@ import { QuestionDialog, type Question } from "./QuestionDialog";
 import { byUse, ChipPicker } from "./ChipPicker";
 import { OfflinePanel } from "./OfflinePanel";
 import { WritingPanel } from "./WritingPanel";
+import { ComparePanel } from "./ComparePanel";
 import { CitationMap } from "./CitationMap";
 import { FreshPanel } from "./FreshPanel";
 import { ManuscriptPanel } from "./ManuscriptPanel";
@@ -91,7 +92,8 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
   const [readingWeb, setReadingWeb] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | "offline" | null>(null);
+  const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | "offline" | "compare" | null>(null);
+  const [compareTab, setCompareTab] = useState<"table" | "weigh" | "review">("table");
   // PDFs kept on this device on purpose (Offline papers), by storage path.
   const [keptPdfs, setKeptPdfs] = useState<Map<string, number>>(new Map());
   const [infoPage, setInfoPage] = useState<InfoPage>("start");
@@ -652,6 +654,7 @@ export function App() {
     { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: go("map") },
     { id: "dullaby", group: "Discover", label: "Read at night in Dullaby", icon: "moon", hint: "Opens Dullaby with your library, so it finds papers near yours", show: hasPapers, run: () => window.open(nightLink(dullabyBase(settings), library.papers, appAddress(location.href)), "_blank", "noopener") },
     { id: "equation", group: "Discover", label: "Search by equation", icon: "sigma", hint: "Find the papers that use an equation", show: Boolean(storage && library.papers.some((p) => p.arxiv)), run: go("equation") },
+    { id: "compare", group: "Discover", label: "Compare papers", icon: "table", hint: "A table of methods and results, where papers agree or disagree, a review draft", show: hasPapers, run: () => { setCompareTab("table"); go("compare")(); } },
     { id: "writing", group: "Write", label: "Writing helpers", icon: "book", hint: "What to cite for a sentence; a .bib for a manuscript", show: hasPapers, run: go("writing") },
     { id: "manuscript", group: "Write", label: "Watch my manuscript", icon: "sync", hint: "Keep a LaTeX manuscript's .bib in step with what it cites", show: Boolean(storage), run: go("manuscript") },
     { id: "obsidian", group: "Write", label: "Export to Obsidian", icon: "file", hint: "Highlights and notes as Markdown notes", show: Boolean(storage), run: go("obsidian") },
@@ -662,6 +665,13 @@ export function App() {
   const commands: Command[] = [
     ...(storage && !readOnly ? [{ id: "add", group: "Actions", label: "Add paper", icon: "plus", keywords: "new import arxiv doi bibtex", run: () => setPanel("add") } as Command] : []),
     ...(hasPapers ? [{ id: "ask", group: "Actions", label: "Ask your library", icon: "sparkle", keywords: "question claude ai", run: () => setPanel("ask") } as Command] : []),
+    ...(hasPapers
+      ? ([
+          ["table", "Compare papers in a table", "extract columns csv methods results"],
+          ["weigh", "Where papers agree or disagree", "claim evidence contradict support"],
+          ["review", "Draft a literature review", "related work latex markdown"],
+        ] as const).map(([tab, label, keywords]) => ({ id: `compare:${tab}`, group: "Actions", label, icon: "table" as IconName, keywords, run: () => { setCompareTab(tab); setSideOpen(false); setPanel("compare"); } }) as Command)
+      : []),
     { id: "search", group: "Actions", label: "Search the library", icon: "search", keywords: "find filter", run: () => setTimeout(() => searchRef.current?.focus()) },
     ...(visible.length ? [{ id: "bib", group: "Actions", label: "Export papers in view as .bib", icon: "download", keywords: "bibtex download", run: () => download("library.bib", libraryToBibtex(visible)) } as Command] : []),
     { id: "theme", group: "Actions", label: `Theme: ${THEME_NAMES[nextTheme(currentTheme())]}`, icon: "moon", hint: `Now: ${THEME_NAMES[currentTheme()]}`, keywords: "dark light mode appearance", run: () => chooseTheme(nextTheme(currentTheme())) },
@@ -1078,6 +1088,20 @@ export function App() {
 
       {panel === "equation" && storage && (
         <EquationPanel papers={library.papers} storage={storage} hidden={Boolean(reading)} onOpen={openAt} onClose={() => setPanel(null)} />
+      )}
+
+      {panel === "compare" && (
+        <ComparePanel
+          papers={library.papers}
+          inView={visible}
+          viewLabel={view}
+          texts={textIndex?.texts ?? new Map()}
+          settings={settings}
+          start={compareTab}
+          hidden={Boolean(reading)}
+          onOpen={openAt}
+          onClose={() => setPanel(null)}
+        />
       )}
 
       {panel === "writing" && (
