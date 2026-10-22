@@ -54,6 +54,17 @@ describe("parseBibtex", () => {
     expect(entries[2].fields.volume).toBe("116");
   });
 
+  it("keeps braces in a key as part of the key", () => {
+    const [e] = parseBibtex("@article{Erd\\H{o}s1959, title = {On random graphs}, year = 1959}");
+    expect(e.key).toBe("Erd\\H{o}s1959");
+    expect(e.fields).toEqual({ title: "On random graphs", year: "1959" });
+  });
+
+  it("reads the fields after a malformed one", () => {
+    const [e] = parseBibtex("@article{k, title = {Survives}, = {no name}, junk {with} braces, volume = 7}");
+    expect(e.fields).toEqual({ title: "Survives", volume: "7" });
+  });
+
   it("keeps nested braces inside values", () => {
     expect(entries[2].fields.title).toBe("Observation of {Gravitational Waves} from a Binary Black Hole Merger");
   });
@@ -103,6 +114,9 @@ describe("helpers", () => {
   });
   it("turns LaTeX accents into letters", () => {
     expect(plain('B\\"orsenhandel, Schr{\\"o}dinger, Erd\\H{o}s, \\v{C}ech, G\\\'{e}rard, Stra\\ss e')).toBe("Börsenhandel, Schrödinger, Erdős, Čech, Gérard, Straße");
+  });
+  it("puts accents on dotless i and j", () => {
+    expect(plain('Na\\"{\\i}ve, Na{\\"\\i}ve, \\\'{\\i}ndice, \\v{\\j}')).toBe("Naïve, Naïve, índice, ǰ");
   });
   it("flips First Last names", () => {
     expect(splitAuthors("Richard P. Feynman and Dirac, P. A. M.")).toEqual(["Feynman, Richard P.", "Dirac, P. A. M."]);
