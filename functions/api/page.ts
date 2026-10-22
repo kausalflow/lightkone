@@ -72,20 +72,26 @@ export function refusal(host: string, r: Response): { error: string; blocked?: t
   return { error: `${host} answered ${s}${s >= 500 ? ", a problem on its side; try again later" : ""}.` };
 }
 
-/** The page as a browser sees it, through Jina Reader; null when that fails too. */
-export async function throughReader(url: string, f: typeof fetch, key?: string): Promise<string | null> {
+/** The page as a browser sees it, through Jina Reader; when that fails too, why. */
+export async function throughReader(url: string, f: typeof fetch, key?: string): Promise<{ html: string } | { failed: string }> {
   try {
     const r = await f(READER + url, {
       signal: AbortSignal.timeout(READER_TIMEOUT),
-      headers: { "x-return-format": "html", ...(key ? { authorization: `Bearer ${key}` } : {}) },
+      headers: {
+        accept: "text/plain, text/html;q=0.9",
+        "user-agent": "Mozilla/5.0 (compatible; Lightkone; +https://lightkone.lab.kausalflow.com)",
+        "x-return-format": "html",
+        ...(key ? { authorization: `Bearer ${key}` } : {}),
+      },
     });
-    if (!r.ok) return null;
+    if (!r.ok) return { failed: `it answered ${r.status}${r.status === 429 || r.status === 402 ? ", too many pages for now; a JINA_API_KEY raises the limit" : ""}` };
     const html = await r.text();
     const head = html.slice(0, 5000);
-    if (html.length > MAX_BYTES || !/<(html|body)[\s>]/i.test(head) || /<title>\s*Just a moment/i.test(head)) return null;
-    return html;
-  } catch {
-    return null;
+    if (html.length > MAX_BYTES) return { failed: "the page is too big" };
+    if (!/<(html|body)[\s>]/i.test(head) || /<title>\s*Just a moment/i.test(head)) return { failed: "it was turned away too" };
+    return { html };
+  } catch (e) {
+    return { failed: (e as Error)?.name === "TimeoutError" ? "it took too long" : "it couldn't be reached" };
   }
 }
 
@@ -121,9 +127,10 @@ export async function handle(request: Request, f: typeof fetch = fetch, env: Env
   if (!r.ok) {
     if (r.status === 404) return json(404, { error: "The site has no such page (404)." });
     const why = refusal(new URL(url).hostname, r);
-    const html = why.blocked && params.get("reader") === "1" ? await throughReader(url, f, env.JINA_API_KEY) : null;
-    if (html) return json(200, { url, html, via: "r.jina.ai" });
-    return json(FAILED, why);
+    if (!why.blocked || params.get("reader") !== "1") return json(FAILED, why);
+    const read = await throughReader(url, f, env.JINA_API_KEY);
+    if ("html" in read) return json(200, { url, html: read.html, via: "r.jina.ai" });
+    return json(FAILED, { ...why, error: `${why.error} Jina Reader couldn't read it either: ${read.failed}.` });
   }
   const type = r.headers.get("content-type") ?? "";
   if (!/html|xml/i.test(type)) return json(415, { error: type.includes("pdf") ? "This link is a PDF: add it with Add PDF files." : "This link is not a web page." });
