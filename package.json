@@ -1,6 +1,6 @@
 {
   "name": "lightkone",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "An AI-native, plugin-friendly web library for research papers.",
   "type": "module",
