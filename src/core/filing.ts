@@ -31,10 +31,10 @@ function authorPart(authors: string[], title: string): string {
   return s.length > 40 ? `${s.slice(0, 37)}...` : s;
 }
 
-/** Path under papers/, the same as Paperpile's BibTeX `file` field: as in its BibTeX `file` field: "All Papers/HINTON/Hinton et al. 2012 - ....pdf". */
 /** The author folder Paperpile files an author's papers under: the surname in capitals ("HINTON"). */
 export const authorFolder = (author: string) => clean(surname(author)).toUpperCase();
 
+/** Path under papers/, the same as Paperpile's BibTeX `file` field: as in its BibTeX `file` field: "All Papers/HINTON/Hinton et al. 2012 - ....pdf". */
 export function paperpileFile(p: Pick<Paper, "authors" | "year" | "title">): string {
   const first = p.authors[0] ? authorFolder(p.authors[0]) : "";
   const title = clean(p.title) || "Untitled";
