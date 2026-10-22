@@ -85,7 +85,7 @@ export class Library {
     let foldered = 0;
     for (const p of this.papers) {
       if (p.folders) continue;
-      p.folders = foldersFromPaperpile(p.file);
+      p.folders = foldersFromPaperpile(p.file, p.authors);
       if (p.folders.length) foldered++;
     }
     this.emit();
@@ -179,7 +179,7 @@ export class Library {
           existing.tags = tags;
           changed = true;
         }
-        const folders = [...new Set([...(existing.folders ?? []), ...(d.folders ?? foldersFromPaperpile(d.file))])];
+        const folders = [...new Set([...(existing.folders ?? []), ...(d.folders ?? foldersFromPaperpile(d.file, d.authors))])];
         if (folders.length !== (existing.folders ?? []).length) {
           existing.folders = folders;
           changed = true;
@@ -195,7 +195,7 @@ export class Library {
         fields: {},
         ...d,
         tags: d.tags ?? [],
-        folders: d.folders ?? foldersFromPaperpile(d.file),
+        folders: d.folders ?? foldersFromPaperpile(d.file, d.authors),
         id: newId(),
         key,
         added: d.added ?? new Date().toISOString(),

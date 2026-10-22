@@ -18,6 +18,18 @@ describe("folders", () => {
     expect(cleanFolder(" Physics / QFT/ ")).toBe("Physics/QFT");
   });
 
+  it("keeps the user's own folders in capitals when they are not an author's folder", () => {
+    const authors = ["Hinton, Geoffrey E.", "Sjöstrand, Torbjörn"];
+    expect(foldersFromPaperpile("All Papers/ML/x.pdf", authors)).toEqual(["ML"]);
+    expect(foldersFromPaperpile("All Papers/2019/x.pdf", authors)).toEqual(["2019"]);
+    expect(foldersFromPaperpile("All Papers/HINTON/x.pdf", authors)).toEqual([]);
+    expect(foldersFromPaperpile("All Papers/SJÖSTRAND/x.pdf", authors)).toEqual([]);
+    expect(foldersFromPaperpile("All Papers/Other/x.pdf", authors)).toEqual([]);
+    // With no authors to compare, a lone folder in capitals is still taken for an author's, but not one with no letters.
+    expect(foldersFromPaperpile("All Papers/ML/x.pdf")).toEqual([]);
+    expect(foldersFromPaperpile("All Papers/2019/x.pdf")).toEqual(["2019"]);
+  });
+
   it("builds a tree that counts each paper once per folder, outside the trash", () => {
     const tree = folderTree([
       paper({ folders: ["Physics/QFT", "Physics/Stat"] }),

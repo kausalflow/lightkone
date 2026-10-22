@@ -20,9 +20,12 @@ export function findDuplicates(papers: Paper[]): Paper[][] {
   const seen = new Map<string, string>();
   for (const p of live) {
     const t = normTitle(p.title);
+    // A DOI or arXiv id that is only spaces (or only the doi.org prefix) says nothing.
+    const doi = normDoi(p.doi);
+    const arxiv = normArxiv(p.arxiv);
     const keys = [
-      p.doi && `doi:${normDoi(p.doi)}`,
-      p.arxiv && `arxiv:${normArxiv(p.arxiv)}`,
+      doi && `doi:${doi}`,
+      arxiv && `arxiv:${arxiv}`,
       t.length > 20 ? `title:${t}` : t.length > 3 && `title:${t}:${firstAuthor(p)}`,
     ].filter(Boolean) as string[];
     for (const k of keys) {

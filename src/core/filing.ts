@@ -32,8 +32,11 @@ function authorPart(authors: string[], title: string): string {
 }
 
 /** Path under papers/, the same as Paperpile's BibTeX `file` field: as in its BibTeX `file` field: "All Papers/HINTON/Hinton et al. 2012 - ....pdf". */
+/** The author folder Paperpile files an author's papers under: the surname in capitals ("HINTON"). */
+export const authorFolder = (author: string) => clean(surname(author)).toUpperCase();
+
 export function paperpileFile(p: Pick<Paper, "authors" | "year" | "title">): string {
-  const first = p.authors[0] ? clean(surname(p.authors[0])).toUpperCase() : "";
+  const first = p.authors[0] ? authorFolder(p.authors[0]) : "";
   const title = clean(p.title) || "Untitled";
   const head = clean([authorPart(p.authors, title), p.year].filter(Boolean).join(" "));
   let name = `${head} - ${title}`;
