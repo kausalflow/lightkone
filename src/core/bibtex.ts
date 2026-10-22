@@ -93,7 +93,11 @@ export function parseBibtex(text: string): BibEntry[] {
     }
     skipSpace();
     const keyStart = i;
-    while (i < n && text[i] !== "," && text[i] !== close) i++;
+    // Braces in a key ("Erd\\H{o}s1959") are part of it, not the end of the entry.
+    for (let depth = 0; i < n && (depth > 0 || (text[i] !== "," && text[i] !== close)); i++) {
+      if (text[i] === "{") depth++;
+      else if (text[i] === "}") depth--;
+    }
     const key = text.slice(keyStart, i).trim();
     const fields: Record<string, string> = {};
     while (i < n && text[i] !== close) {
@@ -103,8 +107,12 @@ export function parseBibtex(text: string): BibEntry[] {
       const name = readWord().toLowerCase();
       skipSpace();
       if (!name || text[i] !== "=") {
-        // malformed field: skip to the next comma or the end of the entry
-        while (i < n && text[i] !== "," && text[i] !== close) i++;
+        // malformed field: skip any values it has, then to the next comma or the end of the entry
+        while (i < n && text[i] !== "," && text[i] !== close) {
+          if (text[i] === "{") readBraced();
+          else if (text[i] === '"') readQuoted();
+          else i++;
+        }
         continue;
       }
       i++;
@@ -124,7 +132,10 @@ const LETTERS: Record<string, string> = { ss: "ß", o: "ø", O: "Ø", ae: "æ", 
 
 export function plain(value: string): string {
   return value
-    .replace(/\{?\\([\"'`^~=.]|[cvuH](?=[\s{]))\s*\{?([A-Za-z])\}?\}?/g, (_, a: string, ch: string) => (ch + ACCENTS[a]).normalize("NFC"))
+    .replace(/\{?\\([\"'`^~=.]|[cvuH](?=[\s{]))\s*\{?([A-Za-z]|\\[ij]\b)\}?\}?/g, (_, a: string, ch: string) =>
+      // \i and \j are the dotless letters LaTeX puts accents on: \"{\i} is ï.
+      (ch.replace("\\", "") + ACCENTS[a]).normalize("NFC"),
+    )
     .replace(/\{\\(ss|o|O|ae|AE|l|L|i)\}|\\(ss|o|O|ae|AE|l|L|i)\b ?/g, (_, a?: string, b?: string) => LETTERS[(a ?? b)!])
     .replace(/\\(?:emph|textit|textbf|mathrm|textrm)\{([^{}]*)\}/g, "$1")
     .replace(/\\([&%$#_{}])/g, "$1")
