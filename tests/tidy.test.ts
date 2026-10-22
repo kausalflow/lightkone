@@ -18,6 +18,14 @@ describe("duplicates", () => {
     expect(groups.map((g) => g.map((p) => p.id))).toEqual([[a.id, b.id, c.id]]);
   });
 
+  it("does not match papers on a DOI or arXiv id that is only spaces", () => {
+    const a = paper({ title: "A first paper about gauge fields", doi: " ", arxiv: "  " });
+    const b = paper({ title: "Another paper about something else", doi: "   ", arxiv: " " });
+    const c = paper({ title: "A third paper on another subject", doi: "https://doi.org/" });
+    const d = paper({ title: "A fourth paper that has no match", doi: "https://doi.org/" });
+    expect(findDuplicates([a, b, c, d])).toEqual([]);
+  });
+
   it("keeps the copy with a PDF and gathers everything else into it", () => {
     const old = paper({ title: "T", added: "2020-01-01T00:00:00Z", tags: ["rg"], folders: ["Physics"], notes: "first", abstract: "abs" });
     const withPdf = paper({ title: "T", added: "2024-01-01T00:00:00Z", pdf: "papers/x.pdf", tags: ["ml"], notes: "second", starred: true, fields: { pages: "1-2" } });
