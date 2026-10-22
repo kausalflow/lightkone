@@ -199,6 +199,13 @@ describe("a page behind a browser check", () => {
     expect((calls[1][1]!.headers as Record<string, string>).authorization).toBe("Bearer k");
   });
 
+  it("says whether Jina's refusal came with the key or without one", async () => {
+    const f = (status: number) => (async (u: string) => (u.startsWith("https://r.jina.ai/") ? new Response("", { status }) : blocked())) as unknown as typeof fetch;
+    expect((await (await ask("&reader=1", f(429))).json()).error).toMatch(/answered 429, too many pages for now; a JINA_API_KEY raises the limit\.$/);
+    expect((await (await ask("&reader=1", f(429), { JINA_API_KEY: "k" })).json()).error).toMatch(/answered 429 with the JINA_API_KEY: its limit or balance is used up\.$/);
+    expect((await (await ask("&reader=1", f(401), { JINA_API_KEY: "k" })).json()).error).toMatch(/answered 401, so check the JINA_API_KEY\.$/);
+  });
+
   it("is not sent to Jina Reader unless asked, and says why when Jina fails too", async () => {
     let jina = 0;
     const f = (async (u: string) => (u.startsWith("https://r.jina.ai/") ? (jina++, new Response("<title>Just a moment...</title><body>", { status: 200 })) : blocked())) as unknown as typeof fetch;
