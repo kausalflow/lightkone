@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { fetchPage, isPageFile, pageFromFile, savedFrom, linkDraft, linkOnlyReason, markdownFile, pageDraft, PageError, pageMarkdown, paperIdentifier, personName, toMarkdown, isWebLink } from "../src/core/webpage";
+import { bookmarklet } from "../src/core/capture";
 import { renderMarkdown, type MathRenderer } from "../src/core/markdown";
 import { sandboxedHtml } from "../src/reader/PageReader";
 import { charsetOf, handle, isPublicUrl } from "../functions/api/page";
@@ -254,5 +255,31 @@ describe("a page saved from the browser", () => {
     expect(isPageFile(new File([""], "a.mhtml"))).toBe(true);
     expect(isPageFile(new File([""], "a", { type: "text/html" }))).toBe(true);
     expect(isPageFile(new File([""], "a.pdf", { type: "application/pdf" }))).toBe(false);
+  });
+});
+
+describe("the bookmarklet on a page that isn't a paper", () => {
+  it("posts the page to the app as a saved page file, naming where it came from", async () => {
+    document.head.innerHTML = "<title>On software</title>";
+    document.body.innerHTML = "<p>Concepts.</p>";
+    const sent: HTMLFormElement[] = [];
+    const submit = HTMLFormElement.prototype.submit;
+    HTMLFormElement.prototype.submit = function (this: HTMLFormElement) {
+      sent.push(this);
+    };
+    try {
+      new Function(decodeURI(bookmarklet("https://lightkone.example/app/").slice("javascript:".length)))();
+    } finally {
+      HTMLFormElement.prototype.submit = submit;
+    }
+    expect(sent).toHaveLength(1);
+    expect(sent[0].getAttribute("action")).toBe("https://lightkone.example/app/");
+    expect(sent[0].method).toBe("post");
+    expect(sent[0].target).toBe("_blank");
+    const file = (sent[0].querySelector("input[type=file]") as HTMLInputElement).files![0];
+    expect(file.name).toBe("On software.html");
+    const html = await file.text();
+    expect(savedFrom(html)).toBe(location.href);
+    expect(html).toContain("<p>Concepts.</p>");
   });
 });

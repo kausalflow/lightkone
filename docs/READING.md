@@ -91,10 +91,12 @@ site they came from, so they show only with a network.
 Some sites turn away anything that isn't a person's browser, often with a
 "checking your browser" page. Such a page is still added, as a link with a
 title made from its address, and Add papers says why no copy was kept. To keep
-a copy, open the page in your browser and save it there: in Chrome on a phone,
-menu, then Download (an .mhtml file); on a computer, Save page as (.html).
-Then use **Add files** in Add papers, drop the file on Lightkone, or share it to
-the installed app. The saved page gets the same Markdown copy and reader as a
+a copy, open the page in your browser and use the **+ Lightkone** bookmark (set
+it up once from Add papers; on a phone, tap the address bar, type Lightkone and
+tap the bookmark): the page as you see it goes to Lightkone and is saved. Or
+save the page in the browser (in Chrome on a phone, menu, then Download, an
+.mhtml file; on a computer, Save page as) and use **Add files** in Add papers,
+drop the file on Lightkone, or share it to the installed app. The saved page gets the same Markdown copy and reader as a
 fetched one, and a page already in the library as a link gets the copy.
 
 ## Reading at night

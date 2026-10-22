@@ -2171,7 +2171,7 @@ function AddPanel(props: {
             added ? `Added ${added} paper${added > 1 ? "s" : ""}.` : "",
             missed.length ? `Couldn't find: ${missed.join(", ")}` : "",
             linksOnly.length
-              ? `${linksOnly.join(" ")} ${linksOnly.length > 1 ? "Those were" : "It was"} kept as a link, without a copy of the page. To keep a copy, open the page in your browser, save it (on a phone: menu, then Download), and add the saved file here with Add files.`
+              ? `${linksOnly.join(" ")} ${linksOnly.length > 1 ? "Those were" : "It was"} kept as a link, without a copy of the page. To keep a copy, open the page in your browser and use the Lightkone bookmark (below), or save the page there and add the file with Add files.`
               : "",
           ]
             .filter(Boolean)
@@ -2219,11 +2219,22 @@ function AddPanel(props: {
         {message && <p class="message">{message}</p>}
         <p class="muted small">
           On your phone, install Lightkone (browser menu → Install app), then share a paper's page or a PDF file to it. On a computer, drop PDF files or saved pages anywhere on Lightkone, or drag this button to
-          your bookmarks bar and click it on any paper's page:{" "}
+          your bookmarks bar and click it on any page:{" "}
           <a class="bookmarklet" href={bookmarklet(location.origin + location.pathname)} onClick={(e) => e.preventDefault()}>
             + Lightkone
           </a>
+          . On a paper it adds the paper; on any other page it saves the page as you see it, even from sites that turn Lightkone's page reader away.
         </p>
+        <details class="muted small">
+          <summary>The same bookmark in Chrome on a phone</summary>
+          <p>
+            Once: bookmark any page (menu → ☆), then edit that bookmark: name it <b>Lightkone</b> and paste this as its address.{" "}
+            <button type="button" class="link" onClick={() => navigator.clipboard?.writeText(bookmarklet(location.origin + location.pathname)).then(() => setMessage("Copied. Paste it as the bookmark's address."))}>
+              Copy the bookmark's address
+            </button>
+          </p>
+          <p>Then on any page: tap the address bar, type Lightkone, and tap the bookmark with the star.</p>
+        </details>
       </form>
     </div>
   );
