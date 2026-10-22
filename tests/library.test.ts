@@ -62,6 +62,32 @@ describe("search", () => {
     { title: "Deep learning and the renormalization group", authors: ["Mehta, Pankaj"], year: 2014, tags: ["ml", "physics"] },
   ]);
 
+  it("leaves papers in the trash out of library.bib", async () => {
+    const storage = memoryStorage();
+    const lib = new Library(storage);
+    await lib.load();
+    lib.merge([{ title: "Kept paper", key: "Kept2020-kp" }, { title: "Binned paper", key: "Bin2020-bp" }]);
+    lib.update(lib.papers[1].id, { trashed: "2024-01-01T00:00:00.000Z" });
+    await lib.save();
+    const bib = new TextDecoder().decode(storage.files.get(BIB_PATH)!);
+    expect(bib).toContain("Kept2020-kp");
+    expect(bib).not.toContain("Bin2020-bp");
+    expect(JSON.parse(new TextDecoder().decode(storage.files.get(LIBRARY_PATH)!)).papers).toHaveLength(2);
+  });
+
+  it("keeps top-level keys of library.json it does not know", async () => {
+    const storage = memoryStorage();
+    const stored = { format: "lightkone-library", version: 1, papers: [], exportedBy: { tool: "a sync script", at: 3 } };
+    await storage.write(LIBRARY_PATH, JSON.stringify(stored));
+    const lib = new Library(storage);
+    await lib.load();
+    lib.merge([{ title: "A new paper" }]);
+    await lib.save();
+    const saved = JSON.parse(new TextDecoder().decode(storage.files.get(LIBRARY_PATH)!));
+    expect(saved.exportedBy).toEqual({ tool: "a sync script", at: 3 });
+    expect(saved.papers).toHaveLength(1);
+  });
+
   it("needs every word and ranks title hits first", () => {
     expect(search(lib.papers, "renormalization").map((p) => p.year)).toEqual(expect.arrayContaining([1983, 2014]));
     expect(search(lib.papers, "deep renormalization").map((p) => p.year)).toEqual([2014]);

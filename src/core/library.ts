@@ -5,7 +5,7 @@ import { mergeLibraries } from "./merge";
 
 // The library is plain files in whatever storage the user picked:
 //   lightkone/library.json  the source of truth
-//   lightkone/library.bib   written on every save, ready for LaTeX and Overleaf
+//   lightkone/library.bib   written on every save, ready for LaTeX and Overleaf (trash left out)
 //   papers/<AUTHOR>/...      PDFs, named the way Paperpile names them (core/filing.ts)
 //   lightkone/annotations/<id>.json  highlights and notes (core/annotations.ts)
 export const LIBRARY_PATH = "lightkone/library.json";
@@ -38,9 +38,16 @@ const parseFile = (raw: string): LibraryFile => {
   return file;
 };
 
+/** Top-level keys of library.json that lightkone does not use; other tools' data, kept as found. */
+const otherKeys = (file: LibraryFile): Record<string, unknown> => {
+  const { format, version, papers, bibSync, ...rest } = file;
+  return rest;
+};
+
 export class Library {
   papers: Paper[] = [];
   bibSync: BibTarget[] = [];
+  private other: Record<string, unknown> = {};
   private listeners = new Set<() => void>();
   /** library.json as this device last read or wrote it: what a merge starts from. */
   private base: string | null = null;
@@ -60,6 +67,7 @@ export class Library {
   async load(): Promise<{ loaded: number; seeded: number; foldered: number }> {
     this.papers = [];
     this.bibSync = [];
+    this.other = {};
     this.base = null;
     if (!this.storage) return { loaded: 0, seeded: 0, foldered: 0 };
     const raw = await this.storage.read(LIBRARY_PATH);
@@ -68,6 +76,7 @@ export class Library {
       const file = parseFile(this.base);
       this.papers = file.papers;
       this.bibSync = file.bibSync ?? [];
+      this.other = otherKeys(file);
     }
     const loaded = this.papers.length;
     let seeded = 0;
@@ -84,7 +93,13 @@ export class Library {
   }
 
   private file(): LibraryFile {
-    return { format: "lightkone-library", version: 1, papers: this.papers, ...(this.bibSync.length ? { bibSync: this.bibSync } : {}) };
+    return {
+      format: "lightkone-library",
+      version: 1,
+      papers: this.papers,
+      ...(this.bibSync.length ? { bibSync: this.bibSync } : {}),
+      ...this.other,
+    };
   }
 
   /**
@@ -95,9 +110,11 @@ export class Library {
     const raw = await this.storage!.read(LIBRARY_PATH);
     const now = raw && decoder.decode(raw);
     if (!now || now === this.base) return 0;
-    const { file, fromThem } = mergeLibraries(this.base ? parseFile(this.base) : null, this.file(), parseFile(now));
+    const theirs = parseFile(now);
+    const { file, fromThem } = mergeLibraries(this.base ? parseFile(this.base) : null, this.file(), theirs);
     this.papers = file.papers;
     this.bibSync = file.bibSync ?? [];
+    this.other = otherKeys(theirs);
     this.base = now;
     if (fromThem) this.emit();
     return fromThem;
@@ -118,7 +135,7 @@ export class Library {
       if (text === this.base) return merged;
       await this.storage.write(LIBRARY_PATH, text, "application/json");
       this.base = text;
-      await this.storage.write(BIB_PATH, libraryToBibtex(this.papers), "application/x-bibtex");
+      await this.storage.write(BIB_PATH, libraryToBibtex(this.papers.filter((p) => !p.trashed)), "application/x-bibtex");
       return merged;
     });
   }
