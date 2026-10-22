@@ -169,6 +169,14 @@ const plugin: LightkonePlugin = {
   name: "DOI, arXiv and BibTeX",
   description: "Adds papers from a DOI, an arXiv id or link, or pasted BibTeX, using Crossref, Semantic Scholar and OpenAlex.",
   lookups,
+  settings: [
+    {
+      name: "reader",
+      label: "Read pages that turn Lightkone away through Jina Reader",
+      type: "checkbox",
+      help: "Some sites only let a person's browser in. Jina Reader (r.jina.ai) opens the page in a browser for Lightkone; only the page's address goes to it.",
+    },
+  ],
   importers: [{ id: "bibtex", label: "BibTeX", accepts: ".bib,.bibtex,.txt", parse: parseBibtexToDrafts }],
 };
 export default plugin;

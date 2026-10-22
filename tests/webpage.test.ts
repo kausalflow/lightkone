@@ -182,6 +182,35 @@ describe("the page service", () => {
   });
 });
 
+describe("a page behind a browser check", () => {
+  const blocked = () => new Response("<title>Just a moment...</title>", { status: 403, headers: { "content-type": "text/html", "cf-mitigated": "challenge" } });
+  const ask = (q: string, f: typeof fetch, env = {}) => handle(new Request("https://site/api/page?url=" + encodeURIComponent("https://press.example.edu/x") + q), f, env);
+
+  it("is read through Jina Reader when the app asks, with the key when there is one", async () => {
+    const calls: [string, RequestInit | undefined][] = [];
+    const f = (async (u: string, init?: RequestInit) => {
+      calls.push([u, init]);
+      return u.startsWith("https://r.jina.ai/") ? new Response("<html><head><title>X</title></head><body>Text</body></html>") : blocked();
+    }) as unknown as typeof fetch;
+    const r = await ask("&reader=1", f, { JINA_API_KEY: "k" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ url: "https://press.example.edu/x", html: "<html><head><title>X</title></head><body>Text</body></html>", via: "r.jina.ai" });
+    expect(calls[1][0]).toBe("https://r.jina.ai/https://press.example.edu/x");
+    expect((calls[1][1]!.headers as Record<string, string>).authorization).toBe("Bearer k");
+  });
+
+  it("is not sent to Jina Reader unless asked, and says why when Jina fails too", async () => {
+    let jina = 0;
+    const f = (async (u: string) => (u.startsWith("https://r.jina.ai/") ? (jina++, new Response("<title>Just a moment...</title><body>", { status: 200 })) : blocked())) as unknown as typeof fetch;
+    expect((await ask("", f)).status).toBe(424);
+    expect(jina).toBe(0);
+    const r = await ask("&reader=1", f);
+    expect(r.status).toBe(424);
+    expect(jina).toBe(1);
+    expect((await r.json()).blocked).toBe(true);
+  });
+});
+
 describe("a page that can't be read", () => {
   it("passes on the service's reason, and explains an answer that isn't the service's", async () => {
     const answer = (r: Response) => (async () => r) as unknown as typeof fetch;

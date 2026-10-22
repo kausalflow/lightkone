@@ -1,5 +1,6 @@
 import type { Paper, PaperDraft } from "./types";
 import { site } from "./site";
+import { loadSettings } from "./settings";
 
 // Saving a web page (a blog post, a report, documentation) into the library:
 // the page's raw HTML is kept as it came, and its main text as Markdown, which
@@ -37,8 +38,10 @@ export class PageError extends Error {
 /** The page's HTML, through the page service. Throws a PageError with the service's reason when it can't. */
 export async function fetchPage(url: string, f: typeof fetch = fetch.bind(globalThis)): Promise<FetchedPage> {
   let r: Response;
+  // A site that turns the service away is read through Jina Reader, unless that is switched off.
+  const reader = loadSettings()["lookup.reader"] === "off" ? "" : "&reader=1";
   try {
-    r = await f(site(`api/page?url=${encodeURIComponent(url)}`));
+    r = await f(site(`api/page?url=${encodeURIComponent(url)}${reader}`));
   } catch {
     throw new PageError("Lightkone's page service can't be reached. Are you offline?", 0);
   }

@@ -89,7 +89,10 @@ may save little text; their raw HTML is kept all the same. Figures stay on the
 site they came from, so they show only with a network.
 
 Some sites turn away anything that isn't a person's browser, often with a
-"checking your browser" page. Such a page is still added, as a link with a
+"checking your browser" page. Lightkone then reads the page through Jina
+Reader (r.jina.ai), which opens it in a real browser; only the page's address
+goes there, and **Settings → DOI, arXiv and BibTeX** switches it off. When that
+fails too, the page is still added, as a link with a
 title made from its address, and Add papers says why no copy was kept. To keep
 a copy, open the page in your browser and use the **+ Lightkone** bookmark (set
 it up once from Add papers; on a phone, tap the address bar, type Lightkone and

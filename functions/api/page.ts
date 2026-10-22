@@ -5,10 +5,22 @@
 // It answers JSON, never HTML, so nothing fetched can run as part of this site,
 // and it only fetches public http(s) pages on the usual ports, so it cannot be
 // used to reach private addresses. /api/_middleware.ts limits how often.
+//
+// Some sites turn away anything that isn't a person's browser (Cloudflare's
+// "checking your browser" page, say). When the app asks with ?reader=1, such a
+// page is read through Jina Reader (r.jina.ai), which opens it in a real
+// browser and hands back the HTML. Only the page's address goes there. Set
+// JINA_API_KEY in the Pages project for a higher rate limit than the free one.
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 const TIMEOUT = 15_000;
+const READER = "https://r.jina.ai/";
+const READER_TIMEOUT = 25_000;
+
+interface Env {
+  JINA_API_KEY?: string;
+}
 
 // When the site fails, the answer is 424, never 502 or 504: Cloudflare puts its
 // own "error code: 502" page in place of those, and the app would lose the reason.
@@ -60,8 +72,26 @@ export function refusal(host: string, r: Response): { error: string; blocked?: t
   return { error: `${host} answered ${s}${s >= 500 ? ", a problem on its side; try again later" : ""}.` };
 }
 
-export async function handle(request: Request, f: typeof fetch = fetch): Promise<Response> {
-  let url = (new URL(request.url).searchParams.get("url") ?? "").trim();
+/** The page as a browser sees it, through Jina Reader; null when that fails too. */
+export async function throughReader(url: string, f: typeof fetch, key?: string): Promise<string | null> {
+  try {
+    const r = await f(READER + url, {
+      signal: AbortSignal.timeout(READER_TIMEOUT),
+      headers: { "x-return-format": "html", ...(key ? { authorization: `Bearer ${key}` } : {}) },
+    });
+    if (!r.ok) return null;
+    const html = await r.text();
+    const head = html.slice(0, 5000);
+    if (html.length > MAX_BYTES || !/<(html|body)[\s>]/i.test(head) || /<title>\s*Just a moment/i.test(head)) return null;
+    return html;
+  } catch {
+    return null;
+  }
+}
+
+export async function handle(request: Request, f: typeof fetch = fetch, env: Env = {}): Promise<Response> {
+  const params = new URL(request.url).searchParams;
+  let url = (params.get("url") ?? "").trim();
   if (!isPublicUrl(url)) return json(400, { error: "Pass a public web page as ?url=https://..." });
 
   let r: Response | null = null;
@@ -88,7 +118,13 @@ export async function handle(request: Request, f: typeof fetch = fetch): Promise
     r = null;
   }
   if (!r) return json(FAILED, { error: "The page redirects too many times." });
-  if (!r.ok) return json(r.status === 404 ? 404 : FAILED, r.status === 404 ? { error: "The site has no such page (404)." } : refusal(new URL(url).hostname, r));
+  if (!r.ok) {
+    if (r.status === 404) return json(404, { error: "The site has no such page (404)." });
+    const why = refusal(new URL(url).hostname, r);
+    const html = why.blocked && params.get("reader") === "1" ? await throughReader(url, f, env.JINA_API_KEY) : null;
+    if (html) return json(200, { url, html, via: "r.jina.ai" });
+    return json(FAILED, why);
+  }
   const type = r.headers.get("content-type") ?? "";
   if (!/html|xml/i.test(type)) return json(415, { error: type.includes("pdf") ? "This link is a PDF: add it with Add PDF files." : "This link is not a web page." });
   if (Number(r.headers.get("content-length") ?? 0) > MAX_BYTES) return json(413, { error: "The page is too big to save." });
@@ -99,4 +135,4 @@ export async function handle(request: Request, f: typeof fetch = fetch): Promise
   return json(200, { url, html });
 }
 
-export const onRequestGet = ({ request }: { request: Request }) => handle(request);
+export const onRequestGet = ({ request, env }: { request: Request; env: Env }) => handle(request, fetch, env);

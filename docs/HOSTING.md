@@ -56,7 +56,11 @@ pages. It answers JSON, never HTML, so nothing it fetches can run as part of
 the site, and it fetches only public http(s) addresses on the usual ports,
 checking each redirect, up to 5 MB, waiting at most 15 s. When the site fails
 or refuses, it answers 424 with the reason (never 502 or 504, which Cloudflare
-replaces with its own error page); the other services do the same.
+replaces with its own error page); the other services do the same. A page
+behind a browser check is read through Jina Reader (r.jina.ai) when the app
+asks (it does unless switched off in Settings). The free tier allows about 20
+pages a minute from Cloudflare's addresses; for more, add a `JINA_API_KEY`
+secret to the Pages project.
 
 ## Limits on the services
 
