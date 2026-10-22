@@ -84,7 +84,12 @@ export async function throughReader(url: string, f: typeof fetch, key?: string):
         ...(key ? { authorization: `Bearer ${key}` } : {}),
       },
     });
-    if (!r.ok) return { failed: `it answered ${r.status}${r.status === 429 || r.status === 402 ? ", too many pages for now; a JINA_API_KEY raises the limit" : ""}` };
+    if (!r.ok) {
+      // Whether a key was sent tells the host what to fix: add one, or check the one set.
+      const limited = r.status === 429 || r.status === 402;
+      const hint = !key ? (limited ? ", too many pages for now; a JINA_API_KEY raises the limit" : "") : r.status === 401 || r.status === 403 ? ", so check the JINA_API_KEY" : limited ? " with the JINA_API_KEY: its limit or balance is used up" : "";
+      return { failed: `it answered ${r.status}${hint}` };
+    }
     const html = await r.text();
     const head = html.slice(0, 5000);
     if (html.length > MAX_BYTES) return { failed: "the page is too big" };
