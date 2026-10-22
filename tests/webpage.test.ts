@@ -207,7 +207,9 @@ describe("a page behind a browser check", () => {
     const r = await ask("&reader=1", f);
     expect(r.status).toBe(424);
     expect(jina).toBe(1);
-    expect((await r.json()).blocked).toBe(true);
+    const body = await r.json();
+    expect(body.blocked).toBe(true);
+    expect(body.error).toMatch(/Jina Reader couldn't read it either: it was turned away too\.$/);
   });
 });
 
