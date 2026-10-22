@@ -21,14 +21,18 @@ export const CAPTURE_KEYS = ["add", "url", "text", "title"];
 
 /**
  * A bookmarklet that reads the page's citation tags (most publishers and
- * arXiv have them) and opens Lightkone at `app` to add the paper.
+ * arXiv have them) and opens Lightkone at `app` to add the paper. On any other
+ * page it sends Lightkone the page itself, as the browser shows it: a site that
+ * turns the page service away can be saved this way. The page goes as a file
+ * in a form posted to the app, which the service worker takes like a file
+ * shared to the installed app; the address it came from leads the file.
  */
 export function bookmarklet(app: string): string {
-  const code = `(()=>{const m=n=>{const e=document.querySelector('meta[name="'+n+'" i]');return e&&e.content.trim()};const a=m('citation_arxiv_id');const v=m('citation_doi')||(a&&'arXiv:'+a)||((d)=>d&&/10\\.\\d/.test(d)&&d)(m('dc.identifier'))||location.href;open(${JSON.stringify(app)}+'?add='+encodeURIComponent(v))})()`;
+  const code = `(()=>{const A=${JSON.stringify(app)};const m=n=>{const e=document.querySelector('meta[name="'+n+'" i]');return e&&e.content.trim()};const a=m('citation_arxiv_id');const v=m('citation_doi')||(a&&'arXiv:'+a)||((d)=>d&&/10\\.\\d/.test(d)&&d)(m('dc.identifier'));if(v)return void open(A+'?add='+encodeURIComponent(v));const u=location.href;try{const h='<!-- saved from url=('+String(u.length).padStart(4,'0')+')'+u+' -->\\n'+document.documentElement.outerHTML;const f=document.createElement('form');f.method='post';f.action=A;f.enctype='multipart/form-data';f.target='_blank';const i=document.createElement('input');i.type='file';i.name='pdf';const t=new DataTransfer();t.items.add(new File([h],(document.title||'page').slice(0,80).replace(/[\\\\/:*?"<>|]/g,' ')+'.html',{type:'text/html'}));i.files=t.files;f.append(i);f.style.display='none';document.body.append(f);f.submit();f.remove()}catch(e){open(A+'?add='+encodeURIComponent(u))}})()`;
   return `javascript:${encodeURI(code)}`;
 }
 
-// PDF files shared to the installed app arrive as a POST, which a static site
+// PDF files (and saved pages) shared to the installed app arrive as a POST, which a static site
 // can't receive, so the service worker (public/sw.js) keeps them in this cache
 // and opens the app with ?shared-files.
 export const SHARED_FILES_KEY = "shared-files";
@@ -43,7 +47,7 @@ export async function takeSharedFiles(): Promise<File[]> {
   const files: File[] = [];
   for (const req of await cache.keys()) {
     const res = await cache.match(req);
-    if (res) files.push(new File([await res.blob()], decodeURIComponent(res.headers.get("x-name") ?? "shared.pdf"), { type: "application/pdf" }));
+    if (res) files.push(new File([await res.blob()], decodeURIComponent(res.headers.get("x-name") ?? "shared.pdf"), { type: res.headers.get("content-type") ?? "application/pdf" }));
     await cache.delete(req);
   }
   return files;

@@ -25,7 +25,8 @@ describe("capture", () => {
     const b = bookmarklet("https://lightkone.lab.kausalflow.com/");
     expect(b.startsWith("javascript:")).toBe(true);
     const code = decodeURI(b.slice("javascript:".length));
-    expect(code).toContain('"https://lightkone.lab.kausalflow.com/"+\'?add=\'');
+    expect(code).toContain('const A="https://lightkone.lab.kausalflow.com/"');
+    expect(code).toContain("A+'?add='");
     expect(() => new Function(code)).not.toThrow();
   });
 });

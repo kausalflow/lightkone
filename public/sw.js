@@ -23,7 +23,7 @@ self.addEventListener("activate", (e) => {
   );
 });
 
-// Sharing to the installed app (a link, or PDF files) posts a form to app/. A
+// Sharing to the installed app (a link, PDF files or saved pages) posts a form to app/. A
 // static site can't take a POST, so it is answered here: files wait in a cache
 // and the app opens with the shared text in its address, as a GET share would.
 async function receiveShare(req) {
@@ -37,7 +37,7 @@ async function receiveShare(req) {
     const stamp = Date.now();
     await Promise.all(
       files.map((f, i) =>
-        cache.put(new Request(`${APP}__shared/${stamp}-${i}`), new Response(f, { headers: { "content-type": "application/pdf", "x-name": encodeURIComponent(f.name || "shared.pdf") } })),
+        cache.put(new Request(`${APP}__shared/${stamp}-${i}`), new Response(f, { headers: { "content-type": f.type || "application/pdf", "x-name": encodeURIComponent(f.name || "shared.pdf") } })),
       ),
     );
     next.searchParams.set("shared-files", String(files.length));

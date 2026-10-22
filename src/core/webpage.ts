@@ -1,5 +1,6 @@
 import type { Paper, PaperDraft } from "./types";
 import { site } from "./site";
+import { loadSettings } from "./settings";
 
 // Saving a web page (a blog post, a report, documentation) into the library:
 // the page's raw HTML is kept as it came, and its main text as Markdown, which
@@ -19,12 +20,176 @@ export interface FetchedPage {
   html: string;
 }
 
-/** The page's HTML, through the page service. Throws with the service's reason when it can't. */
+/** The page service couldn't fetch the page; status 424 means the site itself failed or refused. */
+export class PageError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly blocked = false,
+  ) {
+    super(message);
+  }
+  /** The link is fine but its page couldn't be read, so it can still be kept as a link. */
+  get keepAsLink() {
+    return this.status === 424 || this.status >= 500;
+  }
+}
+
+/** The page's HTML, through the page service. Throws a PageError with the service's reason when it can't. */
 export async function fetchPage(url: string, f: typeof fetch = fetch.bind(globalThis)): Promise<FetchedPage> {
-  const r = await f(site(`api/page?url=${encodeURIComponent(url)}`));
-  const body = (await r.json().catch(() => null)) as (FetchedPage & { error?: string }) | null;
-  if (!r.ok || !body?.html) throw new Error(body?.error ?? `The page service answered ${r.status}.`);
-  return body;
+  let r: Response;
+  // A site that turns the service away is read through Jina Reader, unless that is switched off.
+  const reader = loadSettings()["lookup.reader"] === "off" ? "" : "&reader=1";
+  try {
+    r = await f(site(`api/page?url=${encodeURIComponent(url)}${reader}`));
+  } catch {
+    throw new PageError("Lightkone's page service can't be reached. Are you offline?", 0);
+  }
+  const body = (await r.json().catch(() => null)) as (FetchedPage & { error?: string; blocked?: boolean }) | null;
+  if (r.ok && body?.html) return body;
+  if (body?.error) throw new PageError(body.error, r.status, Boolean(body.blocked));
+  throw new PageError(
+    r.status === 404 ? "This copy of Lightkone has no page service (it runs on Cloudflare Pages)." : `The page service failed (${r.status}). Try again in a moment.`,
+    r.status || 500,
+  );
+}
+
+// ---------------------------------------------------------------- saved page files
+
+// A page some sites won't hand to the page service can be opened in the
+// browser and saved there: Chrome on a phone saves it (menu, Download) as an
+// MHTML file, and a computer's browser as .html. Either file is added as if
+// the page had been fetched.
+
+/** A saved page file: .html, .htm, .mhtml or .mht. */
+export const isPageFile = (f: File) => /^(text\/html|multipart\/related|message\/rfc822|application\/x-mimearchive)$/.test(f.type) || /\.(html?|mhtml?|mht)$/i.test(f.name);
+
+const latin1 = (bytes: Uint8Array) => new TextDecoder("latin1").decode(bytes);
+
+/** Quoted-printable text (as latin1) to its bytes. */
+function unquote(text: string): Uint8Array {
+  const s = text.replace(/=\r?\n/g, "");
+  const out = new Uint8Array(s.length);
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "=" && /^[0-9A-F]{2}$/i.test(s.slice(i + 1, i + 3))) {
+      out[n++] = parseInt(s.slice(i + 1, i + 3), 16);
+      i += 2;
+    } else out[n++] = s.charCodeAt(i) & 0xff;
+  }
+  return out.subarray(0, n);
+}
+
+/** The headers of a MIME part, by lowercase name, with folded lines joined. */
+function headers(block: string): Record<string, string> {
+  const h: Record<string, string> = {};
+  for (const line of block.replace(/\r?\n[ \t]+/g, " ").split(/\r?\n/)) {
+    const i = line.indexOf(":");
+    if (i > 0) h[line.slice(0, i).trim().toLowerCase()] ??= line.slice(i + 1).trim();
+  }
+  return h;
+}
+
+/** The page inside an MHTML file: its first HTML part, decoded, and the address it was saved from. */
+export function fromMhtml(bytes: Uint8Array): { html: string; url?: string } | null {
+  const text = latin1(bytes);
+  const split = /\r?\n\r?\n/.exec(text);
+  if (!split) return null;
+  const top = headers(text.slice(0, split.index));
+  const boundary = /boundary="?([^";]+)"?/i.exec(top["content-type"] ?? "")?.[1];
+  if (!boundary) return null;
+  for (const part of text.split(`--${boundary}`).slice(1)) {
+    const at = /\r?\n\r?\n/.exec(part);
+    if (!at) continue;
+    const h = headers(part.slice(0, at.index));
+    if (!/^text\/html/i.test(h["content-type"] ?? "")) continue;
+    const body = part.slice(at.index + at[0].length);
+    const encoding = (h["content-transfer-encoding"] ?? "").toLowerCase();
+    const raw =
+      encoding === "quoted-printable"
+        ? unquote(body)
+        : encoding === "base64"
+          ? Uint8Array.from(atob(body.replace(/\s+/g, "")), (c) => c.charCodeAt(0))
+          : Uint8Array.from(body, (c) => c.charCodeAt(0) & 0xff);
+    const charset = /charset="?([\w-]+)/i.exec(h["content-type"] ?? "")?.[1] ?? /<meta[^>]+charset=["']?([\w-]+)/i.exec(latin1(raw.subarray(0, 4096)))?.[1] ?? "utf-8";
+    let decoder: TextDecoder;
+    try {
+      decoder = new TextDecoder(charset);
+    } catch {
+      decoder = new TextDecoder();
+    }
+    const url = top["snapshot-content-location"] ?? h["content-location"];
+    return { html: decoder.decode(raw), url: url && /^https?:/i.test(url) ? url : undefined };
+  }
+  return null;
+}
+
+/** The address an HTML file says it came from: its canonical link, og:url, or a browser's "saved from" note. */
+export function savedFrom(html: string): string | undefined {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const found = [
+    doc.querySelector('link[rel="canonical"]')?.getAttribute("href"),
+    meta(doc, "og:url", "twitter:url", "citation_public_url"),
+    /<!--\s*saved from url=\(\d+\)(\S+?)\s*-->/i.exec(html.slice(0, 2000))?.[1],
+  ];
+  return found.find((u): u is string => Boolean(u && /^https?:\/\//i.test(u)));
+}
+
+/** A saved page file read as a page; throws when it holds no web page or doesn't say where it came from. */
+export async function pageFromFile(file: File): Promise<FetchedPage> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const head = latin1(bytes.subarray(0, 4096));
+  let html: string;
+  let url: string | undefined;
+  if (/^(from|mime-version|content-type|snapshot-content-location|subject|date):/im.test(head.split(/\r?\n\r?\n/)[0]) && /multipart\/related/i.test(head)) {
+    const page = fromMhtml(bytes);
+    if (!page) throw new Error("no web page in this file");
+    ({ html, url } = page);
+  } else {
+    html = new TextDecoder(charsetOf(head)).decode(bytes);
+  }
+  url ??= savedFrom(html);
+  if (!url) throw new Error("it doesn't say which web page it came from");
+  return { url, html };
+}
+
+const charsetOf = (head: string) => {
+  const c = /<meta[^>]+charset=["']?([\w-]+)/i.exec(head)?.[1] ?? "utf-8";
+  try {
+    new TextDecoder(c);
+    return c;
+  } catch {
+    return "utf-8";
+  }
+};
+
+// ---------------------------------------------------------------- link only
+
+// A page the service couldn't read is kept as a link: its title comes from the
+// address, and the reason is kept for a moment so Add papers can say why.
+const linkOnly = new Map<string, string>();
+
+/** Why this link was just added without a copy of its page; null if it wasn't. Asking clears it. */
+export function linkOnlyReason(url: string | undefined): string | null {
+  const why = url ? linkOnly.get(url) : undefined;
+  if (url) linkOnly.delete(url);
+  return why ?? null;
+}
+
+/** A library entry for a page that couldn't be read: just its link, a title made from the address, and the site. */
+export function linkDraft(url: string, reason?: string): PaperDraft {
+  const u = new URL(url);
+  const host = u.hostname.replace(/^www\./, "");
+  const slug = decodeURIComponent(u.pathname.split("/").filter(Boolean).pop() ?? "")
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/[-_+]+/g, " ")
+    .trim();
+  const title = slug && !/^\d+$/.test(slug) ? slug[0].toUpperCase() + slug.slice(1) : host;
+  if (reason) {
+    linkOnly.set(url, reason);
+    while (linkOnly.size > 10) linkOnly.delete(linkOnly.keys().next().value!);
+  }
+  return { type: "misc", title, authors: [], venue: host, url, fields: { howpublished: `\\url{${url}}`, urldate: new Date().toISOString().slice(0, 10) } };
 }
 
 // A page fetched to look it up is kept for a moment, so saving it right after

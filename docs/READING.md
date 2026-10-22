@@ -88,6 +88,20 @@ PDF's text is. Pages that build their content with scripts after they load
 may save little text; their raw HTML is kept all the same. Figures stay on the
 site they came from, so they show only with a network.
 
+Some sites turn away anything that isn't a person's browser, often with a
+"checking your browser" page. Lightkone then reads the page through Jina
+Reader (r.jina.ai), which opens it in a real browser; only the page's address
+goes there, and **Settings → DOI, arXiv and BibTeX** switches it off. When that
+fails too, the page is still added, as a link with a
+title made from its address, and Add papers says why no copy was kept. To keep
+a copy, open the page in your browser and use the **+ Lightkone** bookmark (set
+it up once from Add papers; on a phone, tap the address bar, type Lightkone and
+tap the bookmark): the page as you see it goes to Lightkone and is saved. Or
+save the page in the browser (in Chrome on a phone, menu, then Download, an
+.mhtml file; on a computer, Save page as) and use **Add files** in Add papers,
+drop the file on Lightkone, or share it to the installed app. The saved page gets the same Markdown copy and reader as a
+fetched one, and a page already in the library as a link gets the copy.
+
 ## Reading at night
 
 With the Dullaby plugin set up (**Settings → Dullaby night reading**), **Read

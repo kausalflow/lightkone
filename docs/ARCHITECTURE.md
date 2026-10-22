@@ -20,7 +20,7 @@ Offline papers are kept there too, outside the 25, within a size limit.
 Highlights written with no network wait there and are written on reconnect. The web app
 manifest makes Lightkone installable and a share target: shares are posted to
 `app/`, and the service worker turns them into `?title=&text=&url=`, keeping any
-PDF files in a cache for the app to take (`?shared-files`);
+PDF files (or saved pages) in a cache for the app to take (`?shared-files`);
 the bookmarklet sends `?add=` (`src/core/capture.ts`).
 
 ## Data

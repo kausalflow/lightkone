@@ -1,6 +1,6 @@
 import type { LightkonePlugin, Lookup, PaperDraft } from "../core/types";
 import { parseBibtexToDrafts } from "../core/bibtex";
-import { fetchPage, isWebLink, pageDraft, paperIdentifier, rememberPage } from "../core/webpage";
+import { fetchPage, isWebLink, linkDraft, PageError, pageDraft, paperIdentifier, rememberPage } from "../core/webpage";
 
 // Adding a paper by what people actually have at hand: a DOI, an arXiv id or
 // link, a publisher link with a DOI in it, or pasted BibTeX. All sources are
@@ -140,9 +140,18 @@ const lookups: Lookup[] = [
   },
 ];
 
-/** A page that turns out to be a paper (its citation tags name a DOI or arXiv id) is added as that paper. */
+/**
+ * A page that turns out to be a paper (its citation tags name a DOI or arXiv id) is added as that paper.
+ * A page the site won't hand over is still added, as a link without a copy.
+ */
 async function webPage(input: string): Promise<PaperDraft | null> {
-  const page = await fetchPage(input.trim());
+  let page;
+  try {
+    page = await fetchPage(input.trim());
+  } catch (e) {
+    if (e instanceof PageError && e.keepAsLink) return linkDraft(input.trim(), e.message);
+    throw e;
+  }
   const doc = new DOMParser().parseFromString(page.html, "text/html");
   const id = paperIdentifier(doc);
   if (id) {
@@ -160,6 +169,14 @@ const plugin: LightkonePlugin = {
   name: "DOI, arXiv and BibTeX",
   description: "Adds papers from a DOI, an arXiv id or link, or pasted BibTeX, using Crossref, Semantic Scholar and OpenAlex.",
   lookups,
+  settings: [
+    {
+      name: "reader",
+      label: "Read pages that turn Lightkone away through Jina Reader",
+      type: "checkbox",
+      help: "Some sites only let a person's browser in. Jina Reader (r.jina.ai) opens the page in a browser for Lightkone; only the page's address goes to it.",
+    },
+  ],
   importers: [{ id: "bibtex", label: "BibTeX", accepts: ".bib,.bibtex,.txt", parse: parseBibtexToDrafts }],
 };
 export default plugin;

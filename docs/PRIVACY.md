@@ -12,7 +12,7 @@ app talks to it from your browser.
 | Your chats with Claude | Your own storage (`lightkone/history/`). In a shared or read-only library, this browser only. |
 | Asking beyond your library | The words of your question go to OpenAlex's search. |
 | Journal citation styles | The style's name goes to the Citation Style Language project on GitHub, and the list of styles is fetched from Zotero. Your papers are formatted in your browser. |
-| Adding and looking up papers | The DOI, arXiv id or title goes to Crossref, OpenAlex, Semantic Scholar or arXiv. For open-access PDFs, the DOI and your contact email go to Unpaywall through the site. A web page you add is fetched through the site, which passes only its address to the page's own server. |
+| Adding and looking up papers | The DOI, arXiv id or title goes to Crossref, OpenAlex, Semantic Scholar or arXiv. For open-access PDFs, the DOI and your contact email go to Unpaywall through the site. A web page you add is fetched through the site, which passes only its address to the page's own server. If that server turns the site away, the address goes to Jina Reader (r.jina.ai) instead, unless you switch that off in Settings → DOI, arXiv and BibTeX. |
 | Related papers and the citation map | The DOIs or arXiv ids of your papers go to OpenAlex or Semantic Scholar. |
 | New on arXiv | Only the categories you follow go to arXiv, through the site. The ranking happens in your browser. |
 | Search by equation | Each arXiv id goes to the site, which fetches that paper's public LaTeX source from arXiv and returns its equations. |

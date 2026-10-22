@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { markdownFile, pageDraft, pageMarkdown, paperIdentifier, personName, toMarkdown, isWebLink } from "../src/core/webpage";
+import { fetchPage, isPageFile, pageFromFile, savedFrom, linkDraft, linkOnlyReason, markdownFile, pageDraft, PageError, pageMarkdown, paperIdentifier, personName, toMarkdown, isWebLink } from "../src/core/webpage";
+import { bookmarklet } from "../src/core/capture";
 import { renderMarkdown, type MathRenderer } from "../src/core/markdown";
 import { sandboxedHtml } from "../src/reader/PageReader";
 import { charsetOf, handle, isPublicUrl } from "../functions/api/page";
@@ -150,5 +151,164 @@ describe("the page service", () => {
     expect((await handle(new Request("https://site/api/page?url=" + encodeURIComponent("https://a.org/bad")), f)).status).toBe(400);
     expect((await handle(new Request("https://site/api/page?url=" + encodeURIComponent("https://a.org/file")), f)).status).toBe(415);
     expect((await handle(new Request("https://site/api/page?url=http%3A%2F%2Flocalhost%2F"), f)).status).toBe(400);
+  });
+
+  it("says why a site refused, with a status Cloudflare doesn't replace with its own page", async () => {
+    const pages: Record<string, Response> = {
+      "https://press.example.edu/ideas/x": new Response("<title>Just a moment...</title>", { status: 403, headers: { "content-type": "text/html", "cf-mitigated": "challenge" } }),
+      "https://a.org/down": new Response("", { status: 500 }),
+      "https://a.org/gone": new Response("", { status: 404 }),
+    };
+    const f = (async (u: string) => {
+      if (u.startsWith("https://nowhere")) throw new TypeError("fetch failed");
+      return pages[u];
+    }) as unknown as typeof fetch;
+    const ask = (u: string) => handle(new Request("https://site/api/page?url=" + encodeURIComponent(u)), f);
+
+    const blocked = await ask("https://press.example.edu/ideas/x");
+    expect(blocked.status).toBe(424);
+    const body = await blocked.json();
+    expect(body.blocked).toBe(true);
+    expect(body.error).toMatch(/press\.example\.edu turned the page reader away \(it answered 403 with a "checking your browser" page\)/);
+
+    const down = await ask("https://a.org/down");
+    expect(down.status).toBe(424);
+    expect((await down.json()).error).toMatch(/a\.org answered 500, a problem on its side/);
+    expect((await ask("https://a.org/gone")).status).toBe(404);
+
+    const unreachable = await ask("https://nowhere.example/");
+    expect(unreachable.status).toBe(424);
+    expect((await unreachable.json()).error).toBe("Couldn't reach nowhere.example. Check the link.");
+  });
+});
+
+describe("a page behind a browser check", () => {
+  const blocked = () => new Response("<title>Just a moment...</title>", { status: 403, headers: { "content-type": "text/html", "cf-mitigated": "challenge" } });
+  const ask = (q: string, f: typeof fetch, env = {}) => handle(new Request("https://site/api/page?url=" + encodeURIComponent("https://press.example.edu/x") + q), f, env);
+
+  it("is read through Jina Reader when the app asks, with the key when there is one", async () => {
+    const calls: [string, RequestInit | undefined][] = [];
+    const f = (async (u: string, init?: RequestInit) => {
+      calls.push([u, init]);
+      return u.startsWith("https://r.jina.ai/") ? new Response("<html><head><title>X</title></head><body>Text</body></html>") : blocked();
+    }) as unknown as typeof fetch;
+    const r = await ask("&reader=1", f, { JINA_API_KEY: "k" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ url: "https://press.example.edu/x", html: "<html><head><title>X</title></head><body>Text</body></html>", via: "r.jina.ai" });
+    expect(calls[1][0]).toBe("https://r.jina.ai/https://press.example.edu/x");
+    expect((calls[1][1]!.headers as Record<string, string>).authorization).toBe("Bearer k");
+  });
+
+  it("is not sent to Jina Reader unless asked, and says why when Jina fails too", async () => {
+    let jina = 0;
+    const f = (async (u: string) => (u.startsWith("https://r.jina.ai/") ? (jina++, new Response("<title>Just a moment...</title><body>", { status: 200 })) : blocked())) as unknown as typeof fetch;
+    expect((await ask("", f)).status).toBe(424);
+    expect(jina).toBe(0);
+    const r = await ask("&reader=1", f);
+    expect(r.status).toBe(424);
+    expect(jina).toBe(1);
+    expect((await r.json()).blocked).toBe(true);
+  });
+});
+
+describe("a page that can't be read", () => {
+  it("passes on the service's reason, and explains an answer that isn't the service's", async () => {
+    const answer = (r: Response) => (async () => r) as unknown as typeof fetch;
+    const refused = await fetchPage("https://x.org/a", answer(new Response(JSON.stringify({ error: "x.org turned the page reader away.", blocked: true }), { status: 424 }))).catch((e) => e);
+    expect(refused).toBeInstanceOf(PageError);
+    expect(refused.message).toBe("x.org turned the page reader away.");
+    expect(refused.blocked).toBe(true);
+    expect(refused.keepAsLink).toBe(true);
+
+    const cloudflare = await fetchPage("https://x.org/a", answer(new Response("error code: 502", { status: 502 }))).catch((e) => e);
+    expect(cloudflare.message).toBe("The page service failed (502). Try again in a moment.");
+    expect(cloudflare.keepAsLink).toBe(true);
+
+    const notPage = await fetchPage("https://x.org/a", answer(new Response(JSON.stringify({ error: "This link is not a web page." }), { status: 415 }))).catch((e) => e);
+    expect(notPage.keepAsLink).toBe(false);
+  });
+
+  it("is kept as a link, titled from its address", () => {
+    const d = linkDraft("https://press.princeton.edu/ideas/daniel-jackson-on-the-essence-of-software", "Turned away.");
+    expect(d.title).toBe("Daniel jackson on the essence of software");
+    expect(d.venue).toBe("press.princeton.edu");
+    expect(d.url).toBe("https://press.princeton.edu/ideas/daniel-jackson-on-the-essence-of-software");
+    expect(linkOnlyReason(d.url)).toBe("Turned away.");
+    expect(linkOnlyReason(d.url)).toBeNull();
+    expect(linkDraft("https://www.example.com/").title).toBe("example.com");
+    expect(linkDraft("https://example.com/posts/1234").title).toBe("example.com");
+  });
+});
+
+describe("a page saved from the browser", () => {
+  const MHTML = [
+    "From: <Saved by Blink>",
+    "Snapshot-Content-Location: https://press.example.edu/ideas/on-software",
+    "Subject: On software",
+    "MIME-Version: 1.0",
+    'Content-Type: multipart/related;\r\n\ttype="text/html";\r\n\tboundary="----MultipartBoundary--abc----"',
+    "",
+    "",
+    "------MultipartBoundary--abc----",
+    "Content-Type: text/html",
+    "Content-Transfer-Encoding: quoted-printable",
+    "Content-Location: https://press.example.edu/ideas/on-software",
+    "",
+    '<html><head><meta charset=3D"utf-8"><title>On software</title></head><body><p>Caf=C3=A9 =\r\nconcepts.</p></body></html>',
+    "------MultipartBoundary--abc----",
+    "Content-Type: image/png",
+    "Content-Transfer-Encoding: base64",
+    "",
+    "iVBORw0KGgo=",
+    "------MultipartBoundary--abc------",
+    "",
+  ].join("\r\n");
+
+  it("reads the page out of Chrome's MHTML file", async () => {
+    const page = await pageFromFile(new File([MHTML], "On software.mhtml", { type: "multipart/related" }));
+    expect(page.url).toBe("https://press.example.edu/ideas/on-software");
+    expect(page.html).toContain("<p>Café concepts.</p>");
+    expect(page.html).toContain('<meta charset="utf-8">');
+  });
+
+  it("finds where an HTML file came from, and says so when it can't", async () => {
+    expect(savedFrom('<link rel="canonical" href="https://a.org/p">')).toBe("https://a.org/p");
+    expect(savedFrom('<meta property="og:url" content="https://a.org/q">')).toBe("https://a.org/q");
+    expect(savedFrom("<!-- saved from url=(0018)https://a.org/r/ -->\n<html></html>")).toBe("https://a.org/r/");
+    const page = await pageFromFile(new File(['<html><head><link rel="canonical" href="https://a.org/p"></head><body>x</body></html>'], "p.html", { type: "text/html" }));
+    expect(page.url).toBe("https://a.org/p");
+    await expect(pageFromFile(new File(["<html><body>x</body></html>"], "p.html"))).rejects.toThrow(/which web page/);
+  });
+
+  it("knows a saved page file from a PDF", () => {
+    expect(isPageFile(new File([""], "a.mhtml"))).toBe(true);
+    expect(isPageFile(new File([""], "a", { type: "text/html" }))).toBe(true);
+    expect(isPageFile(new File([""], "a.pdf", { type: "application/pdf" }))).toBe(false);
+  });
+});
+
+describe("the bookmarklet on a page that isn't a paper", () => {
+  it("posts the page to the app as a saved page file, naming where it came from", async () => {
+    document.head.innerHTML = "<title>On software</title>";
+    document.body.innerHTML = "<p>Concepts.</p>";
+    const sent: HTMLFormElement[] = [];
+    const submit = HTMLFormElement.prototype.submit;
+    HTMLFormElement.prototype.submit = function (this: HTMLFormElement) {
+      sent.push(this);
+    };
+    try {
+      new Function(decodeURI(bookmarklet("https://lightkone.example/app/").slice("javascript:".length)))();
+    } finally {
+      HTMLFormElement.prototype.submit = submit;
+    }
+    expect(sent).toHaveLength(1);
+    expect(sent[0].getAttribute("action")).toBe("https://lightkone.example/app/");
+    expect(sent[0].method).toBe("post");
+    expect(sent[0].target).toBe("_blank");
+    const file = (sent[0].querySelector("input[type=file]") as HTMLInputElement).files![0];
+    expect(file.name).toBe("On software.html");
+    const html = await file.text();
+    expect(savedFrom(html)).toBe(location.href);
+    expect(html).toContain("<p>Concepts.</p>");
   });
 });
