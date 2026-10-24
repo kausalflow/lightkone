@@ -205,7 +205,7 @@ export async function handleRpc(msg: RpcRequest, storage: StorageAdapter, resolv
       return ok(msg.id, {
         protocolVersion: /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : PROTOCOL,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "lightkone", title: "Lightkone paper library", version: "0.2.0" },
+        serverInfo: { name: "lightkone", title: "Lightkone paper library", version: "0.2.1" },
         instructions:
           "This is a researcher's own paper library. Search it before answering questions about papers they have read, " +
           "cite papers by their citation key, and read the full text (read_paper) when the abstract is not enough.",
