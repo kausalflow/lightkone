@@ -305,9 +305,11 @@ function OpenChat(props: WorkProps & { id: string }) {
 /** A new chat: Ask, a table, a weighing or a review draft, about the papers given or chosen. */
 function NewChat(props: WorkProps & { start: Start }) {
   const [mode, setMode] = useState<Mode>(props.start.mode);
-  const [ids, setIds] = useState<string[] | undefined>(props.start.ids);
+  const [ids] = useState<string[] | undefined>(props.start.ids);
   const [n, setN] = useState(0);
-  const one = mode === "ask" && ids?.length === 1 ? props.byId.get(ids[0]) : undefined;
+  // Ask about one paper reads its whole PDF; "Add other papers" turns it into a question across several.
+  const [several, setSeveral] = useState(false);
+  const one = mode === "ask" && !several && ids?.length === 1 ? props.byId.get(ids[0]) : undefined;
   const begun = Boolean(props.entry);
 
   return (
@@ -320,10 +322,11 @@ function NewChat(props: WorkProps & { start: Start }) {
               <button key={m} role="tab" aria-selected={mode === m} class={mode === m ? "on" : ""} onClick={() => { setMode(m); setN(n + 1); }}>{label}</button>
             ))}
           </div>
-          {ids?.length ? (
+          {/* A chat about one paper says which; the other kinds list their papers in the picker. */}
+          {one ? (
             <p class="chats-about small">
-              About <span class="chip" title={ids.map((id) => props.byId.get(id)?.title).join("\n")}>{props.name(ids)}</span>{" "}
-              <button class="link small" onClick={() => { setIds(undefined); setN(n + 1); }}>Choose other papers</button>
+              About <span class="chip" title={one.title}>{props.name([one.id])}</span>{" "}
+              <button class="link small" onClick={() => { setSeveral(true); setN(n + 1); }}>Add other papers</button>
             </p>
           ) : null}
         </>

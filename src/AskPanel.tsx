@@ -3,7 +3,7 @@ import type { Paper, PaperDraft } from "./core/types";
 import { linkCitations, retrieve, sourceLabel, sourcesPrompt, type Source } from "./core/ask";
 import { inLibrary, outsideOf, searchLiterature, type Outside } from "./core/literature";
 import { newConversationId, type Conversation } from "./core/history";
-import { loadScope, saveScope, scoped, type Scope } from "./core/scope";
+import { firstPaper, saveScope, scoped, startScope, type Scope } from "./core/scope";
 import { ScopePicker } from "./ScopePicker";
 import { MentionBox, QuestionText } from "./MentionBox";
 import { mentionedPassages, mentionsAsNames, mentionsIn } from "./core/mentions";
@@ -39,7 +39,9 @@ export function AskPanel(props: {
   onCompare(ids: string[]): void;
 }) {
   const r = props.resume;
-  const [scope, setScope] = useState<Scope>(() => r?.scope ?? (props.pick?.length ? { kind: "picked", ids: props.pick } : loadScope("ask", true)));
+  const [scope, setScope] = useState<Scope>(() =>
+    startScope({ kept: r?.scope, keptPapers: r?.papers, pick: props.pick, tool: "ask", first: () => firstPaper(props.papers, props.inView) }),
+  );
   const [outside, setOutside] = useState<Map<string, Outside>>(() => new Map((r?.outside ?? []).map((o) => [o.id, outsideOf(o.id, o.draft, o.cited)])));
   const [added, setAdded] = useState<Set<string>>(new Set());
   const literature = scope.kind === "literature";
@@ -54,6 +56,8 @@ export function AskPanel(props: {
   const bottom = useRef<HTMLDivElement>(null);
   const byId = useMemo(() => new Map<string, Paper>([...props.papers.map((p) => [p.id, p] as const), ...outside]), [props.papers, outside]);
   const hasKey = Boolean(props.settings["claude.apiKey"]);
+  const chosen = useMemo(() => scoped(props.papers, scope, props.inView), [props.papers, scope, props.inView]);
+  const unread = chosen.filter((p) => p.pdf && !props.texts.has(p.id)).length;
 
   useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [turns.length, streaming]);
@@ -83,7 +87,7 @@ export function AskPanel(props: {
         return;
       }
     } else {
-      candidates = retrieve(scoped(props.papers, scope, props.inView), props.texts, query);
+      candidates = retrieve(chosen, props.texts, query);
     }
     if (named.length) {
       const own = mentionedPassages(named, props.texts, query);
@@ -99,9 +103,9 @@ export function AskPanel(props: {
       setError(
         literature
           ? "OpenAlex found no papers with an abstract for those words. Try other terms."
-          : scope.kind === "all"
-            ? "Nothing in your library mentions those words. Try other terms, or read the PDFs for search first."
-            : "None of the chosen papers mention those words. Try other terms, or choose more papers.",
+          : !chosen.length && !named.length
+            ? "Add a paper for Claude to read first, or type [[ to name one."
+            : "None of the chosen papers mention those words. Try other terms, or add more papers.",
       );
       return;
     }
@@ -189,7 +193,7 @@ export function AskPanel(props: {
   return (
     <div class="work ask-panel" aria-label={literature ? "Ask beyond your library" : "Ask your library"} onClick={onClick}>
         {!turns.length && (
-          <ScopePicker papers={props.papers} inView={props.inView} viewLabel={props.viewLabel} value={scope} onChange={pickScope} literature />
+          <ScopePicker papers={props.papers} value={scope} onChange={pickScope} literature />
         )}
         {!turns.length && literature && (
           <p class="muted">
@@ -199,11 +203,11 @@ export function AskPanel(props: {
         )}
         {!turns.length && !literature && (
           <p class="muted">
-            Claude answers from the {scope.kind === "all" ? "papers in your library" : "chosen papers"} and cites the page each point comes from.
+            Claude answers from the papers you add and cites the page each point comes from.
             {" "}Type [[ to name a paper; it is read whatever else is found.
-            {props.unindexed > 0 && (
+            {unread > 0 && (
               <>
-                {" "}{props.unindexed} PDF{props.unindexed > 1 ? "s haven't" : " hasn't"} been read yet, so only {props.unindexed > 1 ? "their" : "its"} abstract counts.{" "}
+                {" "}{unread} PDF{unread > 1 ? "s haven't" : " hasn't"} been read yet, so only {unread > 1 ? "their" : "its"} abstract counts.{" "}
                 <button class="link" onClick={props.onIndex}>Read them now</button>
               </>
             )}

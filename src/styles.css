@@ -802,19 +802,18 @@ details.guide ul { margin-top: 8px; }
 .picker-list li.on, .picker-list li:hover { background: var(--accent-soft); }
 
 /* Which papers a tool works on */
-.scope { margin: 6px 0 10px; }
-.scope-row { display: flex; align-items: center; gap: 8px; }
-.scope-row select { flex: 1; min-width: 0; font-size: 14px; }
-.scope p.small { margin: 6px 0 0; }
-.scope-pick { margin-top: 8px; }
-.scope-pick-head { display: flex; align-items: center; gap: 8px; }
-.scope-pick-head input { flex: 1; min-width: 0; }
-.scope-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 30vh; overflow: auto; border-top: 1px solid var(--line); overscroll-behavior: contain; }
-.scope-list li { border-bottom: 1px solid var(--line); }
-.scope-list label { display: flex; align-items: baseline; gap: 8px; padding: 6px 2px; cursor: pointer; }
-.scope-list input[type="checkbox"] { width: auto; flex: none; margin: 0; align-self: center; }
-.scope-list .title { flex: 1; min-width: 0; font: 500 14.5px/1.35 var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scope-list .small { flex: none; }
+.scope { margin: 6px 0 10px; display: grid; gap: 8px; }
+.scope p.small { margin: 0; }
+.scope-kind { display: flex; flex-wrap: wrap; gap: 6px; }
+.scope-kind button { font-size: 13.5px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
+.scope-kind button.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.scope-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.scope-chips .chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
+.scope-chips .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scope-chips .chip-x { border: 0; background: transparent; padding: 6px; margin: -6px -8px -6px -2px; color: var(--muted); display: inline-flex; cursor: pointer; }
+.scope-add { position: relative; }
+.scope-add input { width: 100%; }
+.scope-add .scope-found { position: static; margin-top: 4px; box-shadow: none; max-height: 40vh; }
 
 /* Compare papers */
 .compare-panel { display: flex; flex-direction: column; }

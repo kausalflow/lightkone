@@ -834,7 +834,7 @@ export function App() {
   ].filter((t) => t.show) as Tool[];
   const commands: Command[] = [
     ...(storage && !readOnly ? [{ id: "add", group: "Actions", label: "Add paper", icon: "plus", keywords: "new import arxiv doi bibtex", run: () => setPanel("add") } as Command] : []),
-    ...(hasPapers ? [{ id: "ask", group: "Actions", label: "Ask your library", icon: "sparkle", keywords: "question claude ai", run: () => openChats({ start: { mode: "ask" } }) } as Command] : []),
+    ...(hasPapers ? [{ id: "ask", group: "Actions", label: "Ask about papers", icon: "sparkle", keywords: "question claude ai", run: () => openChats({ start: { mode: "ask" } }) } as Command] : []),
     ...(hasPapers
       ? ([
           ["table", "Compare papers in a table", "extract columns csv methods results"],
@@ -925,7 +925,7 @@ export function App() {
           <button class="icon-btn" onClick={() => openChats()} disabled={!historyStore} title="Chats: every conversation with Claude, by paper" aria-label="Chats">
             <Icon name="chat" />
           </button>
-          <button class="ask-btn" onClick={() => openChats({ start: { mode: "ask" } })} disabled={!library.papers.length} title={`Ask a question across your library (${MOD}J asks about the paper in front of you)`}>
+          <button class="ask-btn" onClick={() => openChats({ start: { mode: "ask" } })} disabled={!library.papers.length} title={`Ask a question about papers you choose (${MOD}J asks about the paper in front of you)`}>
             <Icon name="sparkle" />
             <span class="label">Ask</span>
           </button>
