@@ -89,6 +89,15 @@ describe("entryToDraft", () => {
     expect(abbott.doi).toBe("10.1103/PhysRevLett.116.061102");
     expect(abbott.authors).toEqual(["Abbott, B. P.", "LIGO Scientific Collaboration"]);
   });
+
+  it("takes the venue from the first of journal, booktitle, publisher that is not empty", () => {
+    const venue = (fields: string) => parseBibtex(`@inproceedings{k, title={T}, ${fields}}`).map(entryToDraft)[0];
+    expect(venue("journal={}, booktitle={NeurIPS}").venue).toBe("NeurIPS");
+    expect(venue("journal={ }, booktitle={}, publisher={MIT Press}").venue).toBe("MIT Press");
+    expect(venue("journal={JMLR}, booktitle={NeurIPS}").venue).toBe("JMLR");
+    expect(venue("journal={JMLR}, booktitle={NeurIPS}").fields).toMatchObject({ booktitle: "NeurIPS" });
+    expect(venue("journal={}").venue).toBeUndefined();
+  });
 });
 
 describe("round trip", () => {
