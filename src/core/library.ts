@@ -35,6 +35,9 @@ export function makeKey(d: PaperDraft, taken: Set<string>): string {
 const parseFile = (raw: string): LibraryFile => {
   const file = JSON.parse(raw) as LibraryFile;
   if (file.format !== "lightkone-library") throw new Error("lightkone/library.json is not a Lightkone library.");
+  // A newer lightkone may store things this one would drop on save, so it does not open the file at all.
+  if (typeof file.version === "number" && file.version > 1)
+    throw new Error(`lightkone/library.json was saved by a newer Lightkone (format version ${file.version}). Update Lightkone to open it.`);
   return file;
 };
 

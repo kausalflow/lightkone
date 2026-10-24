@@ -75,6 +75,14 @@ describe("search", () => {
     expect(JSON.parse(new TextDecoder().decode(storage.files.get(LIBRARY_PATH)!)).papers).toHaveLength(2);
   });
 
+  it("does not open a library saved by a newer lightkone, and writes nothing", async () => {
+    const storage = memoryStorage();
+    const stored = JSON.stringify({ format: "lightkone-library", version: 2, papers: [] });
+    await storage.write(LIBRARY_PATH, stored);
+    await expect(new Library(storage).load()).rejects.toThrow(/newer Lightkone \(format version 2\)/);
+    expect(new TextDecoder().decode(storage.files.get(LIBRARY_PATH)!)).toBe(stored);
+  });
+
   it("keeps top-level keys of library.json it does not know", async () => {
     const storage = memoryStorage();
     const stored = { format: "lightkone-library", version: 1, papers: [], exportedBy: { tool: "a sync script", at: 3 } };

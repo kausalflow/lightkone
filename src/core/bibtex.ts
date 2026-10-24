@@ -158,7 +158,10 @@ export function entryToDraft(entry: BibEntry): PaperDraft {
   const authors = splitAuthors(take("author") ?? take("editor") ?? "");
   const yearRaw = take("year");
   const year = yearRaw && /\d{4}/.test(yearRaw) ? Number(yearRaw.match(/\d{4}/)![0]) : undefined;
-  const venue = plain(take("journal") ?? take("booktitle") ?? f.publisher ?? "") || undefined;
+  // The first of journal, booktitle, publisher that says something: an empty journal = {} does not hide the booktitle.
+  let venue = plain(take("journal") ?? "");
+  if (!venue) venue = plain(take("booktitle") ?? "");
+  if (!venue) venue = plain(f.publisher ?? "");
   const abstract = take("abstract");
   const doi = take("doi")?.replace(/^https?:\/\/(dx\.)?doi\.org\//i, "");
   const url = take("url");
@@ -187,7 +190,7 @@ export function entryToDraft(entry: BibEntry): PaperDraft {
     title,
     authors,
     year,
-    venue,
+    venue: venue || undefined,
     abstract: abstract ? plain(abstract) : undefined,
     doi: doi || undefined,
     arxiv: arxiv?.replace(/^arxiv:/i, "").replace(/v\d+$/, "") || undefined,
