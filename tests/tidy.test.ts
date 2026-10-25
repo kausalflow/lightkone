@@ -26,6 +26,16 @@ describe("duplicates", () => {
     expect(findDuplicates([a, b, c, d])).toEqual([]);
   });
 
+  it("handles papers with no authors or tags (#54)", () => {
+    // A hand-edited or imported library.json can leave these keys out.
+    const a = paper({ title: "Impr", authors: undefined, tags: undefined });
+    const b = paper({ title: "Impr", authors: [], tags: undefined });
+    expect(findDuplicates([a])).toEqual([]);
+    const groups = findDuplicates([a, b]);
+    expect(groups.map((g) => g.map((p) => p.id))).toEqual([[a.id, b.id]]);
+    expect(mergeInto(a, [b]).tags).toEqual([]);
+  });
+
   it("keeps the copy with a PDF and gathers everything else into it", () => {
     const old = paper({ title: "T", added: "2020-01-01T00:00:00Z", tags: ["rg"], folders: ["Physics"], notes: "first", abstract: "abs" });
     const withPdf = paper({ title: "T", added: "2024-01-01T00:00:00Z", pdf: "papers/x.pdf", tags: ["ml"], notes: "second", starred: true, fields: { pages: "1-2" } });

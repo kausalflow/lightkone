@@ -6,7 +6,7 @@ import { site } from "./site";
 // have since been published.
 
 const normTitle = (t: string) => t.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "");
-const firstAuthor = (p: Paper) => (p.authors[0] ?? "").split(",")[0].normalize("NFKD").toLowerCase().replace(/[^a-z]/g, "");
+const firstAuthor = (p: Paper) => ((p.authors ?? [])[0] ?? "").split(",")[0].normalize("NFKD").toLowerCase().replace(/[^a-z]/g, "");
 
 /**
  * Groups of papers that are probably the same: same DOI, same arXiv id, or the
@@ -51,7 +51,7 @@ export function pickKeeper(group: Paper[]): Paper {
 export function mergeInto(keep: Paper, others: Paper[]): Partial<Paper> {
   const all = [keep, ...others];
   const patch: Partial<Paper> = {
-    tags: [...new Set(all.flatMap((p) => p.tags))],
+    tags: [...new Set(all.flatMap((p) => p.tags ?? []))],
     folders: [...new Set(all.flatMap((p) => p.folders ?? []))],
     notes: [...new Set(all.map((p) => p.notes?.trim()).filter(Boolean))].join("\n\n") || undefined,
     starred: all.some((p) => p.starred) || undefined,
