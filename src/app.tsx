@@ -22,7 +22,7 @@ import { s2Id } from "./core/citedby";
 import { STAGING } from "./core/version";
 import { ChatsPanel, type Start } from "./ChatsPanel";
 import { dockSize, useWide, type Place } from "./PanelFrame";
-import { browserHistoryStore, dayLabel, KINDS, loadHistory, newConversationId, organizeConversation, removeConversation, saveConversation, titleOf, type Conversation, type Entry, type Organize } from "./core/history";
+import { browserHistoryStore, chatsAbout, dayLabel, joinChat, KINDS, loadConversation, loadHistory, newConversationId, organizeConversation, removeConversation, saveConversation, titleOf, type Conversation, type Entry, type Organize, type Part } from "./core/history";
 import { savedLabel, setAnswerStore } from "./core/answers";
 import { chooseStyle, chosenStyles, findStyles, formatBibliography, styleIndex, type CslStyle } from "./core/csl";
 import { CitationMap } from "./CitationMap";
@@ -700,9 +700,7 @@ export function App() {
       setResultConv(null);
       // What Claude says about a paper is kept in Chats, where it can be followed up.
       // A saved summary is already in Chats: open that one rather than listing it twice.
-      const kept = r.kind === "text" && r.saved ? conversations.find((e) => e.kind === "paper" && e.papers.includes(p.id) && e.title === `Summary of ${p.title}`) : undefined;
-      if (kept) setResultConv(kept.id);
-      else if (r.kind === "text" && action.plugin === "claude") {
+      if (r.kind === "text" && action.plugin === "claude") {
         const now = new Date().toISOString();
         const c: Conversation = {
           id: newConversationId(),
@@ -715,8 +713,8 @@ export function App() {
           turns: [{ role: "user", text: r.title === "Summary" ? "Summarize this paper." : r.title }, { role: "assistant", text: r.text }],
           paperId: p.id,
         };
-        record(c);
-        setResultConv(c.id);
+        // Joins the paper's running chat; the same summary already there isn't added again.
+        joinPaperChat(c, setResultConv);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -791,6 +789,35 @@ export function App() {
     historyQueue.current = historyQueue.current
       .then(() => saveConversation(historyStore, c))
       .then(setConversations, (e) => setError(`Could not keep this chat: ${(e as Error).message}`));
+  }
+  // Summaries and explanations join the paper's running chat, so talk about a paper is one conversation that carries on.
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
+  const joined = useRef(new Map<string, Part>());
+  function joinPaperChat(c: Conversation, shown?: (chatId: string) => void) {
+    if (!historyStore || !c.paperId) return record(c);
+    const store = historyStore;
+    const paperId = c.paperId;
+    historyQueue.current = historyQueue.current
+      .then(async () => {
+        const part = joined.current.get(c.id);
+        const id = part?.chat ?? chatsAbout(conversationsRef.current, paperId)[0]?.id;
+        const run = id ? await loadConversation(store, id).catch(() => null) : null;
+        if (!run) {
+          // The first word about this paper starts its running chat.
+          joined.current.set(c.id, { chat: c.id, start: 0, len: c.turns.length });
+          shown?.(c.id);
+          return saveConversation(store, { ...c, kind: "paper" });
+        }
+        // The picture went to Claude once; the chat keeps the words.
+        const turns = c.turns.map((t) => ({ ...t, text: t.text.replace("\n\nThe picture shows the same part of the page as typeset.", "") }));
+        const j = joinChat(run, turns, c.updated, part);
+        shown?.(run.id);
+        if (!j) return null;
+        joined.current.set(c.id, j.part);
+        return saveConversation(store, j.conv);
+      })
+      .then((es) => es && setConversations(es), (e) => setError(`Could not keep this chat: ${(e as Error).message}`));
   }
   function forget(id: string) {
     if (!historyStore) return;
@@ -1255,7 +1282,7 @@ export function App() {
           onClose={() => setReading(null)}
           onError={setError}
           onText={(id, text) => textIndex?.add(id, text).then(() => setTextVersion((v) => v + 1))}
-          onRecord={record}
+          onRecord={(c) => (c.kind === "explain" ? joinPaperChat(c) : record(c))}
           chat={{
             entries: conversations,
             history: historyStore,

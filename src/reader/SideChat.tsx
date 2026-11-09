@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Paper, StorageAdapter } from "../core/types";
-import { dayLabel, loadConversation, titleOf, type Conversation, type Entry } from "../core/history";
+import { chatsAbout, dayLabel, loadConversation, titleOf, type Conversation, type Entry } from "../core/history";
+
+export { chatsAbout };
 import { PaperChat } from "../PaperChat";
 import { Icon } from "../icons";
 
@@ -18,13 +20,6 @@ export interface ReaderChatProps {
   onChats(at: { open?: string; paperId?: string }): void;
   /** A citation to another paper was tapped. */
   onOpenPaper(paperId: string, page: number): void;
-}
-
-/** The chats about one paper, newest first: those started from it, and explanations of its passages. */
-export function chatsAbout(entries: Entry[], paperId: string): Entry[] {
-  return entries
-    .filter((e) => (e.kind === "paper" || e.kind === "explain") && e.papers[0] === paperId)
-    .sort((a, b) => b.updated.localeCompare(a.updated));
 }
 
 /**
@@ -53,8 +48,9 @@ export function SideChat(props: ReaderChatProps & {
   const [seed, setSeed] = useState(props.seed);
   useEffect(() => setSeed(props.seed), [props.seed?.n]);
 
-  function pick(id: string) {
-    setSeed(undefined);
+  function pick(id: string, keepSeed = false) {
+    if (!keepSeed) setSeed(undefined);
+    started.current = false;
     setCurrent(id);
     setConv(null);
     setState(id === "new" ? "ready" : "loading");
@@ -74,7 +70,22 @@ export function SideChat(props: ReaderChatProps & {
     };
   }, [current, n]);
 
+  // A summary or an explanation joined this paper's running chat: show it, unless Claude is answering here.
+  const busy = useRef(false);
+  const fresh = mine.find((e) => e.id === current);
+  useEffect(() => {
+    if (busy.current) return;
+    if (current === "new" && !started.current && mine[0]) return pick(mine[0].id, true);
+    if (fresh && conv && fresh.updated > conv.updated) {
+      setConv(null);
+      setState("loading");
+      setN((x) => x + 1);
+    }
+  }, [fresh?.updated, mine[0]?.id]);
+  const started = useRef(false);
+
   function record(c: Conversation) {
+    started.current = true;
     props.onRecord(c);
     setConv(c);
     setCurrent(c.id);
@@ -120,6 +131,7 @@ export function SideChat(props: ReaderChatProps & {
           autoFocus={props.autoFocus}
           pdfOf={async () => props.pdf()}
           onRecord={record}
+          onBusy={(b) => (busy.current = b)}
           onOpen={(id, page) => (id === props.paper.id ? props.onPage(page) : props.onOpenPaper(id, page))}
         />
       )}
