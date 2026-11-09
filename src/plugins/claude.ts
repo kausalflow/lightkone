@@ -283,6 +283,36 @@ export async function triageDraft(settings: Record<string, string>, sentences: s
   return textOf(response.content);
 }
 
+const STANCE =
+  SYSTEM +
+  " The researcher gives a paper and numbered passages from later papers that cite it. For each, say what the citing paper does " +
+  'with it: "supports" when it confirms, reproduces, builds on or agrees with the paper\'s result or method; "contrasts" when it ' +
+  'disputes, fails to reproduce, finds a different value, or points out a limitation or error; "mentions" when it only cites it as ' +
+  "background, for a definition, or among others. Judge from the passage alone; when it is unclear, say mentions. Add a note of a " +
+  "few words on what the citing paper does with it, e.g. \"uses its estimator\", \"finds a 2σ lower value\". " +
+  'Reply with only a JSON array, no other text: [{"n": 1, "stance": "mentions", "note": ""}].';
+
+/** What later papers do with a paper, from the sentences that cite it, as Claude reads them. */
+export async function sortCitations(settings: Record<string, string>, paper: Paper, citations: string, signal?: AbortSignal): Promise<string> {
+  const client = await clientFor(settings);
+  const response = await client.beta.messages.create(
+    {
+      model: settings["claude.model"] || DEFAULT_MODEL,
+      max_tokens: 16000,
+      system: STANCE,
+      output_config: { effort: "low" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages: [{ role: "user", content: `<paper>\n${describe(paper)}\n</paper>\n\n<citations>\n${citations}\n</citations>` }],
+    },
+    { signal },
+  );
+  if (response.stop_reason === "refusal") {
+    throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
+  }
+  return textOf(response.content);
+}
+
 const FIND =
   "Identify the one research paper the researcher means, using web search and by fetching the page if they gave a link. " +
   "Reply with only a JSON object, no other text: " +

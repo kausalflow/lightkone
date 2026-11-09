@@ -17,6 +17,8 @@ import { QuestionDialog, type Question } from "./QuestionDialog";
 import { byUse, ChipPicker } from "./ChipPicker";
 import { OfflinePanel } from "./OfflinePanel";
 import { WritingPanel } from "./WritingPanel";
+import { CitedByPanel } from "./CitedByPanel";
+import { s2Id } from "./core/citedby";
 import { STAGING } from "./core/version";
 import { ChatsPanel, type Start } from "./ChatsPanel";
 import { dockSize, useWide, type Place } from "./PanelFrame";
@@ -120,6 +122,7 @@ export function App() {
   const [readingWeb, setReadingWeb] = useState<string | null>(null);
   const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | "offline" | null>(null);
   const [writingTab, setWritingTab] = useState<"draft" | "cite" | "bib">("draft");
+  const [citedBy, setCitedBy] = useState<string | null>(null);
   // Chats: every conversation with Claude, gathered by paper, in one panel.
   const [conversations, setConversations] = useState<Entry[]>([]);
   // Chats open as a window, or snapped to the right or bottom edge to stay beside your papers.
@@ -510,7 +513,7 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (panel || modalTool || welcome || tidying || syncing !== null || reading || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (panel || citedBy || modalTool || welcome || tidying || syncing !== null || reading || e.metaKey || e.ctrlKey || e.altKey) return;
       if (t.closest("input, textarea, select, [contenteditable]")) return;
       if (e.key === "/") {
         e.preventDefault();
@@ -533,7 +536,7 @@ export function App() {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [visible, selected, panel, modalTool, welcome, tidying, syncing, reading]);
+  }, [visible, selected, panel, citedBy, modalTool, welcome, tidying, syncing, reading]);
 
   // Ctrl/⌘ J starts a chat about the paper in front of you, from anywhere, the reader too.
   useEffect(() => {
@@ -1223,6 +1226,7 @@ export function App() {
             setReadingWeb(paper.id);
           }}
           onAdd={(d) => addDrafts([d]).length > 0}
+          onCitedBy={s2Id(paper) ? () => setCitedBy(paper.id) : undefined}
           onError={setError}
           scheduleSave={scheduleSave}
           others={otherLibraries()}
@@ -1321,6 +1325,18 @@ export function App() {
           onIndex={() => { if (!indexing) indexPdfs(); }}
           onAdd={(d) => addDrafts([d]).length > 0}
           pdfOf={async (p) => (p.pdf && storage ? storage.read(p.pdf).catch(() => null) : null)}
+        />
+      )}
+
+      {citedBy && library.papers.find((q) => q.id === citedBy) && (
+        <CitedByPanel
+          paper={library.papers.find((q) => q.id === citedBy)!}
+          papers={library.papers}
+          settings={settings}
+          hidden={Boolean(reading)}
+          onAdd={(d) => addDrafts([d]).length > 0}
+          onOpen={(id) => { setCitedBy(null); setSelected(id); }}
+          onClose={() => setCitedBy(null)}
         />
       )}
 
@@ -1657,6 +1673,8 @@ function Detail(props: {
   onSavePage?(): void;
   onReadPage(): void;
   onAdd(d: PaperDraft): boolean;
+  /** Show the sentences in later papers that cite it; undefined when it has no DOI or arXiv id. */
+  onCitedBy?(): void;
   onError(msg: string): void;
   scheduleSave(): void;
   /** Other libraries this paper can be copied to. */
@@ -1790,6 +1808,11 @@ function Detail(props: {
               <option value="-">Copy to…</option>
               {props.others.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
+          )}
+          {props.onCitedBy && (
+            <button onClick={props.onCitedBy} title="The sentences in later papers that cite this one, from Semantic Scholar">
+              <Icon name="chat" /> How others cite this
+            </button>
           )}
           {available.map((a) => {
             const icon = actionIcon(a.plugin);

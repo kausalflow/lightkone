@@ -65,6 +65,12 @@ const plugin: LightkonePlugin = {
       type: "password",
       help: "Free from openalex.org. Without one, the citation map shares OpenAlex's daily budget with everyone on your network.",
     },
+    {
+      name: "s2Key",
+      label: "Semantic Scholar API key (optional)",
+      type: "password",
+      help: "Free from semanticscholar.org/product/api. Without one, How others cite this shares Semantic Scholar's limit for anonymous use.",
+    },
   ],
   actions: [
     {
