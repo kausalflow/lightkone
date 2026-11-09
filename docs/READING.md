@@ -21,10 +21,31 @@ Select text on a page, then tap:
   equation, in the context of the whole paper. It sees the PDF and a picture
   of what you selected, takes follow-up questions, and can keep its answer as
   the highlight's note.
+- **Ask** (with a Claude key) to put the passage in the chat beside the
+  page, and ask your own question about it.
 
 Tap a highlight to edit its note or delete it. Highlights are saved in
 `lightkone/annotations/<paper id>.json` next to the library, as plain JSON,
 and never inside the PDF, so the file stays as published.
+
+## The side panel: notes and chat
+
+The panel button at the top right of the reader opens a side panel beside
+the pages, with two tabs:
+
+- **Notes** lists your highlights and their notes. Tap one to go to it;
+  **Export as Markdown** or **Copy** takes them all.
+- **Chat** is a chat with Claude about the paper you are reading. It carries
+  on your latest chat about the paper, or starts a new one (**+**); the list
+  at the top switches between the paper's chats. Claude reads the whole PDF
+  with each question, and a page it cites scrolls the paper there. Every chat
+  is kept with your other chats, under the paper, in `lightkone/history/`
+  (in a shared or read-only library, in this browser only). The chat button
+  opens it in Chats, to rename, pin or bring in other papers.
+
+On a phone the panel is a sheet over the lower half of the screen, so the
+page stays in view above it; the arrow makes it taller, and it moves up above
+the keyboard while you type. Lightkone remembers which tab you used last.
 
 The paper's own **Notes** box (in its details) is for notes on the whole
 paper. It is searched along with everything else.
