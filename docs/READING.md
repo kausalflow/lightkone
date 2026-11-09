@@ -51,7 +51,7 @@ the pages, with two tabs:
   (in a shared or read-only library, in this browser only). The chat button
   opens it in Chats, to rename, pin or bring in other papers.
 
-On a phone the panel is a sheet over the lower half of the screen, so the
+On a computer, the three panel buttons next to the close button snap the panel to the right, the left or below the page, and the fourth floats it over the page as a window: drag its tab bar to move it and its bottom-right corner to resize it. Drag its inner edge to make it wider or narrower (taller or shorter below the page), or focus the edge and use the arrow keys; Lightkone remembers the place and the size for each place, and a double-click on the edge goes back to the default size. On a phone the panel is a sheet over the lower half of the screen, so the
 page stays in view above it; the arrow makes it taller, and it moves up above
 the keyboard while you type. Lightkone remembers which tab you used last.
 

@@ -19,13 +19,25 @@ import "./reader.css";
 
 const decoder = new TextDecoder();
 const SIDE_KEY = "lightkone.reader.side";
+const DOCK_KEY = "lightkone.reader.dock";
+const SIZE_KEY = "lightkone.reader.size";
+/** Where the side panel snaps on a wide screen. */
+type Dock = "right" | "left" | "bottom" | "float";
+const DOCKS: readonly Dock[] = ["right", "left", "bottom", "float"];
+/** A floating panel's place and size, in px from the top left of the reader's body. */
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 /** What the reader's side panel can show; more can join later. */
 type Side = "notes" | "chat";
 
 function remembered<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {
   try {
     const v = localStorage.getItem(key) as T | null;
-    return v && allowed.includes(v) ? v : fallback;
+    return v && (!allowed.length || allowed.includes(v)) ? v : fallback;
   } catch {
     return fallback;
   }
@@ -95,6 +107,109 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
   useEffect(() => view.current?.setDark(dark), [dark]);
   // The pages fit the room left beside the side panel.
   useEffect(() => view.current?.layout(), [sideOpen]);
+
+  // On a wide screen the side panel snaps to the right, left or bottom of the page,
+  // and is as wide (or tall) as you drag it; both remembered on this device.
+  const [dock, setDock] = useState<Dock>(() => remembered<Dock>(DOCK_KEY, "right", DOCKS));
+  const [sizes, setSizes] = useState<Record<Dock, number>>(() => {
+    const out = { right: 0, left: 0, bottom: 0, float: 0 };
+    for (const d of DOCKS) out[d] = Number(remembered(`${SIZE_KEY}.${d}`, "", [] as string[])) || 0;
+    return out;
+  });
+  const size = sizes[dock];
+  const across = dock === "bottom" ? () => innerHeight : () => innerWidth;
+  const clamp = (n: number) => Math.round(Math.max(dock === "bottom" ? 160 : 280, Math.min(n, across() - (dock === "bottom" ? 200 : 320))));
+  function setSize(n: number, keep = true) {
+    setSizes((x) => ({ ...x, [dock]: n }));
+    if (keep) remember(`${SIZE_KEY}.${dock}`, n ? String(n) : "");
+  }
+  // Floating: dragged by its tab bar anywhere over the page, resized from its corner.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState<Box | null>(() => {
+    try {
+      const b = JSON.parse(remembered(`${SIZE_KEY}.float`, "", [] as string[]) || "null") as Box | null;
+      return b && [b.x, b.y, b.w, b.h].every(Number.isFinite) ? b : null;
+    } catch {
+      return null;
+    }
+  });
+  function fit(b: Box): Box {
+    const r = bodyRef.current?.getBoundingClientRect();
+    const W = r?.width ?? innerWidth;
+    const H = r?.height ?? innerHeight;
+    const w = Math.max(280, Math.min(b.w, W - 16));
+    const h = Math.max(200, Math.min(b.h, H - 16));
+    return { w, h, x: Math.max(8, Math.min(b.x, W - w - 8)), y: Math.max(8, Math.min(b.y, H - h - 8)) };
+  }
+  const floatBox = (): Box => {
+    const r = bodyRef.current?.getBoundingClientRect();
+    const W = r?.width ?? innerWidth;
+    const H = r?.height ?? innerHeight;
+    return fit(box ?? { w: 420, h: Math.round(H * 0.7), x: W - 440, y: 24 });
+  };
+  function dragFloat(e: PointerEvent, how: "move" | "size") {
+    if (dock !== "float" || narrow()) return;
+    if (how === "move" && (e.target as HTMLElement).closest("button, input, select, textarea, [role=tab]")) return;
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const start = floatBox();
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let b = start;
+    const move = (ev: PointerEvent) => {
+      const dx = ev.clientX - x0;
+      const dy = ev.clientY - y0;
+      b = fit(how === "move" ? { ...start, x: start.x + dx, y: start.y + dy } : { ...start, w: start.w + dx, h: start.h + dy });
+      setBox(b);
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      remember(`${SIZE_KEY}.float`, JSON.stringify(b));
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  }
+
+  function snap(d: Dock) {
+    setDock(d);
+    remember(DOCK_KEY, d);
+    requestAnimationFrame(() => view.current?.layout());
+  }
+  useEffect(() => view.current?.layout(), [dock]);
+  function startResize(e: PointerEvent) {
+    if (narrow()) return;
+    e.preventDefault();
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    let n = size;
+    const move = (ev: PointerEvent) => {
+      n = clamp(dock === "right" ? innerWidth - ev.clientX : dock === "left" ? ev.clientX : innerHeight - ev.clientY);
+      setSize(n, false);
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      if (n) setSize(n);
+      view.current?.layout();
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  }
+  function nudgeSize(e: KeyboardEvent) {
+    const grow = { right: "ArrowLeft", left: "ArrowRight", bottom: "ArrowUp", float: "" }[dock];
+    const shrink = { right: "ArrowRight", left: "ArrowLeft", bottom: "ArrowDown", float: "" }[dock];
+    if (!grow || (e.key !== grow && e.key !== shrink)) return;
+    e.preventDefault();
+    const box = (e.currentTarget as HTMLElement).parentElement!.getBoundingClientRect();
+    setSize(clamp((dock === "bottom" ? box.height : box.width) + (e.key === grow ? 40 : -40)));
+    requestAnimationFrame(() => view.current?.layout());
+  }
 
   function showSide(s: Side) {
     setSide(s);
@@ -274,7 +389,7 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
         )}
       </header>
 
-      <div class="reader-body">
+      <div class={`reader-body dock-${dock}`} ref={bodyRef}>
         <div class="pdf-pages" ref={pagesRef}>
           {state === "loading" && <p class="muted center">Opening…</p>}
         </div>
@@ -282,10 +397,22 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
         {sideOpen && (
           <aside
             class={`reader-side ${tall ? "tall" : ""}`}
-            style={lift && narrow() ? { bottom: `${lift}px`, maxHeight: `calc(100dvh - ${lift}px - 56px)` } : undefined}
+            style={lift && narrow() ? { bottom: `${lift}px`, maxHeight: `calc(100dvh - ${lift}px - 56px)` } : narrow() ? undefined : dock === "float" ? (({ x, y, w, h }) => ({ left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` }))(floatBox()) : size ? (dock === "bottom" ? { height: `${clamp(size)}px` } : { width: `${clamp(size)}px` }) : undefined}
             aria-label={side === "chat" ? "Chat about this paper" : "Highlights and notes"}
           >
-            <div class="side-tabs" role="tablist">
+            <div
+              class="side-resize"
+              role="separator"
+              aria-orientation={dock === "bottom" ? "horizontal" : "vertical"}
+              aria-label="Resize the side panel"
+              title="Drag to resize"
+              tabIndex={0}
+              onPointerDown={startResize}
+              onKeyDown={nudgeSize}
+              onDblClick={() => { setSize(0); requestAnimationFrame(() => view.current?.layout()); }}
+            />
+            {dock === "float" && <div class="side-corner" aria-hidden="true" title="Drag to resize" onPointerDown={(e) => dragFloat(e, "size")} />}
+            <div class="side-tabs" role="tablist" onPointerDown={(e) => dragFloat(e, "move")}>
               <button role="tab" aria-selected={side === "notes"} class={side === "notes" ? "on" : ""} onClick={() => showSide("notes")}>
                 Notes{highlights.length ? <span class="badge">{highlights.length}</span> : ""}
               </button>
@@ -295,6 +422,20 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
                 </button>
               )}
               <span class="spacer" />
+              <span class="side-snap" role="group" aria-label="Where the panel sits">
+                {DOCKS.map((d) => (
+                  <button
+                    key={d}
+                    class={`icon-btn ${dock === d ? "on" : ""}`}
+                    aria-pressed={dock === d}
+                    aria-label={d === "float" ? "Float over the page" : `Snap to the ${d}`}
+                    title={d === "float" ? "Float over the page (drag the tab bar to move it)" : `Snap to the ${d}`}
+                    onClick={() => snap(d)}
+                  >
+                    <Icon name={d === "bottom" ? "dockBottom" : d === "float" ? "window" : "dockRight"} class={d === "left" ? "flip" : ""} />
+                  </button>
+                ))}
+              </span>
               <button class="icon-btn side-grow" onClick={() => setTall(!tall)} aria-label={tall ? "Show more of the page" : "Make the panel taller"} title={tall ? "Show more of the page" : "Taller"}>
                 <Icon name="chevron" class={tall ? "down" : "up"} />
               </button>

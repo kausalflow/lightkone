@@ -186,7 +186,10 @@
 
 /* The side panel: Notes and Chat, one at a time, beside the pages. */
 .reader-side {
-  width: min(400px, 42%);
+  position: relative;
+  width: min(440px, 42%);
+  min-width: 0;
+  flex: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -236,3 +239,45 @@
 .side-chat-long { border: 1px solid var(--line); border-left: 3px solid rgb(230 160 0); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--panel); }
 .side-chat-long p { margin: 0 0 6px; }
 .side-chat-long .row { margin: 0; gap: 6px; }
+
+/* The left edge drags to resize (wide screens); double-click goes back to the default. */
+.side-resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 3; touch-action: none; }
+.side-resize:hover, .side-resize:focus-visible { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); outline: none; }
+/* Answers wrap inside the panel; wide equations scroll on their own. */
+.side-chat { overflow-x: hidden; }
+.side-chat .paper-chat, .side-chat .ask-turns, .side-chat .answer { min-width: 0; max-width: 100%; }
+.side-chat .ask-turns { grid-template-columns: minmax(0, 1fr); }
+.side-chat .answer .katex-display, .side-chat .answer pre, .side-chat .answer table { max-width: 100%; overflow-x: auto; }
+@media (max-width: 860px) { .side-resize { display: none; } }
+/* Snapped left or below the page (wide screens; a phone always has the sheet). */
+.side-snap { display: inline-flex; gap: 0; margin-right: 4px; }
+.side-snap .icon-btn.on { color: var(--accent); background: var(--accent-soft); }
+.side-snap .icon.flip { transform: scaleX(-1); }
+@media (min-width: 861px) {
+  .reader-body.dock-left .reader-side { order: -1; border-left: 0; border-right: 1px solid var(--line); }
+  .reader-body.dock-left .side-resize { left: auto; right: -4px; }
+  .reader-body.dock-bottom { flex-direction: column; }
+  .reader-body.dock-bottom .reader-side { width: auto; height: min(42vh, 420px); border-left: 0; border-top: 1px solid var(--line); }
+  .reader-body.dock-bottom .side-resize { left: 0; right: 0; top: -4px; bottom: auto; width: auto; height: 8px; cursor: row-resize; }
+  .reader-body.dock-bottom .side-resize:hover, .reader-body.dock-bottom .side-resize:focus-visible { background: linear-gradient(180deg, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); }
+}
+@media (max-width: 860px) { .side-snap { display: none; } }
+/* The chat picker: a button and a plain list under it, quick to scan and tap. */
+.side-chat-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; justify-content: space-between; text-align: left; font-weight: 560; padding: 6px 10px; }
+.side-chat-pick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-chat-pick .icon.down { transform: rotate(90deg); flex: none; }
+.side-chat-list { list-style: none; margin: -2px 0 8px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); max-height: 50%; overflow: auto; flex: none; box-shadow: 0 6px 18px rgb(0 0 0 / 0.08); }
+.side-chat-list li { display: grid; gap: 2px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.side-chat-list li:hover { background: var(--sunken, var(--hover)); }
+.side-chat-list li.on { background: var(--accent-soft); }
+.side-chat-item-title { font: 560 14.5px/1.35 var(--serif); display: flex; align-items: center; gap: 4px; overflow-wrap: anywhere; }
+.side-chat-list .small { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* Floating over the page: a window moved by its tab bar, sized from its corner. */
+@media (min-width: 861px) {
+  .reader-body { position: relative; }
+  .reader-body.dock-float .reader-side { position: absolute; z-index: 15; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px rgb(0 0 0 / 0.22); overflow: hidden; }
+  .reader-body.dock-float .side-resize { display: none; }
+  .reader-body.dock-float .side-tabs { cursor: grab; touch-action: none; }
+  .reader-body.dock-float .side-tabs:active { cursor: grabbing; }
+  .side-corner { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; z-index: 4; touch-action: none; background: linear-gradient(135deg, transparent 50%, var(--line-strong, var(--line)) 50%, var(--line-strong, var(--line)) 60%, transparent 60%, transparent 70%, var(--line-strong, var(--line)) 70%, var(--line-strong, var(--line)) 80%, transparent 80%); }
+}

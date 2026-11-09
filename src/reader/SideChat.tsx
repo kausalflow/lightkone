@@ -93,6 +93,8 @@ export function SideChat(props: ReaderChatProps & {
 
   // Naming: the chat shown, or the new one before its first answer.
   const [naming, setNaming] = useState<string | null>(null);
+  // The list of this paper's chats, open under the picker.
+  const [listing, setListing] = useState(false);
   const pendingName = useRef<string | undefined>(undefined);
   // Chats whose length was noted and waved on, this session.
   const [waved, setWaved] = useState<Set<string>>(() => new Set());
@@ -142,14 +144,17 @@ export function SideChat(props: ReaderChatProps & {
           </form>
         ) : (
           <>
-            <select aria-label="Chat about this paper" value={current} onChange={(e) => pick(e.currentTarget.value)}>
-              <option value="new">{current === "new" && pendingName.current ? pendingName.current : "New chat"}</option>
-              {options.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {titleOf(e).slice(0, 70)} · {dayLabel(e.updated)}
-                </option>
-              ))}
-            </select>
+            <button
+              type="button"
+              class="side-chat-pick"
+              aria-haspopup="listbox"
+              aria-expanded={listing}
+              title="Switch chat"
+              onClick={() => setListing(!listing)}
+            >
+              <span class="side-chat-pick-name">{current === "new" ? pendingName.current || "New chat" : nameNow || "Chat"}</span>
+              <Icon name="chevron" class="down" size={14} />
+            </button>
             <button class="icon-btn" title="Name this chat" aria-label="Name this chat" onClick={() => setNaming(nameNow)}>
               <Icon name="edit" />
             </button>
@@ -167,6 +172,19 @@ export function SideChat(props: ReaderChatProps & {
           <Icon name="chat" />
         </button>
       </div>
+      {listing && (
+        <ul class="side-chat-list" role="listbox" aria-label="Chats about this paper">
+          <li role="option" aria-selected={current === "new"} class={current === "new" ? "on" : ""} onClick={() => { setListing(false); if (current !== "new") pick("new"); }}>
+            <span class="side-chat-item-title"><Icon name="plus" size={14} /> New chat</span>
+          </li>
+          {options.map((e) => (
+            <li key={e.id} role="option" aria-selected={e.id === current} class={e.id === current ? "on" : ""} onClick={() => { setListing(false); if (e.id !== current) pick(e.id); }}>
+              <span class="side-chat-item-title">{titleOf(e)}</span>
+              <span class="muted small">{dayLabel(e.updated)}{e.preview ? ` · ${e.preview.slice(0, 90)}` : ""}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       {state === "loading" && <p class="muted small">Opening…</p>}
       {state === "missing" && <p class="muted small">This chat could not be read. It may have been deleted on another device.</p>}
       {state === "ready" && (
