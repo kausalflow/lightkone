@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { ActionContext, LightkonePlugin, Paper, PaperDraft } from "../core/types";
 import { lookups } from "../core/plugins";
 import { loadSettings } from "../core/settings";
+import { withoutNumbers, type CitationLike, type CitedBlock, type Doc } from "../core/wholepdf";
 
 // AI on a paper with your own Anthropic API key. The key stays in this
 // browser and requests go straight to the Anthropic API. When the PDF is in
@@ -173,6 +174,8 @@ export interface LibraryTurn {
   text: string;
   /** New sources found for this question, numbered after the earlier ones. */
   sources?: string;
+  /** Papers read whole, first given to Claude with this question. */
+  docs?: Doc[];
 }
 
 /**
@@ -222,6 +225,89 @@ export async function askLibrary(
     throw new Error(`Claude declined this request${final.stop_details?.explanation ? `: ${final.stop_details.explanation}` : "."}`);
   }
   return final.stop_reason === "max_tokens" ? `${text}\n\n(The answer was cut off at the length limit.)` : text;
+}
+
+const WHOLE =
+  SYSTEM +
+  " The researcher has attached a few papers from their library, the whole PDFs, and asks about them. Read them in full, " +
+  "figures, tables and equations included, and answer from what they say. Back each point with a citation to the passage it " +
+  "comes from; the app shows those as numbers linked to the page, so do not write source numbers yourself. When the papers do " +
+  "not answer the question, or only part of it, say so plainly rather than filling in from memory. Compare papers where they " +
+  "agree or differ. Write mathematics in LaTeX between $...$ or $$...$$.";
+
+/** What a document is made from: the PDF when there is one to send, else the paper's title and abstract. */
+export interface WholeMaterial {
+  paper: Paper;
+  pdf?: Uint8Array | null;
+}
+
+/**
+ * A conversation about a few papers read whole, streamed. Each turn's new
+ * documents go before its question; the first turn's are cached, so
+ * follow-ups do not pay for the PDFs again. `onBlocks` gets the answer's text
+ * blocks with their citations as they arrive.
+ */
+export async function askWholePdfs(
+  settings: Record<string, string>,
+  turns: LibraryTurn[],
+  material: Map<string, WholeMaterial>,
+  onBlocks: (blocks: CitedBlock[]) => void,
+  signal?: AbortSignal,
+): Promise<{ blocks: CitedBlock[]; cut: boolean }> {
+  const client = await clientFor(settings);
+  const document = (d: Doc, last: boolean): Anthropic.Beta.BetaContentBlockParam => {
+    const m = material.get(d.paperId);
+    const p = m?.paper;
+    const title = p ? `${p.title}${p.year ? ` (${p.year})` : ""}` : "Unknown paper";
+    const cache = last ? { cache_control: { type: "ephemeral" as const } } : {};
+    if (d.kind === "pdf" && m?.pdf && m.pdf.length <= MAX_PDF_BYTES) {
+      return { type: "document", title, source: { type: "base64", media_type: "application/pdf", data: toBase64(m.pdf) }, citations: { enabled: true }, ...cache };
+    }
+    const text = p ? describe(p) : "This paper could not be read.";
+    return { type: "document", title, source: { type: "text", media_type: "text/plain", data: text }, citations: { enabled: true }, ...cache };
+  };
+  const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((t, i) => {
+    if (t.role === "assistant") return { role: "assistant", content: withoutNumbers(t.text) || "…" };
+    const docs = t.docs ?? [];
+    return { role: "user", content: [...docs.map((d, j) => document(d, i === 0 && j === docs.length - 1)), { type: "text", text: t.text }] };
+  });
+  const stream = client.beta.messages.stream(
+    {
+      model: settings["claude.model"] || DEFAULT_MODEL,
+      max_tokens: 16000,
+      system: WHOLE,
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages,
+    },
+    { signal },
+  );
+  // Text blocks by their index in the message; thinking blocks are left out.
+  const byIndex = new Map<number, CitedBlock>();
+  const blocks = () => [...byIndex.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1]);
+  for await (const event of stream) {
+    if (event.type === "content_block_start" && event.content_block.type === "text") {
+      byIndex.set(event.index, { text: event.content_block.text ?? "", citations: [...((event.content_block.citations ?? []) as CitationLike[])] });
+    } else if (event.type === "content_block_delta") {
+      const b = byIndex.get(event.index);
+      if (!b) continue;
+      if (event.delta.type === "text_delta") b.text += event.delta.text;
+      else if (event.delta.type === "citations_delta") b.citations.push(event.delta.citation as CitationLike);
+      else continue;
+      onBlocks(blocks());
+    }
+  }
+  const final = await stream.finalMessage();
+  if (final.stop_reason === "refusal") {
+    throw new Error(`Claude declined this request${final.stop_details?.explanation ? `: ${final.stop_details.explanation}` : "."}`);
+  }
+  // The final message is the record; what streamed was only for showing.
+  const done: CitedBlock[] = final.content
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+    .map((b) => ({ text: b.text, citations: (b.citations ?? []) as CitationLike[] }));
+  return { blocks: done, cut: final.stop_reason === "max_tokens" };
 }
 
 const SUPPORT =

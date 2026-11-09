@@ -29,6 +29,8 @@ export interface Turn {
   text: string;
   /** For Ask: the passages given with this question, as Claude read them. */
   sources?: string;
+  /** For Ask with whole PDFs: the papers first given with this question. */
+  docs?: { paperId: string; kind: "pdf" | "abstract" }[];
 }
 
 /** What the History panel lists: enough to find a conversation and the papers it touched. */

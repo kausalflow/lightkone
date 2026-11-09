@@ -1012,3 +1012,7 @@ details.guide ul { margin-top: 8px; }
 .citedby-meta .intent { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
 .citedby-paper .title { font-weight: 560; }
 .citedby-list .row { margin-top: 6px; }
+
+/* Ask with whole PDFs */
+.ask-panel label.ask-whole { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 2px; color: var(--text); }
+.ask-panel label.ask-whole input { width: 18px; height: 18px; margin: 2px 0 0; padding: 0; accent-color: var(--accent); flex: none; }

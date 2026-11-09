@@ -9,7 +9,8 @@ import { MentionBox, QuestionText } from "./MentionBox";
 import { mentionedPassages, mentionsAsNames, mentionsIn } from "./core/mentions";
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
-import { askLibrary, type LibraryTurn } from "./plugins/claude";
+import { askLibrary, askWholePdfs, type LibraryTurn, type WholeMaterial } from "./plugins/claude";
+import { citedAnswer, wholeSet, WHOLE_BYTES, WHOLE_MAX, type Doc } from "./core/wholepdf";
 import { Icon } from "./icons";
 
 /**
@@ -37,6 +38,8 @@ export function AskPanel(props: {
   onRecord(c: Conversation): void;
   /** Compare the papers an answer cites. */
   onCompare(ids: string[]): void;
+  /** A paper's PDF from storage, so a few papers can be read whole. */
+  pdfOf?(p: Paper): Promise<Uint8Array | null>;
 }) {
   const r = props.resume;
   const [scope, setScope] = useState<Scope>(() =>
@@ -58,6 +61,93 @@ export function AskPanel(props: {
   const hasKey = Boolean(props.settings["claude.apiKey"]);
   const chosen = useMemo(() => scoped(props.papers, scope, props.inView), [props.papers, scope, props.inView]);
   const unread = chosen.filter((p) => p.pdf && !props.texts.has(p.id)).length;
+  // A few papers with PDFs are read whole, unless that is turned off.
+  const [whole, setWhole] = useState(() => {
+    try {
+      return localStorage.getItem(WHOLE_KEY) !== "off";
+    } catch {
+      return true;
+    }
+  });
+  const canWhole = Boolean(props.pdfOf) && !literature && wholeSet(chosen) !== null;
+  const readingWhole = turns.length ? Boolean(turns[0].docs) : canWhole && whole;
+  const pdfs = useRef(new Map<string, Uint8Array | null>());
+
+  function pickWhole(on: boolean) {
+    setWhole(on);
+    try {
+      localStorage.setItem(WHOLE_KEY, on ? "on" : "off");
+    } catch {
+      // Remembered for this visit only.
+    }
+  }
+
+  /** The PDFs of the papers read whole, loaded once. */
+  async function load(ids: string[]): Promise<Map<string, WholeMaterial>> {
+    const out = new Map<string, WholeMaterial>();
+    for (const id of ids) {
+      const p = props.papers.find((x) => x.id === id);
+      if (!p) continue;
+      if (!pdfs.current.has(id)) pdfs.current.set(id, p.pdf && props.pdfOf ? await props.pdfOf(p).catch(() => null) : null);
+      out.set(id, { paper: p, pdf: pdfs.current.get(id) });
+    }
+    return out;
+  }
+
+  /** Ask about papers read whole: the first question picks them; later ones can name more. */
+  async function askWhole(q: string, named: Paper[]): Promise<boolean> {
+    const had = turns.flatMap((t) => t.docs ?? []);
+    let docs: Doc[];
+    if (!turns.length) {
+      const set = wholeSet(chosen, named);
+      if (!set) return false;
+      const material = await load(set.map((p) => p.id));
+      const bytes = [...material.values()].reduce((n, m) => n + (m.pdf?.length ?? 0), 0);
+      if (bytes > WHOLE_BYTES || [...material.values()].some((m) => !m.pdf)) return false;
+      docs = set.map((p) => ({ paperId: p.id, kind: "pdf" }));
+    } else {
+      const fresh = named.filter((p) => !had.some((d) => d.paperId === p.id));
+      let room = WHOLE_MAX - had.filter((d) => d.kind === "pdf").length;
+      docs = fresh.map((p) => ({ paperId: p.id, kind: p.pdf && room-- > 0 ? "pdf" : "abstract" }));
+    }
+    const all = [...had, ...docs];
+    const material = await load(all.map((d) => d.paperId));
+    const next: LibraryTurn[] = [...turns, { role: "user", text: q, docs: docs.length ? docs : undefined }];
+    const base = sources;
+    setTurns(next);
+    setQuestion("");
+    setStreaming("");
+    abort.current = new AbortController();
+    try {
+      const sent = next.map((t) => (t.role === "user" ? { ...t, text: mentionsAsNames(t.text, props.papers) } : t));
+      const show = (blocks: Parameters<typeof citedAnswer>[0]) => {
+        const r = citedAnswer(blocks, all, base);
+        setSources([...base, ...r.added]);
+        setStreaming(r.text);
+      };
+      const { blocks, cut } = await askWholePdfs(props.settings, sent, material, show, abort.current.signal);
+      const r = citedAnswer(blocks, all, base);
+      const answer = cut ? `${r.text}\n\n(The answer was cut off at the length limit.)` : r.text;
+      const allSources = [...base, ...r.added];
+      const done: LibraryTurn[] = [...next, { role: "assistant", text: answer }];
+      setSources(allSources);
+      setTurns(done);
+      record(done, allSources, outside);
+    } catch (err) {
+      if (abort.current.signal.aborted) return true;
+      const status = (err as { status?: number }).status;
+      if (!turns.length && (status === 400 || status === 413)) {
+        // Too many pages or bytes for one request: give the question back to ask from passages.
+        setTurns([]);
+        setSources(base);
+        setQuestion(q);
+        setError(`Claude could not take these PDFs whole (${(err as Error).message}). Untick “Read the whole PDFs” to ask from passages instead.`);
+      } else setError((err as Error).message);
+    } finally {
+      setStreaming(null);
+    }
+    return true;
+  }
 
   useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [turns.length, streaming]);
@@ -75,6 +165,11 @@ export function AskPanel(props: {
     let candidates: Source[];
     let more = outside;
     setError(null);
+    if (readingWhole || (!turns.length && canWhole && whole)) {
+      setStreaming("");
+      if (await askWhole(q, named)) return;
+      setStreaming(null);
+    }
     if (literature) {
       setStreaming("");
       try {
@@ -158,6 +253,7 @@ export function AskPanel(props: {
     // Library papers it drew on, and found papers it cited, so Chats can list them.
     const cites = new Set(done.filter((t) => t.role === "assistant").flatMap((t) => citedNumbers(t.text)));
     const named = new Set(done.filter((t) => t.role === "user").flatMap((t) => mentionsIn(t.text, props.papers).map((p) => p.id)));
+    for (const t of done) for (const d of t.docs ?? []) named.add(d.paperId);
     const used = all.filter((s) => cites.has(s.n) || named.has(s.paperId));
     props.onRecord({
       id: conv.current.id,
@@ -165,7 +261,7 @@ export function AskPanel(props: {
       title: mentionsAsNames(done[0].text, props.papers, false),
       created: conv.current.created,
       updated: now,
-      papers: [...new Set(used.map((s) => s.paperId).filter((id) => !far.has(id)))],
+      papers: [...new Set([...used.map((s) => s.paperId), ...done.flatMap((t) => (t.docs ?? []).map((d) => d.paperId))].filter((id) => !far.has(id)))],
       preview: "",
       turns: done,
       sources: all,
@@ -205,7 +301,16 @@ export function AskPanel(props: {
           <p class="muted">
             Claude answers from the papers you add and cites the page each point comes from.
             {" "}Type [[ to name a paper; it is read whatever else is found.
-            {unread > 0 && (
+            {canWhole && (
+              <label class="check ask-whole">
+                <input type="checkbox" checked={whole} onChange={(e) => pickWhole(e.currentTarget.checked)} />
+                <span>
+                  Read the whole PDFs ({chosen.length} {chosen.length > 1 ? "papers" : "paper"}), so Claude can use figures, tables and equations.
+                  {" "}<span class="muted small">Up to {WHOLE_MAX} papers. It costs more than passages; follow-ups reuse the PDFs from the cache.</span>
+                </span>
+              </label>
+            )}
+            {!readingWhole && unread > 0 && (
               <>
                 {" "}{unread} PDF{unread > 1 ? "s haven't" : " hasn't"} been read yet, so only {unread > 1 ? "their" : "its"} abstract counts.{" "}
                 <button class="link" onClick={props.onIndex}>Read them now</button>
@@ -253,7 +358,7 @@ export function AskPanel(props: {
             ),
           )}
           {streaming !== null && (
-            <div class="answer" aria-live="polite" dangerouslySetInnerHTML={{ __html: streaming ? render(streaming) : '<p class="muted">Reading the passages…</p>' }} />
+            <div class="answer" aria-live="polite" dangerouslySetInnerHTML={{ __html: streaming ? render(streaming) : `<p class="muted">${readingWhole ? "Reading the PDFs…" : "Reading the passages…"}</p>` }} />
           )}
           {error && <p class="error">{error}</p>}
           <div ref={bottom} />
@@ -281,6 +386,8 @@ export function AskPanel(props: {
     </div>
   );
 }
+
+const WHOLE_KEY = "lightkone.ask.whole";
 
 /** The source numbers an answer cites: [3], [2, 5]. */
 function citedNumbers(md: string): number[] {
