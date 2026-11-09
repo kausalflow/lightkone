@@ -1016,3 +1016,7 @@ details.guide ul { margin-top: 8px; }
 /* Ask with whole PDFs */
 .ask-panel label.ask-whole { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 2px; color: var(--text); }
 .ask-panel label.ask-whole input { width: 18px; height: 18px; margin: 2px 0 0; padding: 0; accent-color: var(--accent); flex: none; }
+
+/* Under an answer shown from the library rather than asked again. */
+.saved-note { margin: 4px 0 8px; }
+.saved-note .link { margin-left: 2px; }

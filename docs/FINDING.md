@@ -155,6 +155,22 @@ so they follow you across devices. In a shared library, or one you can only
 read, your chats stay in this browser instead, so the group never sees your
 questions.
 
+### Claude's answers are kept and reused
+
+Every answer Claude gives (a summary, an explanation, an answer in Ask or a
+paper chat, a row of a comparison table, a weighing, a review draft, the
+checks in Cite this and Cite my draft, the sorting in How others cite this)
+is kept in your storage, in `lightkone/answers/`, under a fingerprint of
+exactly what was sent: the model, the instructions, the question, and the
+passages or PDF. Ask for the same thing again, on any device, and the saved
+answer shows at once with a note saying when it was given; Claude is not
+asked, so it costs nothing. Anything that changes the request (a new PDF,
+other passages found, another model, other columns) asks Claude afresh.
+**Summarize again**, **Explain again**, **Ask again**, **Fill again**,
+**Weigh again** or **Write again** under a saved answer asks Claude anew and
+keeps the new answer in its place. In a shared or read-only library, answers
+are kept in this browser only, like your chats.
+
 ## New on arXiv
 
 **New on arXiv** ranks each day's preprints, in the categories your library
@@ -185,7 +201,9 @@ as *supporting* (confirms it, reproduces it, builds on it), *contrasting*
 (disputes it, finds a different value, points out a limitation) or
 *mentioning*, with a few words on what the citing paper does with it.
 Contrasting ones come first. Claude judges from the citing sentence alone,
-so open the paper before leaning on a verdict.
+so open the paper before leaning on a verdict. The sorting is kept in your
+storage (`lightkone/citedby/`), so it shows again the next time, on any
+device, and only citations that arrived since are left to sort.
 
 Semantic Scholar limits anonymous use; a free key under **Settings → Related
 papers** makes it steadier.

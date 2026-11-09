@@ -23,6 +23,7 @@ import { STAGING } from "./core/version";
 import { ChatsPanel, type Start } from "./ChatsPanel";
 import { dockSize, useWide, type Place } from "./PanelFrame";
 import { browserHistoryStore, dayLabel, KINDS, loadHistory, newConversationId, organizeConversation, removeConversation, saveConversation, titleOf, type Conversation, type Entry, type Organize } from "./core/history";
+import { savedLabel, setAnswerStore } from "./core/answers";
 import { chooseStyle, chosenStyles, findStyles, formatBibliography, styleIndex, type CslStyle } from "./core/csl";
 import { CitationMap } from "./CitationMap";
 import { FreshPanel } from "./FreshPanel";
@@ -666,7 +667,7 @@ export function App() {
     }
   }
 
-  async function runAction(id: string, p: Paper) {
+  async function runAction(id: string, p: Paper, fresh = false) {
     // Asking Claude about a paper is a chat, kept and carried on in Chats.
     if (id === "claude.ask") return openChats({ start: { mode: "ask", ids: [p.id] } });
     const action = actions().find((a) => `${a.plugin}.${a.id}` === id);
@@ -680,6 +681,7 @@ export function App() {
         storage,
         library: library.papers,
         open: (url) => window.open(url, "_blank", "noopener"),
+        fresh,
         ask: (title, placeholder) =>
           new Promise((resolve) => {
             setBusy(null);
@@ -697,7 +699,10 @@ export function App() {
       if (r.kind !== "none") setResult(r);
       setResultConv(null);
       // What Claude says about a paper is kept in Chats, where it can be followed up.
-      if (r.kind === "text" && action.plugin === "claude") {
+      // A saved summary is already in Chats: open that one rather than listing it twice.
+      const kept = r.kind === "text" && r.saved ? conversations.find((e) => e.kind === "paper" && e.papers.includes(p.id) && e.title === `Summary of ${p.title}`) : undefined;
+      if (kept) setResultConv(kept.id);
+      else if (r.kind === "text" && action.plugin === "claude") {
         const now = new Date().toISOString();
         const c: Conversation = {
           id: newConversationId(),
@@ -776,6 +781,8 @@ export function App() {
   useEffect(() => {
     setConversations([]);
     if (historyStore) loadHistory(historyStore).then(setConversations, () => {});
+    // Claude's answers are kept beside the chats, so the same request isn't paid for twice.
+    setAnswerStore(historyStore);
   }, [historyStore]);
   const historyQueue = useRef<Promise<unknown>>(Promise.resolve());
   function record(c: Conversation) {
@@ -1208,7 +1215,7 @@ export function App() {
             }
             scheduleSave();
           }}
-          onAction={(id) => runAction(id, paper)}
+          onAction={(id, fresh) => runAction(id, paper, fresh)}
           conversations={conversations.filter((e) => e.papers.includes(paper.id) || (Array.isArray(e.focus) && e.focus.includes(paper.id)))}
           resultConv={resultConv}
           onHistory={(at) => openChats(at.id ? { open: at.id } : at.paperId ? { paperId: at.paperId } : {})}
@@ -1666,7 +1673,7 @@ function Detail(props: {
   onClose(): void;
   onChange(patch: Partial<Paper>): void;
   onRemove(): void;
-  onAction(id: string): void;
+  onAction(id: string, fresh?: boolean): void;
   onRead(): void;
   onGetPdf?(): void;
   /** Save a copy of the paper's web page; undefined when it has none to save. */
@@ -1856,8 +1863,9 @@ function Detail(props: {
                   <Icon name="chat" size={14} /> Follow up in Chats
                 </button>
               )}
+              {props.result.saved && <span class="muted small" title="Shown from your library; Claude was not asked again">{savedLabel(props.result.saved).replace(/^s/, "S")}</span>}
               {props.result.again && props.lastAction && (
-                <button class="pill" onClick={() => props.onAction(props.lastAction!)}>
+                <button class="pill" onClick={() => props.onAction(props.lastAction!, true)}>
                   <Icon name="sparkle" size={14} /> {props.result.again}
                 </button>
               )}

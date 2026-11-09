@@ -7,6 +7,7 @@ import { newConversationId, type Conversation, type Turn } from "./core/history"
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
 import { chatAboutPaper } from "./plugins/claude";
+import { SavedNote } from "./SavedNote";
 
 /**
  * A conversation about one paper: Claude reads the whole PDF (or the
@@ -37,6 +38,9 @@ export function PaperChat(props: {
   const bottom = useRef<HTMLDivElement>(null);
   const math = useMath();
   const hasKey = Boolean(props.settings["claude.apiKey"]);
+  // The last answer, when it was a saved one; and how to ask for it afresh.
+  const [saved, setSaved] = useState<string | null>(null);
+  const again = useRef<(() => void) | null>(null);
 
   useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [turns.length, streaming]);
@@ -53,35 +57,46 @@ export function PaperChat(props: {
     setTurns(next);
     setQuestion("");
     setError(null);
-    setStreaming("");
-    abort.current = new AbortController();
-    try {
-      const sent = next.map((t) => (t.role === "user" ? { ...t, text: mentionsAsNames(t.text, props.papers) } : t));
-      const answer = await chatAboutPaper(props.settings, props.paper, await props.pdfOf(props.paper), sent, setStreaming, abort.current.signal);
-      const done: Turn[] = [...next, { role: "assistant", text: answer }];
-      setTurns(done);
-      const now = new Date().toISOString();
-      conv.current ??= { id: newConversationId(), created: now };
-      props.onRecord({
-        ...(r ?? {}),
-        id: conv.current.id,
-        created: conv.current.created,
-        kind: r?.kind ?? "paper",
-        title: r?.title ?? mentionsAsNames(q, props.papers, false),
-        updated: now,
-        papers: [...new Set([props.paper.id, ...all.map((x) => x.paperId)])],
-        preview: "",
-        turns: done,
-        sources: all.length ? all : undefined,
-        paperId: props.paper.id,
-        // A chat that brings in other papers belongs with that set of papers.
-        focus: all.length ? [...new Set([props.paper.id, ...all.map((x) => x.paperId)])] : r?.focus,
-      });
-    } catch (err) {
-      if (!abort.current.signal.aborted) setError((err as Error).message);
-    } finally {
-      setStreaming(null);
-    }
+    const run = async (fresh: boolean) => {
+      setTurns(next);
+      setSaved(null);
+      setError(null);
+      setStreaming("");
+      abort.current = new AbortController();
+      try {
+        const sent = next.map((t) => (t.role === "user" ? { ...t, text: mentionsAsNames(t.text, props.papers) } : t));
+        let at: string | undefined;
+        const answer = await chatAboutPaper(props.settings, props.paper, await props.pdfOf(props.paper), sent, setStreaming, abort.current.signal, { fresh, onSaved: (a) => (at = a) });
+        const done: Turn[] = [...next, { role: "assistant", text: answer }];
+        setTurns(done);
+        setSaved(at ?? null);
+        again.current = () => run(true);
+        // The same first question as a chat already kept: that chat is in Chats; this one is kept once it goes further.
+        if (at && !r && next.length === 1) return;
+        const now = new Date().toISOString();
+        conv.current ??= { id: newConversationId(), created: now };
+        props.onRecord({
+          ...(r ?? {}),
+          id: conv.current.id,
+          created: conv.current.created,
+          kind: r?.kind ?? "paper",
+          title: r?.title ?? mentionsAsNames(q, props.papers, false),
+          updated: now,
+          papers: [...new Set([props.paper.id, ...all.map((x) => x.paperId)])],
+          preview: "",
+          turns: done,
+          sources: all.length ? all : undefined,
+          paperId: props.paper.id,
+          // A chat that brings in other papers belongs with that set of papers.
+          focus: all.length ? [...new Set([props.paper.id, ...all.map((x) => x.paperId)])] : r?.focus,
+        });
+      } catch (err) {
+        if (!abort.current.signal.aborted) setError((err as Error).message);
+      } finally {
+        setStreaming(null);
+      }
+    };
+    await run(false);
   }
 
   const label = (n: number) => {
@@ -121,6 +136,7 @@ export function PaperChat(props: {
             <div key={i} class="answer" dangerouslySetInnerHTML={{ __html: render(t.text) }} />
           ),
         )}
+        {saved && streaming === null && <SavedNote at={saved} onAgain={() => again.current?.()} disabled={!hasKey} />}
         {streaming !== null && <div class="answer" aria-live="polite" dangerouslySetInnerHTML={{ __html: streaming ? render(streaming) : '<p class="muted">Reading the paper…</p>' }} />}
         {error && <p class="error">{error}</p>}
         <div ref={bottom} />

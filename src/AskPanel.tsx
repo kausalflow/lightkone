@@ -12,6 +12,7 @@ import { useMath } from "./core/math";
 import { askLibrary, askWholePdfs, type LibraryTurn, type WholeMaterial } from "./plugins/claude";
 import { citedAnswer, wholeSet, WHOLE_BYTES, WHOLE_MAX, type Doc } from "./core/wholepdf";
 import { Icon } from "./icons";
+import { SavedNote } from "./SavedNote";
 
 /**
  * Ask a question across the library, or a folder, tag or papers picked from
@@ -59,6 +60,9 @@ export function AskPanel(props: {
   const bottom = useRef<HTMLDivElement>(null);
   const byId = useMemo(() => new Map<string, Paper>([...props.papers.map((p) => [p.id, p] as const), ...outside]), [props.papers, outside]);
   const hasKey = Boolean(props.settings["claude.apiKey"]);
+  // The last answer, when it was a saved one (the same question on the same passages or PDFs); and how to ask afresh.
+  const [saved, setSaved] = useState<string | null>(null);
+  const again = useRef<(() => void) | null>(null);
   const chosen = useMemo(() => scoped(props.papers, scope, props.inView), [props.papers, scope, props.inView]);
   const unread = chosen.filter((p) => p.pdf && !props.texts.has(p.id)).length;
   // A few papers with PDFs are read whole, unless that is turned off.
@@ -114,38 +118,48 @@ export function AskPanel(props: {
     const material = await load(all.map((d) => d.paperId));
     const next: LibraryTurn[] = [...turns, { role: "user", text: q, docs: docs.length ? docs : undefined }];
     const base = sources;
-    setTurns(next);
     setQuestion("");
-    setStreaming("");
-    abort.current = new AbortController();
-    try {
-      const sent = next.map((t) => (t.role === "user" ? { ...t, text: mentionsAsNames(t.text, props.papers) } : t));
-      const show = (blocks: Parameters<typeof citedAnswer>[0]) => {
+    const run = async (fresh: boolean) => {
+      setTurns(next);
+      setSources(base);
+      setSaved(null);
+      setError(null);
+      setStreaming("");
+      abort.current = new AbortController();
+      try {
+        const sent = next.map((t) => (t.role === "user" ? { ...t, text: mentionsAsNames(t.text, props.papers) } : t));
+        const show = (blocks: Parameters<typeof citedAnswer>[0]) => {
+          const r = citedAnswer(blocks, all, base);
+          setSources([...base, ...r.added]);
+          setStreaming(r.text);
+        };
+        let at: string | undefined;
+        const { blocks, cut } = await askWholePdfs(props.settings, sent, material, show, abort.current.signal, { fresh, onSaved: (a) => (at = a) });
         const r = citedAnswer(blocks, all, base);
-        setSources([...base, ...r.added]);
-        setStreaming(r.text);
-      };
-      const { blocks, cut } = await askWholePdfs(props.settings, sent, material, show, abort.current.signal);
-      const r = citedAnswer(blocks, all, base);
-      const answer = cut ? `${r.text}\n\n(The answer was cut off at the length limit.)` : r.text;
-      const allSources = [...base, ...r.added];
-      const done: LibraryTurn[] = [...next, { role: "assistant", text: answer }];
-      setSources(allSources);
-      setTurns(done);
-      record(done, allSources, outside);
-    } catch (err) {
-      if (abort.current.signal.aborted) return true;
-      const status = (err as { status?: number }).status;
-      if (!turns.length && (status === 400 || status === 413)) {
-        // Too many pages or bytes for one request: give the question back to ask from passages.
-        setTurns([]);
-        setSources(base);
-        setQuestion(q);
-        setError(`Claude could not take these PDFs whole (${(err as Error).message}). Untick “Read the whole PDFs” to ask from passages instead.`);
-      } else setError((err as Error).message);
-    } finally {
-      setStreaming(null);
-    }
+        const answer = cut ? `${r.text}\n\n(The answer was cut off at the length limit.)` : r.text;
+        const allSources = [...base, ...r.added];
+        const done: LibraryTurn[] = [...next, { role: "assistant", text: answer }];
+        setSources(allSources);
+        setTurns(done);
+        setSaved(at ?? null);
+        again.current = () => run(true);
+        // Asked before, and kept in Chats then.
+        if (!(at && next.length === 1)) record(done, allSources, outside);
+      } catch (err) {
+        if (abort.current.signal.aborted) return true;
+        const status = (err as { status?: number }).status;
+        if (!turns.length && (status === 400 || status === 413)) {
+          // Too many pages or bytes for one request: give the question back to ask from passages.
+          setTurns([]);
+          setSources(base);
+          setQuestion(q);
+          setError(`Claude could not take these PDFs whole (${(err as Error).message}). Untick “Read the whole PDFs” to ask from passages instead.`);
+        } else setError((err as Error).message);
+      } finally {
+        setStreaming(null);
+      }
+    };
+    await run(false);
     return true;
   }
 
@@ -209,22 +223,31 @@ export function AskPanel(props: {
     const all = [...sources, ...found];
     const next: LibraryTurn[] = [...turns, { role: "user", text: q, sources: found.length ? sourcesPrompt(found, byIdNow) : undefined }];
     setSources(all);
-    setTurns(next);
     setQuestion("");
-    setStreaming("");
-    abort.current = new AbortController();
-    try {
-      // Claude reads each [[key]] as the paper's name, with its key.
-      const sent = next.map((t) => (t.role === "user" ? { ...t, text: mentionsAsNames(t.text, props.papers) } : t));
-      const answer = await askLibrary(props.settings, sent, setStreaming, abort.current.signal, literature ? "literature" : "library");
-      const done: LibraryTurn[] = [...next, { role: "assistant", text: answer }];
-      setTurns(done);
-      record(done, all, more);
-    } catch (err) {
-      if (!abort.current.signal.aborted) setError((err as Error).message);
-    } finally {
-      setStreaming(null);
-    }
+    const run = async (fresh: boolean) => {
+      setTurns(next);
+      setSaved(null);
+      setError(null);
+      setStreaming("");
+      abort.current = new AbortController();
+      try {
+        // Claude reads each [[key]] as the paper's name, with its key.
+        const sent = next.map((t) => (t.role === "user" ? { ...t, text: mentionsAsNames(t.text, props.papers) } : t));
+        let at: string | undefined;
+        const answer = await askLibrary(props.settings, sent, setStreaming, abort.current.signal, literature ? "literature" : "library", { fresh, onSaved: (a) => (at = a) });
+        const done: LibraryTurn[] = [...next, { role: "assistant", text: answer }];
+        setTurns(done);
+        setSaved(at ?? null);
+        again.current = () => run(true);
+        // Asked before, and kept in Chats then.
+        if (!(at && next.length === 1)) record(done, all, more);
+      } catch (err) {
+        if (!abort.current.signal.aborted) setError((err as Error).message);
+      } finally {
+        setStreaming(null);
+      }
+    };
+    await run(false);
   }
 
   const label = (n: number) => {
@@ -357,6 +380,7 @@ export function AskPanel(props: {
               </div>
             ),
           )}
+          {saved && streaming === null && <SavedNote at={saved} onAgain={() => again.current?.()} disabled={!hasKey} />}
           {streaming !== null && (
             <div class="answer" aria-live="polite" dangerouslySetInnerHTML={{ __html: streaming ? render(streaming) : `<p class="muted">${readingWhole ? "Reading the PDFs…" : "Reading the passages…"}</p>` }} />
           )}
@@ -379,7 +403,7 @@ export function AskPanel(props: {
               <button class="primary" type="submit" disabled={!question.trim() || !hasKey}>Ask</button>
             )}
             {turns.length > 0 && streaming === null && (
-              <button type="button" onClick={() => { setTurns([]); setSources([]); setOutside(new Map()); setError(null); conv.current = null; }}>New question</button>
+              <button type="button" onClick={() => { setTurns([]); setSources([]); setOutside(new Map()); setError(null); setSaved(null); conv.current = null; }}>New question</button>
             )}
           </div>
         </form>

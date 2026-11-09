@@ -3,6 +3,7 @@ import type { Paper, PaperDraft } from "./core/types";
 import { draftOf, fetchCitations, inLibraryOf, parseStances, stancePrompt, type Citations, type Citing, type Intent, type Stance, type StanceVerdict } from "./core/citedby";
 import { shortAuthors } from "./core/cite";
 import { sortCitations } from "./plugins/claude";
+import { readKept, writeKept } from "./core/answers";
 
 /** Citing passages sent to Claude in one go. */
 const SORT_MAX = 60;
@@ -11,7 +12,14 @@ const SHOW_STEP = 40;
 const STANCE_LABEL: Record<Stance, string> = { supports: "Supporting", contrasts: "Contrasting", mentions: "Mentioning" };
 const INTENT_LABEL: Record<Intent, string> = { background: "Background", methodology: "Method", result: "Result" };
 
-// Kept for the session, so reopening a paper doesn't ask again.
+/** Claude's sorting of a paper's citing sentences, kept with the library by citing paper, so it is never asked twice. */
+export const stancesPath = (paperId: string) => `lightkone/citedby/${paperId.replace(/[^\w.-]/g, "_")}.json`;
+interface KeptStances {
+  at: string;
+  stances: [string, StanceVerdict][];
+}
+
+// Kept for the session too, so reopening a paper doesn't even read storage.
 const cache = new Map<string, { citations: Citations; stances: Map<string, StanceVerdict> }>();
 
 type Filter = "all" | Stance | Intent | "library";
@@ -39,13 +47,34 @@ export function CitedByPanel(props: {
   const abort = useRef<AbortController | null>(null);
   const hasKey = Boolean(props.settings["claude.apiKey"]);
 
+  // What Claude sorted before, on any device.
+  useEffect(() => {
+    if (cached?.stances.size) return;
+    let live = true;
+    readKept<KeptStances>(stancesPath(p.id)).then((kept) => {
+      if (!live || !kept?.stances?.length) return;
+      setStances((now) => {
+        const next = new Map([...kept.stances, ...now]);
+        const c = cache.get(p.id);
+        if (c) cache.set(p.id, { ...c, stances: next });
+        return next;
+      });
+    });
+    return () => {
+      live = false;
+    };
+  }, [p.id]);
+
   useEffect(() => {
     if (citations) return;
     const ctl = (abort.current = new AbortController());
     fetchCitations(p, { key: props.settings["related.s2Key"] || undefined, signal: ctl.signal })
       .then((c) => {
         setCitations(c);
-        cache.set(p.id, { citations: c, stances: new Map() });
+        setStances((now) => {
+          cache.set(p.id, { citations: c, stances: now });
+          return now;
+        });
       })
       .catch((e) => !ctl.signal.aborted && setError((e as Error).message));
     return () => ctl.abort();
@@ -91,6 +120,7 @@ export function CitedByPanel(props: {
       }
       setStances(next);
       if (citations) cache.set(p.id, { citations, stances: next });
+      if (vs.length) writeKept(stancesPath(p.id), { at: new Date().toISOString(), stances: [...next] } satisfies KeptStances);
       if (!vs.length) setError("Claude's reply could not be read. Try again.");
     } catch (e) {
       if (!ctl.signal.aborted) setError((e as Error).message);

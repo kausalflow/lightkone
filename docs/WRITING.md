@@ -85,8 +85,11 @@ finds the sentences that make a claim but cite nothing.
    `\autocite` or `\parencite`. **Download .bib** gives the entries for every
    key the new .tex cites.
 
-The draft and the citations chosen are kept in this browser until you change
-the text, so the panel can be closed and opened again.
+The draft, Claude's reading of it, the papers suggested and the citations
+chosen are kept in this browser and in your storage
+(`lightkone/cite-draft.json`; in a shared or read-only library, this browser
+only), so the panel can be closed and opened again, on this device or
+another, without asking Claude again.
 
 ## Writing helpers
 
