@@ -28,6 +28,8 @@ export function PaperChat(props: {
   seed?: { text: string; n: number };
   /** Off where a keyboard popping up would cover the page (the reader on a phone). */
   autoFocus?: boolean;
+  /** Claude is answering (true) or done (false). */
+  onBusy?(busy: boolean): void;
 }) {
   const r = props.resume;
   const [turns, setTurns] = useState<Turn[]>(() => r?.turns ?? []);
@@ -76,6 +78,7 @@ export function PaperChat(props: {
       setSaved(null);
       setError(null);
       setStreaming("");
+      props.onBusy?.(true);
       abort.current = new AbortController();
       try {
         const sent = next.map((t) => (t.role === "user" ? { ...t, text: mentionsAsNames(t.text, props.papers) } : t));
@@ -108,6 +111,7 @@ export function PaperChat(props: {
         if (!abort.current.signal.aborted) setError((err as Error).message);
       } finally {
         setStreaming(null);
+        props.onBusy?.(false);
       }
     };
     await run(false);

@@ -96,6 +96,38 @@ interface Index {
 
 const empty = (): Index => ({ format: "lightkone-history", version: 1, entries: [] });
 
+/** The chats about one paper, newest first: those started from it, and explanations of its passages. */
+export function chatsAbout(entries: Entry[], paperId: string): Entry[] {
+  return entries
+    .filter((e) => (e.kind === "paper" || e.kind === "explain") && e.papers[0] === paperId)
+    .sort((a, b) => b.updated.localeCompare(a.updated));
+}
+
+/** Where a turn joined a running chat: from which turn, and how many turns, so a follow-up replaces them. */
+export interface Part {
+  chat: string;
+  start: number;
+  len: number;
+}
+
+/**
+ * Puts what Claude said about a paper (a summary, an explanation and its
+ * follow-ups) into the paper's running chat, so one conversation carries on.
+ * `part` is where the same explanation joined before: its turns are replaced.
+ * The same answer already there joins nothing.
+ */
+export function joinChat(run: Conversation, turns: Turn[], now: string, part?: Part): { conv: Conversation; part: Part } | null {
+  const at = part && part.chat === run.id && part.start + part.len <= run.turns.length ? part : null;
+  if (!at && turns.some((t) => t.role === "assistant" && run.turns.some((r) => r.role === "assistant" && r.text === t.text))) return null;
+  const start = at ? at.start : run.turns.length;
+  const before = run.turns.slice(0, start);
+  const after = at ? run.turns.slice(at.start + at.len) : [];
+  return {
+    conv: { ...run, kind: "paper", turns: [...before, ...turns, ...after], updated: now },
+    part: { chat: run.id, start, len: turns.length },
+  };
+}
+
 /** A new conversation id, sortable by time: "20261021-0829-k3x9q". */
 export function newConversationId(now = new Date()): string {
   const d = now.toISOString();

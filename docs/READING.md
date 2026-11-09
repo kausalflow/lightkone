@@ -35,9 +35,14 @@ the pages, with two tabs:
 
 - **Notes** lists your highlights and their notes. Tap one to go to it;
   **Export as Markdown** or **Copy** takes them all.
-- **Chat** is a chat with Claude about the paper you are reading. It carries
-  on your latest chat about the paper, or starts a new one (**+**); the list
-  at the top switches between the paper's chats. Claude reads the whole PDF
+- **Chat** is one running conversation with Claude about the paper you are
+  reading. It picks up where you left it, on any device: Claude sees the
+  whole conversation so far with each question. **Summarize** (in the
+  paper's details) and **Explain** on a passage add to the same running chat
+  instead of starting new ones, and **Ask** on a selected passage asks in it.
+  **+** starts a separate chat when you want a clean start, which then
+  becomes the running one; the list at the top switches between the paper's
+  chats. Claude reads the whole PDF
   with each question, and a page it cites scrolls the paper there. Every chat
   is kept with your other chats, under the paper, in `lightkone/history/`
   (in a shared or read-only library, in this browser only). The chat button

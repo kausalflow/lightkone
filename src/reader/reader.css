@@ -205,7 +205,7 @@
 .side-btn { position: relative; }
 .side-btn .badge { position: absolute; top: 0; right: -2px; min-width: 16px; line-height: 16px; font-size: 10px; padding: 0 4px; }
 
-.side-chat { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; padding: 8px 12px 0; }
+.side-chat { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scroll-padding-bottom: 170px; display: flex; flex-direction: column; padding: 8px 12px 0; }
 .side-chat-bar { display: flex; align-items: center; gap: 4px; flex: none; margin-bottom: 8px; }
 .side-chat-bar select { flex: 1; min-width: 0; font-size: 14px; }
 .side-chat .paper-chat { flex: 1 0 auto; }
