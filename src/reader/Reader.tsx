@@ -10,7 +10,8 @@ import {
   sortHighlights,
   type Highlight,
 } from "../core/annotations";
-import { PdfView, type Selected } from "./view";
+import { PdfView, type Cite, type Selected } from "./view";
+import type { Source } from "../core/ask";
 import { Explain, type Subject } from "./Explain";
 import { joinPages, textPath } from "../core/fulltext";
 import { Icon } from "../icons";
@@ -75,7 +76,7 @@ function download(name: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: number; onClose(): void; onError(msg: string): void; onText?(paperId: string, text: string): void; onRecord?(c: Conversation): void; chat?: ReaderChatProps }) {
+export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: number; quote?: { page: number; text: string }; onClose(): void; onError(msg: string): void; onText?(paperId: string, text: string): void; onRecord?(c: Conversation): void; chat?: ReaderChatProps }) {
   const { paper, storage } = props;
   const pagesRef = useRef<HTMLDivElement>(null);
   const view = useRef<PdfView | null>(null);
@@ -100,7 +101,18 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
     }
   });
   const [explaining, setExplaining] = useState<Subject | null>(null);
+  // The passages the latest answer in the chat cites, highlighted on the page and stepped through.
+  // Opened from a citation elsewhere (Ask, Chats): that passage, shown at once.
+  const [cited, setCited] = useState<Source[]>(() => (props.quote ? [{ n: 1, paperId: props.paper.id, ...props.quote }] : []));
+  const jumpFirst = useRef(Boolean(props.quote));
+  const [cites, setCites] = useState<(Cite & { page: number })[]>([]);
+  const [citeAt, setCiteAt] = useState(0);
+  const [citesShown, setCitesShown] = useState(true);
+  // Where you were reading before jumping to a source, to go back to.
+  const [back, setBack] = useState<number | null>(null);
   const pdfBytes = useRef<Uint8Array | null>(null);
+  // A marker on the page was tapped: show that source; the latest goCite, as the view keeps the first one given.
+  const citeClick = useRef<(n: number) => void>(() => {});
   const loaded = useRef(false);
   const saveTimer = useRef<number | undefined>(undefined);
 
@@ -222,6 +234,7 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
     const v = new PdfView(pagesRef.current!);
     view.current = v;
     v.setDark(dark);
+    v.onCiteClick = (n) => citeClick.current(n);
     v.onHighlightClick = (h) => {
       setOpen(h);
       setNoteText(h.note ?? "");
@@ -263,6 +276,55 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
   }, [paper.id, paper.pdf]);
 
   useEffect(() => view.current?.setHighlights(highlights), [highlights, pages]);
+
+  // Find each cited passage on its page once the PDF is open.
+  const citedKey = cited.map((s) => `${s.n}:${s.page}:${s.text}`).join("|");
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !pages) return;
+    let live = true;
+    Promise.all(cited.map(async (s) => ({ n: s.n, page: s.page, found: (await v.find(s.page, s.text).catch(() => null)) ?? [] }))).then((cs) => {
+      if (!live) return;
+      setCites(cs);
+      setCiteAt(0);
+      setBack(null);
+      setCitesShown(true);
+      if (jumpFirst.current && cs[0]) {
+        jumpFirst.current = false;
+        setCiteAt(cs[0].n);
+        if (cs[0].found.length) v.scrollToCite(cs[0]);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [citedKey, pages]);
+  useEffect(() => view.current?.setCites(citesShown ? cites.filter((c) => c.found.length) : [], citeAt), [cites, citeAt, citesShown, pages]);
+
+  /** Go to one of the answer's sources, remembering where you were. */
+  function goCite(n: number) {
+    const c = cites.find((x) => x.n === n);
+    const v = view.current;
+    if (!v) return;
+    if (back === null) setBack(v.scroll);
+    setCitesShown(true);
+    setCiteAt(n);
+    if (c?.found.length) v.scrollToCite(c);
+    else v.scrollToPage(c?.page ?? cited.find((x) => x.n === n)?.page ?? 1);
+    if (narrow()) setTall(false);
+  }
+  function stepCite(by: number) {
+    if (!cites.length) return;
+    const i = cites.findIndex((c) => c.n === citeAt);
+    // From none shown, next is the first and previous the last.
+    const j = i < 0 ? (by > 0 ? 0 : cites.length - 1) : (i + by + cites.length) % cites.length;
+    goCite(cites[j].n);
+  }
+  function goBack() {
+    if (back === null || !view.current) return;
+    view.current.scroll = back;
+    setBack(null);
+  }
 
   // Save highlights shortly after each change.
   useEffect(() => {
@@ -355,6 +417,13 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
     }
   }
 
+  citeClick.current = (n) => {
+    setCiteAt(n);
+    if (props.chat) showSide("chat");
+  };
+  const citePos = cites.findIndex((c) => c.n === citeAt);
+  const citeMissing = cites.filter((c) => !c.found.length).length;
+
   return (
     <div class={`reader ${dark ? "dark" : ""}`} role="dialog" aria-label={`Reading ${paper.title}`}>
       <header class="reader-bar">
@@ -390,8 +459,32 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
       </header>
 
       <div class={`reader-body dock-${dock}`} ref={bodyRef}>
-        <div class="pdf-pages" ref={pagesRef}>
-          {state === "loading" && <p class="muted center">Opening…</p>}
+        <div class="pdf-wrap">
+          <div class="pdf-pages" ref={pagesRef}>
+            {state === "loading" && <p class="muted center">Opening…</p>}
+          </div>
+          {cites.length > 0 && citesShown && (
+            <div class="cite-bar" role="toolbar" aria-label="Sources of the answer">
+              <span class="dot" aria-hidden="true" />
+              <span class="label">Sources</span>
+              <button class="icon-btn prev" onClick={() => stepCite(-1)} aria-label="Previous source" title="Previous source">
+                <Icon name="chevron" />
+              </button>
+              <span class="count" aria-live="polite">{citePos >= 0 ? `${citePos + 1} / ${cites.length}` : `${cites.length}`}</span>
+              <button class="icon-btn" onClick={() => stepCite(1)} aria-label="Next source" title="Next source">
+                <Icon name="chevron" />
+              </button>
+              {citeMissing > 0 && <span class="missing" title="Claude quoted these, but their words could not be found on the page; tapping them opens the page">{citeMissing} not marked</span>}
+              {back !== null && (
+                <button class="small" onClick={goBack} title="Back to where you were reading">
+                  Back
+                </button>
+              )}
+              <button class="icon-btn" onClick={() => setCitesShown(false)} aria-label="Hide the answer's highlights" title="Hide these highlights">
+                <Icon name="x" />
+              </button>
+            </div>
+          )}
         </div>
 
         {sideOpen && (
@@ -475,6 +568,8 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
                 seed={seed}
                 autoFocus={!narrow()}
                 onPage={(n) => { view.current?.scrollToPage(n); if (narrow()) setTall(false); }}
+                onCited={setCited}
+                onCite={(s) => goCite(s.n)}
               />
             )}
           </aside>

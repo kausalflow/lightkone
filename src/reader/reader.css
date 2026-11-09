@@ -274,10 +274,74 @@
 .side-chat-list .small { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 /* Floating over the page: a window moved by its tab bar, sized from its corner. */
 @media (min-width: 861px) {
-  .reader-body { position: relative; }
+  .pdf-wrap { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
   .reader-body.dock-float .reader-side { position: absolute; z-index: 15; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px rgb(0 0 0 / 0.22); overflow: hidden; }
   .reader-body.dock-float .side-resize { display: none; }
   .reader-body.dock-float .side-tabs { cursor: grab; touch-action: none; }
   .reader-body.dock-float .side-tabs:active { cursor: grabbing; }
   .side-corner { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; z-index: 4; touch-action: none; background: linear-gradient(135deg, transparent 50%, var(--line-strong, var(--line)) 50%, var(--line-strong, var(--line)) 60%, transparent 60%, transparent 70%, var(--line-strong, var(--line)) 70%, var(--line-strong, var(--line)) 80%, transparent 80%); }
+}
+
+/* Passages an answer cites: a blue wash on the words, a numbered marker beside them. */
+.pdf-cite {
+  position: absolute;
+  border-radius: 2px;
+  background: rgb(70 140 255 / 0.22);
+  mix-blend-mode: multiply;
+  box-shadow: inset 0 -2px 0 rgb(40 110 230 / 0.55);
+  pointer-events: none;
+}
+.pdf-cite.on { background: rgb(70 140 255 / 0.38); animation: cite-pulse 1.2s ease-out 1; }
+.reader.dark .pdf-cite { background: rgb(110 170 255 / 0.25); mix-blend-mode: screen; }
+.reader.dark .pdf-cite.on { background: rgb(110 170 255 / 0.42); }
+@keyframes cite-pulse { 0% { outline: 3px solid rgb(40 110 230 / 0.7); } 100% { outline: 3px solid rgb(40 110 230 / 0); } }
+.pdf-pin {
+  position: absolute;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  min-width: 0;
+  min-height: 0;
+  margin-top: -2px;
+  padding: 0;
+  border: 0;
+  border-radius: 50% 50% 50% 2px;
+  background: rgb(40 110 230);
+  color: #fff;
+  font: 600 12px/22px var(--sans, system-ui);
+  text-align: center;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  pointer-events: auto;
+  cursor: pointer;
+}
+.pdf-pin.on { background: rgb(20 70 180); outline: 2px solid rgb(255 255 255 / 0.9); }
+
+/* Stepping through the answer's sources, over the top of the pages. */
+.pdf-wrap { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
+.cite-bar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 4px 3px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.18);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.cite-bar .dot { width: 10px; height: 10px; border-radius: 50%; background: rgb(40 110 230); margin-right: 4px; }
+.cite-bar .count { min-width: 3.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.cite-bar .icon-btn { min-width: 32px; min-height: 32px; }
+.cite-bar .prev .icon { transform: scaleX(-1); }
+.cite-bar button.small { min-height: 28px; padding: 0 10px; }
+.cite-bar .missing { color: var(--muted); font-size: 12px; margin: 0 4px; }
+.pdf-wrap > .pdf-pages { min-width: 0; }
+@media (max-width: 420px) {
+  .cite-bar .missing, .cite-bar .label { display: none; }
 }

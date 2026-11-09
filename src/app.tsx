@@ -145,6 +145,8 @@ export function App() {
   // A brand-new library in this browser gets an example paper once storage is open.
   const [demoPending, setDemoPending] = useState(false);
   const [readingPage, setReadingPage] = useState(0);
+  // The passage a citation pointed to, highlighted when the reader opens.
+  const [readingQuote, setReadingQuote] = useState<{ page: number; text: string } | undefined>(undefined);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [question, setQuestion] = useState<Question | null>(null);
   const [lastAction, setLastAction] = useState<string | null>(null);
@@ -286,7 +288,7 @@ export function App() {
   }
 
   /** Open a paper at a page from a panel; the panel waits underneath the reader. */
-  function openAt(id: string, page: number) {
+  function openAt(id: string, page: number, quote?: string) {
     const p = library.papers.find((x) => x.id === id);
     if (!p) return;
     setSelected(id);
@@ -294,6 +296,7 @@ export function App() {
       library.update(id, { opened: new Date().toISOString() });
       scheduleSave();
       setReadingPage(page);
+      setReadingQuote(quote && page ? { page, text: quote } : undefined);
       setReading(id);
     } else setPanel(null);
   }
@@ -1288,6 +1291,7 @@ export function App() {
             library.update(paper.id, { opened: new Date().toISOString() });
             scheduleSave();
             setReadingPage(0);
+            setReadingQuote(undefined);
             setReading(paper.id);
           }}
           onGetPdf={canFindOpenPdf(paper, pdfOptions(settings)) ? () => getPdf(paper) : undefined}
@@ -1317,6 +1321,7 @@ export function App() {
           paper={library.papers.find((p) => p.id === reading)!}
           storage={storage}
           page={readingPage}
+          quote={readingQuote}
           onClose={() => setReading(null)}
           onError={setError}
           onText={(id, text) => textIndex?.add(id, text).then(() => setTextVersion((v) => v + 1))}
@@ -1330,7 +1335,7 @@ export function App() {
             onRecord: record,
             onOrganize: organize,
             onChats: (at) => openChats(at),
-            onOpenPaper: (id, page) => openAt(id, page),
+            onOpenPaper: (id, page, quote) => openAt(id, page, quote),
           }}
         />
       )}

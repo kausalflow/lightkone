@@ -168,6 +168,63 @@ export async function chatAboutPaper(
   return reused("paper", request, reuse, () => streamText(settings, request, onText, signal), onText, whole);
 }
 
+const CITED =
+  EXPLAIN +
+  " Back what you say with citations to the paper: cite the passages that answer the question and also those that help the " +
+  "researcher understand the answer, such as the definition of a symbol, an assumption, the step of a derivation, an equation " +
+  "or a result it rests on. Cite several passages when several parts of the paper matter, each where it helps. The app " +
+  "highlights each cited passage on the page and links to it, so do not write page numbers or source numbers for the paper yourself.";
+
+/**
+ * A conversation about one paper read with Claude's citations on, streamed:
+ * the answer comes as text blocks, each with the passages of the PDF it
+ * cites, so the reader can highlight them on the page. Without a PDF this is
+ * chatAboutPaper, with no citations.
+ */
+export async function chatAboutPaperCited(
+  settings: Record<string, string>,
+  paper: Paper,
+  pdf: Uint8Array | null,
+  turns: ChatTurn[],
+  onBlocks: (blocks: CitedBlock[]) => void,
+  signal?: AbortSignal,
+  reuse?: Reuse,
+): Promise<{ blocks: CitedBlock[]; cut: boolean }> {
+  if (!pdf || pdf.length > MAX_PDF_BYTES) {
+    const text = await chatAboutPaper(settings, paper, pdf, turns, (t) => onBlocks([{ text: t, citations: [] }]), signal, reuse);
+    const cut = text.endsWith(CUT);
+    return { blocks: [{ text: cut ? text.slice(0, -CUT.length).trimEnd() : text, citations: [] }], cut };
+  }
+  const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((t, i) => {
+    if (t.role === "assistant") return { role: "assistant", content: t.text || "…" };
+    const content: Anthropic.Beta.BetaContentBlockParam[] = [];
+    if (i === 0) {
+      content.push({
+        type: "document",
+        title: `${paper.title}${paper.year ? ` (${paper.year})` : ""}`,
+        source: { type: "base64", media_type: "application/pdf", data: toBase64(pdf) },
+        citations: { enabled: true },
+        cache_control: { type: "ephemeral" },
+      });
+      content.push({ type: "text", text: describe(paper) });
+    }
+    if (t.image) content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: t.image } });
+    if (t.sources) content.push({ type: "text", text: `Passages from other papers in the researcher's library that the question names; cite them by number, like [2].\n<sources>\n${t.sources}\n</sources>` });
+    content.push({ type: "text", text: t.text });
+    return { role: "user", content };
+  });
+  const request: Req = {
+    model: settings["claude.model"] || DEFAULT_MODEL,
+    max_tokens: 8000,
+    system: CITED,
+    output_config: { effort: "low" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    messages,
+  };
+  return reused("paper-cited", request, reuse, () => streamWhole(settings, request, onBlocks, signal), (v) => onBlocks(v.blocks), (v) => !v.cut);
+}
+
 /** A request streamed as text; the answer, marked when cut off at the length limit. */
 async function streamText(settings: Record<string, string>, request: Req, onText: (soFar: string) => void, signal?: AbortSignal, cut = CUT): Promise<string> {
   const client = await clientFor(settings);

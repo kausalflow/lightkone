@@ -83,3 +83,23 @@ export function citedAnswer(blocks: CitedBlock[], docs: Doc[], base: Source[]): 
 export function withoutNumbers(md: string): string {
   return md.replace(/ ?\[\d+(?:, \d+)*\]/g, "");
 }
+
+/** An earlier answer as Claude wrote it, without the numbers added here for the given sources (others stay: Claude wrote them). */
+export function withoutSources(md: string, ns: Set<number>): string {
+  return md.replace(/ ?\[(\d+(?:, \d+)*)\]/g, (whole, list: string) => {
+    const left = list.split(", ").filter((x) => !ns.has(Number(x)));
+    return left.length === list.split(", ").length ? whole : left.length ? ` [${left.join(", ")}]` : "";
+  });
+}
+
+/** The numbers an answer cites, in the order they first appear. */
+export function citedNumbers(md: string): number[] {
+  const out: number[] = [];
+  for (const m of md.matchAll(/\[(\d+(?:\s*[,;]\s*\d+)*)\]/g)) {
+    for (const x of m[1].split(/\s*[,;]\s*/)) {
+      const n = Number(x);
+      if (!out.includes(n)) out.push(n);
+    }
+  }
+  return out;
+}

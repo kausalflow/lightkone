@@ -6,7 +6,8 @@ import { MentionBox, QuestionText } from "./MentionBox";
 import { newConversationId, type Conversation, type Turn } from "./core/history";
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
-import { chatAboutPaper } from "./plugins/claude";
+import { chatAboutPaperCited } from "./plugins/claude";
+import { citedAnswer, citedNumbers, withoutSources } from "./core/wholepdf";
 import { SavedNote } from "./SavedNote";
 
 /**
@@ -23,7 +24,8 @@ export function PaperChat(props: {
   resume?: Conversation;
   pdfOf(p: Paper): Promise<Uint8Array | null>;
   onRecord(c: Conversation): void;
-  onOpen(paperId: string, page: number): void;
+  /** Open a paper at a page, with the passage cited there highlighted when given. */
+  onOpen(paperId: string, page: number, quote?: string): void;
   /** Text to put in the question box, such as a passage from the reader; n changes for each new one. */
   seed?: { text: string; n: number };
   /** Off where a keyboard popping up would cover the page (the reader on a phone). */
@@ -32,6 +34,10 @@ export function PaperChat(props: {
   notice?: preact.ComponentChildren;
   /** Claude is answering (true) or done (false). */
   onBusy?(busy: boolean): void;
+  /** The passages of this paper the latest answer cites, to highlight on the page. */
+  onCited?(sources: Source[]): void;
+  /** A citation to a passage of this paper was tapped; without this it opens the page. */
+  onCite?(source: Source): void;
 }) {
   const r = props.resume;
   const [turns, setTurns] = useState<Turn[]>(() => r?.turns ?? []);
@@ -69,23 +75,37 @@ export function PaperChat(props: {
     if (!q || streaming !== null) return;
     const others = mentionsIn(q, props.papers).filter((p) => p.id !== props.paper.id);
     const found = mentionedPassages(others, props.texts, q.replace(/\[\[[^\]\n]+\]\]/g, " ")).map((x, i) => ({ ...x, n: sources.length + i + 1 }));
-    const all = [...sources, ...found];
+    const base = [...sources, ...found];
+    let all = base;
     const next: Turn[] = [...turns, { role: "user", text: q, sources: found.length ? sourcesPrompt(found, byId) : undefined }];
-    setSources(all);
+    setSources(base);
     setTurns(next);
     setQuestion("");
     setError(null);
     const run = async (fresh: boolean) => {
       setTurns(next);
+      setSources(base);
       setSaved(null);
       setError(null);
       setStreaming("");
       props.onBusy?.(true);
       abort.current = new AbortController();
       try {
-        const sent = next.map((t) => (t.role === "user" ? { ...t, text: mentionsAsNames(t.text, props.papers) } : t));
+        // Numbers for passages of this paper were added here, not written by Claude.
+        const own = new Set(base.filter((y) => y.paperId === props.paper.id).map((y) => y.n));
+        const sent = next.map((t) => (t.role === "user" ? { ...t, text: mentionsAsNames(t.text, props.papers) } : { ...t, text: withoutSources(t.text, own) }));
         let at: string | undefined;
-        const answer = await chatAboutPaper(props.settings, props.paper, await props.pdfOf(props.paper), sent, setStreaming, abort.current.signal, { fresh, onSaved: (a) => (at = a) });
+        const docs = [{ paperId: props.paper.id, kind: "pdf" as const }];
+        const show = (blocks: Parameters<typeof citedAnswer>[0]) => {
+          const x = citedAnswer(blocks, docs, base);
+          setSources([...base, ...x.added]);
+          setStreaming(x.text);
+        };
+        const { blocks, cut } = await chatAboutPaperCited(props.settings, props.paper, await props.pdfOf(props.paper), sent, show, abort.current.signal, { fresh, onSaved: (a) => (at = a) });
+        const x = citedAnswer(blocks, docs, base);
+        const answer = cut ? `${x.text}\n\n(The answer was cut off at the length limit.)` : x.text;
+        all = [...base, ...x.added];
+        setSources(all);
         const done: Turn[] = [...next, { role: "assistant", text: answer }];
         setTurns(done);
         setSaved(at ?? null);
@@ -107,7 +127,7 @@ export function PaperChat(props: {
           sources: all.length ? all : undefined,
           paperId: props.paper.id,
           // A chat that brings in other papers belongs with that set of papers.
-          focus: all.length ? [...new Set([props.paper.id, ...all.map((x) => x.paperId)])] : r?.focus,
+          focus: all.some((x) => x.paperId !== props.paper.id) ? [...new Set([props.paper.id, ...all.map((x) => x.paperId)])] : r?.focus,
         });
       } catch (err) {
         if (!abort.current.signal.aborted) setError((err as Error).message);
@@ -121,8 +141,18 @@ export function PaperChat(props: {
 
   const label = (n: number) => {
     const x = sources.find((y) => y.n === n);
-    return x ? sourceLabel(x, byId.get(x.paperId)) : null;
+    if (!x) return null;
+    // A passage of this paper: its number, as on the marker beside it on the page, and its page.
+    return x.paperId === props.paper.id ? `${n} · p. ${x.page}` : sourceLabel(x, byId.get(x.paperId));
   };
+
+  // The passages the latest answer cites go to the reader to highlight.
+  const lastAnswer = [...turns].reverse().find((t) => t.role === "assistant")?.text ?? "";
+  useEffect(() => {
+    if (!props.onCited || streaming !== null) return;
+    const ns = citedNumbers(lastAnswer);
+    props.onCited(ns.map((n) => sources.find((y) => y.n === n)).filter((y): y is Source => Boolean(y && y.paperId === props.paper.id && y.page)));
+  }, [lastAnswer, sources, streaming === null]);
   const render = (md: string) => (sources.length ? linkCitations(renderMarkdown(md, math), label) : renderMarkdown(md, math));
   // Typesetting long answers with math is slow: done once per answer, not on every redraw around it.
   const html = useMemo(() => turns.map((t) => (t.role === "assistant" ? render(t.text) : "")), [turns, sources, math]);
@@ -131,7 +161,9 @@ export function PaperChat(props: {
     if (!a) return;
     e.preventDefault();
     const x = sources.find((y) => y.n === Number(a.dataset.src));
-    if (x) props.onOpen(x.paperId, x.page);
+    if (!x) return;
+    if (x.paperId === props.paper.id && props.onCite) props.onCite(x);
+    else props.onOpen(x.paperId, x.page, x.page ? x.text : undefined);
   }
   // An explanation starts with the instruction given with the picture, which isn't worth showing again.
   const hideFirst = r?.kind === "explain";

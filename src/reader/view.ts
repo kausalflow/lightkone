@@ -1,6 +1,13 @@
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import type { Highlight, Rect } from "../core/annotations";
 import { guardSelection, unguardSelection } from "./selection";
+import { locate, type Found, type TextBit } from "../core/locate";
+
+/** A passage an answer cites, found on the page: drawn as a highlight with a numbered marker in the margin. */
+export interface Cite {
+  n: number;
+  found: Found[];
+}
 
 // Draws a PDF as a column of pages: a canvas for the picture, pdf.js's text
 // layer on top so text can be selected, and our highlights above that. Pages
@@ -101,6 +108,10 @@ export class PdfView {
   zoom = 1;
   private dark = false;
   onHighlightClick: (h: Highlight) => void = () => {};
+  private cites: Cite[] = [];
+  private citeOn = 0;
+  onCiteClick: (n: number) => void = () => {};
+  private bitsOf = new Map<number, Promise<TextBit[]>>();
 
   constructor(private root: HTMLElement) {
     this.observer = new IntersectionObserver((entries) => entries.forEach((e) => e.isIntersecting && this.draw(this.slotOf(e.target))), {
@@ -242,8 +253,104 @@ export class PdfView {
     this.pages.forEach((s) => this.paint(s));
   }
 
+  /** The answer's cited passages to draw; `on` is the one stepped to. */
+  setCites(cs: Cite[], on = 0) {
+    this.cites = cs;
+    this.citeOn = on;
+    this.pages.forEach((s) => this.paint(s));
+  }
+
+  private paintCites(s: PageSlot): HTMLElement[] {
+    const out: HTMLElement[] = [];
+    for (const c of this.cites) {
+      const f = c.found.find((x) => x.page === s.n);
+      if (!f) continue;
+      const on = c.n === this.citeOn;
+      for (const [x, y, w, h] of f.rects) {
+        const m = document.createElement("div");
+        m.className = `pdf-cite${on ? " on" : ""}`;
+        m.dataset.cite = String(c.n);
+        Object.assign(m.style, { left: `${x * 100}%`, top: `${y * 100}%`, width: `${w * 100}%`, height: `${h * 100}%` });
+        out.push(m);
+      }
+      // The marker sits in the margin beside the passage's first line, only where it starts.
+      if (c.found[0] !== f) continue;
+      const top = f.rects[0]?.[1] ?? 0;
+      // The column's edges, from the lines of some length (not a stray symbol or number).
+      const lines = f.rects.filter((r) => r[2] > 0.05);
+      const edges = lines.length ? lines : f.rects;
+      const left = Math.min(...edges.map((r) => r[0]));
+      const right = Math.max(...edges.map((r) => r[0] + r[2]));
+      const pin = document.createElement("button");
+      pin.className = `pdf-pin${on ? " on" : ""}`;
+      // Beside the passage: in the left margin, or the right one for a passage in a right-hand column.
+      pin.style.left = left < 0.5 ? `max(2px, calc(${left * 100}% - 26px))` : `min(calc(100% - 24px), calc(${right * 100}% + 4px))`;
+      pin.textContent = String(c.n);
+      pin.title = `Source ${c.n} of the answer`;
+      pin.setAttribute("aria-label", `Source ${c.n} of the answer`);
+      pin.style.top = `${top * 100}%`;
+      pin.onclick = (e) => {
+        e.stopPropagation();
+        this.onCiteClick(c.n);
+      };
+      out.push(pin);
+    }
+    return out;
+  }
+
+  /** A page's text runs with their boxes, as fractions of the page. */
+  private bits(n: number): Promise<TextBit[]> {
+    let had = this.bitsOf.get(n);
+    if (!had) {
+      had = (async () => {
+        if (!this.doc || !pdfjs || n < 1 || n > this.doc.numPages) return [];
+        const page = await this.doc.getPage(n);
+        const vp = page.getViewport({ scale: 1 });
+        const content = await page.getTextContent();
+        const out: TextBit[] = [];
+        for (const item of content.items) {
+          if (!("str" in item) || !item.str) continue;
+          const tx = pdfjs.Util.transform(vp.transform, item.transform);
+          const size = Math.hypot(tx[2], tx[3]);
+          const style = content.styles[item.fontName] as { ascent?: number; descent?: number } | undefined;
+          const ascent = style?.ascent || 0.8;
+          const descent = style?.descent || -0.2;
+          const top = tx[5] - size * ascent;
+          out.push({ page: n, str: item.str, x: tx[4] / vp.width, y: top / vp.height, w: (item.width * vp.scale) / vp.width, h: (size * (ascent - descent)) / vp.height });
+        }
+        return out;
+      })().catch(() => []);
+      this.bitsOf.set(n, had);
+    }
+    return had;
+  }
+
+  /** Where a quoted passage is, looked for on its page and running onto the next; null when not found. */
+  async find(page: number, quote: string): Promise<Found[] | null> {
+    const [a, b] = await Promise.all([this.bits(page), this.bits(page + 1)]);
+    return locate([...a, ...b], quote) ?? (page > 1 ? locate([...(await this.bits(page - 1)), ...a], quote) : null);
+  }
+
+  get scroll(): number {
+    return this.root.scrollTop;
+  }
+
+  set scroll(y: number) {
+    this.root.scrollTop = y;
+  }
+
+  /** Brings a cited passage into view, a third of the way down. */
+  scrollToCite(c: Cite) {
+    const f = c.found[0];
+    const s = f && this.pages[f.page - 1];
+    if (!s) return;
+    const y = Math.min(...f.rects.map((r) => r[1]));
+    this.root.scrollTop = s.el.offsetTop + y * s.el.offsetHeight - this.root.clientHeight / 3;
+  }
+
   private paint(s: PageSlot) {
     s.marks.replaceChildren(
+      ...this.paintCites(s),
       ...this.highlights
         .filter((h) => h.page === s.n)
         .flatMap((h) =>

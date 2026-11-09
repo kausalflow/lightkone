@@ -56,7 +56,7 @@ export function ChatsPanel(props: {
   onRecord(c: Conversation): void;
   onOrganize(id: string, change: Organize): void;
   onRemove(id: string): void;
-  onOpen(paperId: string, page: number): void;
+  onOpen(paperId: string, page: number, quote?: string): void;
   onIndex(): void;
   onAdd(d: PaperDraft): boolean;
   pdfOf(p: Paper): Promise<Uint8Array | null>;
