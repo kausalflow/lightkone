@@ -24,6 +24,10 @@ export function PaperChat(props: {
   pdfOf(p: Paper): Promise<Uint8Array | null>;
   onRecord(c: Conversation): void;
   onOpen(paperId: string, page: number): void;
+  /** Text to put in the question box, such as a passage from the reader; n changes for each new one. */
+  seed?: { text: string; n: number };
+  /** Off where a keyboard popping up would cover the page (the reader on a phone). */
+  autoFocus?: boolean;
 }) {
   const r = props.resume;
   const [turns, setTurns] = useState<Turn[]>(() => r?.turns ?? []);
@@ -36,6 +40,7 @@ export function PaperChat(props: {
   const conv = useRef<{ id: string; created: string } | null>(r ? { id: r.id, created: r.created } : null);
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
+  const self = useRef<HTMLDivElement>(null);
   const math = useMath();
   const hasKey = Boolean(props.settings["claude.apiKey"]);
   // The last answer, when it was a saved one; and how to ask for it afresh.
@@ -43,6 +48,15 @@ export function PaperChat(props: {
   const again = useRef<(() => void) | null>(null);
 
   useEffect(() => () => abort.current?.abort(), []);
+  useEffect(() => {
+    if (!props.seed) return;
+    setQuestion((q) => (q.trim() ? `${q.trimEnd()}\n\n${props.seed!.text}` : props.seed!.text));
+    requestAnimationFrame(() => {
+      const box = self.current?.querySelector<HTMLTextAreaElement>(".ask-form textarea");
+      box?.focus();
+      box?.setSelectionRange(box.value.length, box.value.length);
+    });
+  }, [props.seed?.n]);
   useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [turns.length, streaming]);
 
   async function ask(e: Event) {
@@ -115,7 +129,7 @@ export function PaperChat(props: {
   const hideFirst = r?.kind === "explain";
 
   return (
-    <div class="work paper-chat" onClick={onClick}>
+    <div class="work paper-chat" ref={self} onClick={onClick}>
       {r?.quote && (
         <p class="quote">
           {r.quote}
@@ -145,7 +159,7 @@ export function PaperChat(props: {
         <MentionBox
           value={question}
           papers={props.papers}
-          autoFocus
+          autoFocus={props.autoFocus ?? true}
           placeholder={turns.length ? "Ask a follow-up; [[ adds a paper" : "How does its assumption compare with [[…"}
           onInput={setQuestion}
           onSubmit={ask}

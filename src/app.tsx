@@ -1256,6 +1256,16 @@ export function App() {
           onError={setError}
           onText={(id, text) => textIndex?.add(id, text).then(() => setTextVersion((v) => v + 1))}
           onRecord={record}
+          chat={{
+            entries: conversations,
+            history: historyStore,
+            papers: library.papers,
+            texts: textIndex?.texts ?? new Map(),
+            settings,
+            onRecord: record,
+            onChats: (at) => openChats(at),
+            onOpenPaper: (id, page) => openAt(id, page),
+          }}
         />
       )}
 
