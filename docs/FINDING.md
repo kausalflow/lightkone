@@ -169,3 +169,13 @@ neighbours.
   and merges each group into one, keeping every tag, folder and note. It also
   finds arXiv preprints that have since been published and fills in the
   journal, DOI, volume and pages, keeping citation keys.
+- **Paper health** marks a paper that has been retracted, corrected (an
+  erratum or corrigendum), given an expression of concern, or withdrawn on
+  arXiv. The notices come from Crossref, which carries both publishers'
+  notices and the Retraction Watch database, and from arXiv. For a preprint
+  with a published version, the published version is checked too. A badge
+  shows in the list, and the paper's details say what the notice is, when it
+  appeared and who reported it, with a link to it. Lightkone checks the
+  papers not checked for a month a little after the library opens (switch it
+  off in Settings → Paper health), and **Tidy up** lists every paper with a
+  notice and can check the whole library at once.

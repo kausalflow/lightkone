@@ -44,6 +44,7 @@ import { defaultBibPath, folderTargets, papersInFolder, runBibSync } from "./cor
 import { githubStorage } from "./plugins/storage-github";
 import { crossref } from "./plugins/lookup";
 import { findDuplicates, findPublished, mergeInto, pickKeeper, type Published } from "./core/tidy";
+import { HEALTH_LABEL, SEVERITY, checkHealth, checkable, due, worst, type Health, type Notice } from "./core/health";
 import { annotationsPath } from "./core/annotations";
 import { Icon, type IconName } from "./icons";
 import { site } from "./core/site";
@@ -228,6 +229,32 @@ export function App() {
   }, [storageKey, settings["plugins.urls"]]);
 
   useEffect(() => library.onChange(() => setVersion((v) => v + 1)), []);
+
+  /** Keep what a health check found on each paper. */
+  function applyHealth(found: Map<string, Health>) {
+    if (readOnlyRef.current || !found.size) return;
+    found.forEach((health, id) => library.update(id, { health }));
+    scheduleSave();
+  }
+  // Paper health: a little after the library opens, check the papers not checked for a month.
+  useEffect(() => {
+    if (!storage || readOnlyRef.current || settings["health.auto"] === "off") return;
+    let stop = false;
+    const timer = setTimeout(async () => {
+      const todo = library.papers.filter((p) => due(p)).slice(0, 400);
+      if (!todo.length) return;
+      try {
+        const found = await checkHealth(todo);
+        if (!stop) applyHealth(found);
+      } catch {
+        // Offline, or a service is down: tried again next time the library opens.
+      }
+    }, 15000);
+    return () => {
+      stop = true;
+      clearTimeout(timer);
+    };
+  }, [storage]);
 
   // The text inside each PDF, for search: loaded once per library, then kept in this browser.
   const [textVersion, setTextVersion] = useState(0);
@@ -830,7 +857,7 @@ export function App() {
     { id: "writing", group: "Write", label: "Writing helpers", icon: "book", hint: "What to cite for a sentence; a .bib for a manuscript", show: hasPapers, run: () => { setWritingTab("cite"); go("writing")(); } },
     { id: "manuscript", group: "Write", label: "Watch my manuscript", icon: "sync", hint: "Keep a LaTeX manuscript's .bib in step with what it cites", show: Boolean(storage), run: go("manuscript") },
     { id: "obsidian", group: "Write", label: "Export to Obsidian", icon: "file", hint: "Highlights and notes as Markdown notes", show: Boolean(storage), run: go("obsidian") },
-    { id: "tidy", group: "Organize", label: "Tidy up", icon: "broom", hint: "Duplicates, published versions of preprints", show: Boolean(storage), run: () => { setTidying(true); setSideOpen(false); } },
+    { id: "tidy", group: "Organize", label: "Tidy up", icon: "broom", hint: "Duplicates, published versions of preprints, retractions and corrections", show: Boolean(storage), run: () => { setTidying(true); setSideOpen(false); } },
     { id: "offline", group: "Organize", label: "Offline papers", icon: "download", hint: "Choose PDFs to keep on this device, for reading with no network", show: Boolean(offlineStore && library.papers.some((p) => p.pdf)), run: go("offline") },
     { id: "shared", group: "Organize", label: "Shared libraries", icon: "users", hint: "Libraries shared with a group", show: true, run: go("shared") },
   ].filter((t) => t.show) as Tool[];
@@ -1116,8 +1143,9 @@ export function App() {
                 const hit = textIndex?.hit(p.id, words);
                 return hit && <div class="snippet"><span class="page">p. {hit.page}</span> {hit.snippet}</div>;
               })()}
-              {(p.pdf || p.markdown || p.tags.length > 0) && (
+              {(p.pdf || p.markdown || p.tags.length > 0 || worst(p)) && (
                 <div class="chips">
+                  <HealthChip paper={p} />
                   {p.pdf && <span class="chip pdf">PDF</span>}
                   {p.markdown && <span class="chip pdf" title="A copy of the web page is saved">Page</span>}
                   {p.pdf && keptPdfs.has(p.pdf) && <span class="chip offline" title="Kept on this device for reading offline">Offline</span>}
@@ -1368,6 +1396,8 @@ export function App() {
             items.forEach(({ paper: p, patch }) => library.update(p.id, patch));
             scheduleSave();
           }}
+          onHealth={applyHealth}
+          onOpen={(id) => { setTidying(false); setSelected(id); }}
           onClose={() => setTidying(false)}
         />
       )}
@@ -1711,6 +1741,7 @@ function Detail(props: {
             In the trash. <button class="link" onClick={() => props.onChange({ trashed: undefined })}>Restore</button>
           </p>
         )}
+        <HealthNotices paper={p} />
         <p class="eyebrow">{[p.venue, p.year].filter(Boolean).join(" · ") || p.type}{p.by ? ` · added by ${p.by}` : ""}</p>
         <h2>{p.title}</h2>
         <p class="authors">
@@ -1902,6 +1933,8 @@ function TidyPanel(props: {
   version: number;
   onMerge(group: Paper[]): Promise<void>;
   onUpdate(items: Published[]): void;
+  onHealth(found: Map<string, Health>): void;
+  onOpen(paperId: string): void;
   onClose(): void;
 }) {
   const groups = useMemo(() => findDuplicates(props.papers), [props.version]);
@@ -2009,11 +2042,108 @@ function TidyPanel(props: {
           </>
         )}
 
+        <PaperHealth papers={props.papers} onHealth={props.onHealth} onOpen={props.onOpen} />
+
         <div class="row">
           <button class="ghost" onClick={props.onClose}>Close</button>
         </div>
       </div>
     </div>
+  );
+}
+
+const fmtDate = (d?: string) => (d ? new Date(`${d.slice(0, 10)}T12:00:00Z`).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "");
+
+/** The most serious notice on a paper, as a chip in the list. Addenda are left to the details. */
+function HealthChip(props: { paper: Paper }) {
+  const w = worst(props.paper);
+  if (!w || w.kind === "addendum") return null;
+  return <span class={`chip health ${w.kind}`} title={`${w.label}${w.date ? `, ${fmtDate(w.date)}` : ""}`}>{HEALTH_LABEL[w.kind]}</span>;
+}
+
+function noticeSource(n: Notice): string {
+  const names: Record<string, string> = { publisher: "the publisher", "retraction-watch": "Retraction Watch", arxiv: "arXiv" };
+  return (n.source ?? "").split(", ").filter(Boolean).map((s) => names[s] ?? s).join(" and ");
+}
+
+/** Retractions, corrections and withdrawals, at the top of a paper's details. */
+function HealthNotices(props: { paper: Paper }) {
+  const notices = props.paper.health?.notices ?? [];
+  if (!notices.length) return null;
+  return (
+    <div class="health-notices">
+      {notices.map((n) => (
+        <p key={`${n.kind}${n.doi ?? n.reason}`} class={`health-notice ${n.kind}`}>
+          <strong>{HEALTH_LABEL[n.kind]}</strong>
+          {n.date && ` ${fmtDate(n.date)}`}
+          {n.doi && (
+            <>
+              {" · "}
+              <a href={`https://doi.org/${n.doi}`} target="_blank" rel="noopener">{n.label === HEALTH_LABEL[n.kind] ? "the notice" : n.label.toLowerCase()}</a>
+            </>
+          )}
+          {n.of && <span class="muted"> · for the published version, {n.of}</span>}
+          {n.source && <span class="muted"> · reported by {noticeSource(n)}</span>}
+          {n.reason && <span class="health-reason">{n.reason}</span>}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** Tidy up's paper health: what was found, and a check of the whole library now. */
+function PaperHealth(props: { papers: Paper[]; onHealth(found: Map<string, Health>): void; onOpen(id: string): void }) {
+  const live = props.papers.filter((p) => !p.trashed);
+  const toCheck = live.filter(checkable);
+  const flagged = live.filter((p) => worst(p) && worst(p)!.kind !== "addendum").sort((a, b) => SEVERITY.indexOf(worst(a)!.kind) - SEVERITY.indexOf(worst(b)!.kind));
+  const checked = live.map((p) => p.health?.checked).filter(Boolean).sort().at(-1);
+  const [progress, setProgress] = useState<[number, number] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<number | null>(null);
+
+  async function check() {
+    setError(null);
+    setDone(null);
+    setProgress([0, toCheck.length]);
+    try {
+      const found = await checkHealth(toCheck, { onProgress: (d, n) => setProgress([d, n]) });
+      props.onHealth(found);
+      setDone(found.size);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  return (
+    <>
+      <h3>Paper health</h3>
+      <p class="muted small">
+        Retractions, corrections, expressions of concern and arXiv withdrawals, from Crossref (publishers and the Retraction Watch database) and arXiv.
+        {checked ? ` Last checked ${fmtDate(checked)}.` : ""}
+      </p>
+      {toCheck.length > 0 && (
+        <button class="primary" disabled={!!progress} onClick={check}>
+          {progress ? `Checking ${progress[0]} of ${progress[1]}…` : `Check ${toCheck.length} paper${toCheck.length > 1 ? "s" : ""} now`}
+        </button>
+      )}
+      {error && <p class="message">{error}</p>}
+      {done !== null && <p class="message">Checked {done} paper{done === 1 ? "" : "s"}{flagged.length ? "" : "; nothing found"}.</p>}
+      {flagged.length > 0 && (
+        <ul class="dupes">
+          {flagged.map((p) => (
+            <li key={p.id}>
+              <div>
+                <span class="title">{p.title}</span>
+                <span class="meta"> {shortAuthors(p)}{p.year ? ` ${p.year}` : ""} · <HealthChip paper={p} />{worst(p)!.date ? ` ${fmtDate(worst(p)!.date)}` : ""}</span>
+              </div>
+              <button class="small" onClick={() => props.onOpen(p.id)}>Open</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
 

@@ -221,6 +221,8 @@ function Data() {
     ["Ask, Explain, Compare papers and the check in Cite this", "When you use them, your question and the passages picked from your papers (for a comparison table, each chosen paper's text) go from your browser straight to Anthropic, with your own Claude key."],
     ["Your chats with Claude", "Your own storage. In a shared or read-only library, this browser only, so the group never sees your questions."],
     ["Asking beyond your library", "The words of your question go to OpenAlex's search."],
+    ["Cite my draft", "Your draft is read in your browser. A few words from each sentence you look up go to OpenAlex's search. With your Claude key, the uncited sentences and the passages found for them go straight to Anthropic."],
+    ["Paper health", "Your papers' DOIs go to Crossref, and their arXiv ids to arXiv through this site, about once a month."],
     ["Journal citation styles", "The style's name goes to the Citation Style Language project on GitHub, and the list of styles is fetched from Zotero. Your papers are formatted in your browser."],
     ["Adding and looking up papers", "The DOI, arXiv id or title goes to Crossref, OpenAlex, Semantic Scholar or arXiv. For open-access PDFs, the DOI and your contact email go to Unpaywall through this site."],
     ["Related papers and the citation map", "The DOIs or arXiv ids of your papers go to OpenAlex or Semantic Scholar."],
