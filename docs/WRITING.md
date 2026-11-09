@@ -56,9 +56,41 @@ a .bib with exactly those papers, and lists any keys your library doesn't
 have so you can add them. Entries already in the .bib for keys your library
 lacks are kept as they are. It checks again each time Lightkone opens.
 
+## Cite my draft
+
+**Cite my draft** (side bar, *Write*) goes through a whole manuscript and
+finds the sentences that make a claim but cite nothing.
+
+1. Open your .tex, or paste a section, and press **Find uncited claims**.
+   Lightkone reads the document's text only: the preamble, the abstract,
+   headings, floats, comments and the bibliography are skipped, and an
+   equation stays part of the sentence around it.
+2. It lists the sentences that read like claims from elsewhere ("has been
+   shown", "previous studies", a measured number) and passes over those
+   about your own work ("In this paper we", "as shown in Fig. 2"), each with
+   its line in the source. **Show every uncited sentence** lists the rest too.
+   With a Claude key, **Ask Claude which need a citation** reads every
+   uncited sentence with the one before it and keeps those that need one,
+   each with a short search to find the paper.
+3. **Suggest papers** on a sentence (or **Find papers for all**) looks in
+   your library first, in the full texts of your PDFs, then on OpenAlex for
+   published work you don't have. With a Claude key, each suggestion is
+   checked against its passage or abstract and marked as backing the
+   sentence, related or not, and the ones that back it are ticked.
+4. **Cite** puts `\cite{…}` into the sentence, just before its full stop.
+   A ticked paper that is not in your library is added first, so it has a
+   key. **Undo** takes it out again.
+5. **Download** gives the .tex back with only the citations added; nothing
+   else in the source changes. Pick `\cite`, `\citep`, `\citet`,
+   `\autocite` or `\parencite`. **Download .bib** gives the entries for every
+   key the new .tex cites.
+
+The draft and the citations chosen are kept in this browser until you change
+the text, so the panel can be closed and opened again.
+
 ## Writing helpers
 
-**Writing helpers** (side bar, *Write*) has two tools:
+**Writing helpers** (side bar, *Write*) holds Cite my draft and two smaller tools:
 
 - **Cite this**: paste a sentence and get the papers in your library that
   support it, best first. With a Claude key, each suggestion is checked

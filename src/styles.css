@@ -604,6 +604,17 @@ label.file input, label.button input { display: none; }
 .cand-title { font-weight: 560; }
 .verdict { margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--sunken); color: var(--muted); white-space: nowrap; }
 .verdict.supports { background: var(--accent-soft); color: var(--accent); }
+.cite-draft .draft-head { justify-content: space-between; flex-wrap: nowrap; align-items: flex-start; }
+.cite-draft label.check { display: inline-flex; align-items: center; gap: 6px; }
+.cite-draft label.check input { width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--accent); flex: none; }
+.draft-sentences { list-style: none; padding: 0; margin: 12px 0 0; max-height: 58vh; overflow: auto; }
+.draft-sentences > li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.draft-sentences > li.done .draft-text { color: var(--muted); }
+.draft-text { margin: 4px 0 8px; line-height: 1.5; }
+.draft-text .cite-in { color: var(--accent); font-size: 12px; overflow-wrap: anywhere; }
+.draft-sentences .candidates { max-height: none; overflow: visible; margin: 4px 0 6px; }
+.draft-sentences .new-paper { color: var(--accent); }
+.cite-draft .draft-out { margin-top: 12px; }
 .cite-out { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; padding: 6px 8px; background: var(--sunken); border-radius: var(--r-sm); font-size: 13px; }
 
 /* Citation map */
