@@ -19,13 +19,16 @@ import "./reader.css";
 
 const decoder = new TextDecoder();
 const SIDE_KEY = "lightkone.reader.side";
+const WIDTH_KEY = "lightkone.reader.sideWidth";
+/** Wide enough for a chat, and leaving at least 320px of page. */
+const clampWidth = (w: number) => Math.round(Math.max(280, Math.min(w, innerWidth - 320)));
 /** What the reader's side panel can show; more can join later. */
 type Side = "notes" | "chat";
 
 function remembered<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {
   try {
     const v = localStorage.getItem(key) as T | null;
-    return v && allowed.includes(v) ? v : fallback;
+    return v && (!allowed.length || allowed.includes(v)) ? v : fallback;
   } catch {
     return fallback;
   }
@@ -95,6 +98,39 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
   useEffect(() => view.current?.setDark(dark), [dark]);
   // The pages fit the room left beside the side panel.
   useEffect(() => view.current?.layout(), [sideOpen]);
+
+  // On a wide screen the side panel is as wide as you drag it; remembered on this device.
+  const [sideWidth, setSideWidth] = useState(() => Number(remembered(WIDTH_KEY, "", [] as string[]) || 0) || 0);
+  function startResize(e: PointerEvent) {
+    if (narrow()) return;
+    e.preventDefault();
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    let w = sideWidth;
+    const move = (ev: PointerEvent) => {
+      w = clampWidth(innerWidth - ev.clientX);
+      setSideWidth(w);
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      if (w) remember(WIDTH_KEY, String(w));
+      view.current?.layout();
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  }
+  function nudgeWidth(e: KeyboardEvent) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const now = (e.currentTarget as HTMLElement).parentElement!.getBoundingClientRect().width;
+    const w = clampWidth(now + (e.key === "ArrowLeft" ? 40 : -40));
+    setSideWidth(w);
+    remember(WIDTH_KEY, String(w));
+    requestAnimationFrame(() => view.current?.layout());
+  }
 
   function showSide(s: Side) {
     setSide(s);
@@ -282,9 +318,20 @@ export function Reader(props: { paper: Paper; storage: StorageAdapter; page?: nu
         {sideOpen && (
           <aside
             class={`reader-side ${tall ? "tall" : ""}`}
-            style={lift && narrow() ? { bottom: `${lift}px`, maxHeight: `calc(100dvh - ${lift}px - 56px)` } : undefined}
+            style={lift && narrow() ? { bottom: `${lift}px`, maxHeight: `calc(100dvh - ${lift}px - 56px)` } : sideWidth && !narrow() ? { width: `${clampWidth(sideWidth)}px` } : undefined}
             aria-label={side === "chat" ? "Chat about this paper" : "Highlights and notes"}
           >
+            <div
+              class="side-resize"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize the side panel"
+              title="Drag to resize"
+              tabIndex={0}
+              onPointerDown={startResize}
+              onKeyDown={nudgeWidth}
+              onDblClick={() => { setSideWidth(0); remember(WIDTH_KEY, ""); requestAnimationFrame(() => view.current?.layout()); }}
+            />
             <div class="side-tabs" role="tablist">
               <button role="tab" aria-selected={side === "notes"} class={side === "notes" ? "on" : ""} onClick={() => showSide("notes")}>
                 Notes{highlights.length ? <span class="badge">{highlights.length}</span> : ""}

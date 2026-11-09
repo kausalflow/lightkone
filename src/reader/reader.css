@@ -186,7 +186,10 @@
 
 /* The side panel: Notes and Chat, one at a time, beside the pages. */
 .reader-side {
-  width: min(400px, 42%);
+  position: relative;
+  width: min(440px, 42%);
+  min-width: 0;
+  flex: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -236,3 +239,13 @@
 .side-chat-long { border: 1px solid var(--line); border-left: 3px solid rgb(230 160 0); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--panel); }
 .side-chat-long p { margin: 0 0 6px; }
 .side-chat-long .row { margin: 0; gap: 6px; }
+
+/* The left edge drags to resize (wide screens); double-click goes back to the default. */
+.side-resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 3; touch-action: none; }
+.side-resize:hover, .side-resize:focus-visible { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); outline: none; }
+/* Answers wrap inside the panel; wide equations scroll on their own. */
+.side-chat { overflow-x: hidden; }
+.side-chat .paper-chat, .side-chat .ask-turns, .side-chat .answer { min-width: 0; max-width: 100%; }
+.side-chat .ask-turns { grid-template-columns: minmax(0, 1fr); }
+.side-chat .answer .katex-display, .side-chat .answer pre, .side-chat .answer table { max-width: 100%; overflow-x: auto; }
+@media (max-width: 860px) { .side-resize { display: none; } }
