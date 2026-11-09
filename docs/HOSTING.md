@@ -46,7 +46,8 @@ up** which arXiv preprints have been published: first from the DOI and journal
 reference authors added on arXiv, then from Semantic Scholar. Semantic
 Scholar limits anonymous requests; for steadier results, request a free key at
 https://www.semanticscholar.org/product/api and add it to the Pages project as
-the secret `S2_API_KEY`.
+the secret `S2_API_KEY`. The same service tells **Paper health** which
+preprints have been withdrawn on arXiv.
 
 ## The page service
 

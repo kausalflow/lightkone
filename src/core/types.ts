@@ -37,8 +37,34 @@ export interface Paper {
   opened?: string;
   /** Who added it, in a shared library: the name they gave in Settings. */
   by?: string;
+  /** Retractions, corrections and withdrawals found for it, and when it was last checked. */
+  health?: Health;
   /** Remaining BibTeX fields, lower-cased names, raw values. */
   fields: Record<string, string>;
+}
+
+export type HealthKind = "retracted" | "withdrawn" | "concern" | "corrected" | "addendum";
+
+export interface Notice {
+  kind: HealthKind;
+  /** The notice's own words for itself, e.g. "Retraction", "Erratum". */
+  label: string;
+  /** The DOI of the notice. */
+  doi?: string;
+  /** When the notice appeared, YYYY-MM-DD. */
+  date?: string;
+  /** Who reported it: "publisher", "retraction-watch", "arxiv". */
+  source?: string;
+  /** For a withdrawal, the reason given. */
+  reason?: string;
+  /** Set when the notice is about the paper's published version rather than the record in the library. */
+  of?: string;
+}
+
+export interface Health {
+  /** When it was last checked, ISO. */
+  checked: string;
+  notices: Notice[];
 }
 
 /** What a lookup or importer returns before the library assigns id and key. */

@@ -984,3 +984,14 @@ details.guide ul { margin-top: 8px; }
 .mention-title { font: 500 14px/1.3 var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip.mention { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); font-size: 0.86em; vertical-align: 1px; }
 .chip.staging { margin-left: 6px; background: color-mix(in srgb, var(--warm) 18%, transparent); color: var(--warm); font-weight: 600; font-size: 11px; letter-spacing: 0.04em; }
+
+/* Paper health */
+.chip.health { font-weight: 600; font-size: 11px; letter-spacing: 0.02em; background: var(--sunken); color: var(--muted); }
+.chip.health.retracted, .chip.health.withdrawn { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.chip.health.concern { background: color-mix(in srgb, var(--warm) 18%, transparent); color: var(--text); }
+.health-notices { margin: 0 0 14px; display: grid; gap: 6px; }
+.health-notice { margin: 0; padding: 8px 12px; border-radius: var(--r-sm); background: var(--sunken); font-size: 14px; line-height: 1.5; }
+.health-notice.retracted, .health-notice.withdrawn { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.health-notice.retracted strong, .health-notice.withdrawn strong { color: var(--danger); }
+.health-notice.concern { background: color-mix(in srgb, var(--warm) 14%, transparent); }
+.health-reason { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
