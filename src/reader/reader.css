@@ -249,3 +249,16 @@
 .side-chat .ask-turns { grid-template-columns: minmax(0, 1fr); }
 .side-chat .answer .katex-display, .side-chat .answer pre, .side-chat .answer table { max-width: 100%; overflow-x: auto; }
 @media (max-width: 860px) { .side-resize { display: none; } }
+/* Snapped left or below the page (wide screens; a phone always has the sheet). */
+.side-snap { display: inline-flex; gap: 0; margin-right: 4px; }
+.side-snap .icon-btn.on { color: var(--accent); background: var(--accent-soft); }
+.side-snap .icon.flip { transform: scaleX(-1); }
+@media (min-width: 861px) {
+  .reader-body.dock-left .reader-side { order: -1; border-left: 0; border-right: 1px solid var(--line); }
+  .reader-body.dock-left .side-resize { left: auto; right: -4px; }
+  .reader-body.dock-bottom { flex-direction: column; }
+  .reader-body.dock-bottom .reader-side { width: auto; height: min(42vh, 420px); border-left: 0; border-top: 1px solid var(--line); }
+  .reader-body.dock-bottom .side-resize { left: 0; right: 0; top: -4px; bottom: auto; width: auto; height: 8px; cursor: row-resize; }
+  .reader-body.dock-bottom .side-resize:hover, .reader-body.dock-bottom .side-resize:focus-visible { background: linear-gradient(180deg, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); }
+}
+@media (max-width: 860px) { .side-snap { display: none; } }
