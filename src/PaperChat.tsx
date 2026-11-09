@@ -28,6 +28,8 @@ export function PaperChat(props: {
   seed?: { text: string; n: number };
   /** Off where a keyboard popping up would cover the page (the reader on a phone). */
   autoFocus?: boolean;
+  /** Shown just above the question box, such as a note that the chat is getting long. */
+  notice?: preact.ComponentChildren;
   /** Claude is answering (true) or done (false). */
   onBusy?(busy: boolean): void;
 }) {
@@ -160,6 +162,7 @@ export function PaperChat(props: {
         <div ref={bottom} />
       </div>
       <form class="ask-form" onSubmit={ask}>
+        {props.notice}
         <MentionBox
           value={question}
           papers={props.papers}

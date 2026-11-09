@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { chatsAbout } from "../src/reader/SideChat";
-import { joinChat, type Conversation, type Entry } from "../src/core/history";
+import { chatSize, isLong, joinChat, type Conversation, type Entry } from "../src/core/history";
 
 const e = (id: string, kind: Entry["kind"], papers: string[], updated: string): Entry => ({ id, kind, title: id, created: updated, updated, papers, preview: "" });
 
@@ -40,5 +40,16 @@ describe("one running chat per paper", () => {
   it("turns an old explanation into a running chat", () => {
     const old = { ...run, kind: "explain" } as Conversation;
     expect(joinChat(old, explain, "2026-11-09T10:00:00Z")!.conv.kind).toBe("paper");
+  });
+});
+
+describe("a long chat", () => {
+  it("counts messages and the text sent again", () => {
+    expect(chatSize([{ text: "abcd" }, { text: "abcdefgh", sources: "abcd" }])).toEqual({ messages: 2, tokens: 4 });
+  });
+  it("is long from 20 messages or about 15k tokens of text", () => {
+    expect(isLong({ messages: 19, tokens: 14_999 })).toBe(false);
+    expect(isLong({ messages: 20, tokens: 100 })).toBe(true);
+    expect(isLong({ messages: 4, tokens: 15_000 })).toBe(true);
   });
 });

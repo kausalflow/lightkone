@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Paper, StorageAdapter } from "../core/types";
-import { chatsAbout, dayLabel, loadConversation, titleOf, type Conversation, type Entry } from "../core/history";
+import { chatsAbout, chatSize, dayLabel, isLong, loadConversation, titleOf, type Conversation, type Entry, type Organize } from "../core/history";
 
 export { chatsAbout };
 import { PaperChat } from "../PaperChat";
@@ -16,6 +16,8 @@ export interface ReaderChatProps {
   texts: Map<string, string>;
   settings: Record<string, string>;
   onRecord(c: Conversation): void;
+  /** Rename a chat (or pin it, or give it topics). */
+  onOrganize(id: string, change: Organize): void;
   /** Open the full Chats panel, on one chat or on this paper's chats. */
   onChats(at: { open?: string; paperId?: string }): void;
   /** A citation to another paper was tapped. */
@@ -50,11 +52,14 @@ export function SideChat(props: ReaderChatProps & {
 
   function pick(id: string, keepSeed = false) {
     if (!keepSeed) setSeed(undefined);
+    setNaming(null);
+    pendingName.current = undefined;
+    chosenNew.current = id === "new" && !keepSeed;
     started.current = false;
     setCurrent(id);
     setConv(null);
     setState(id === "new" ? "ready" : "loading");
-    setN(n + 1);
+    setN((x) => x + 1);
   }
 
   useEffect(() => {
@@ -75,7 +80,8 @@ export function SideChat(props: ReaderChatProps & {
   const fresh = mine.find((e) => e.id === current);
   useEffect(() => {
     if (busy.current) return;
-    if (current === "new" && !started.current && mine[0]) return pick(mine[0].id, true);
+    // Only when there was no chat to show: a new chat you started stays yours.
+    if (current === "new" && !chosenNew.current && !started.current && mine[0]) return pick(mine[0].id, true);
     if (fresh && conv && fresh.updated > conv.updated) {
       setConv(null);
       setState("loading");
@@ -83,9 +89,30 @@ export function SideChat(props: ReaderChatProps & {
     }
   }, [fresh?.updated, mine[0]?.id]);
   const started = useRef(false);
+  const chosenNew = useRef(false);
+
+  // Naming: the chat shown, or the new one before its first answer.
+  const [naming, setNaming] = useState<string | null>(null);
+  const pendingName = useRef<string | undefined>(undefined);
+  // Chats whose length was noted and waved on, this session.
+  const [waved, setWaved] = useState<Set<string>>(() => new Set());
+
+  function rename(e: Event) {
+    e.preventDefault();
+    const name = (naming ?? "").trim();
+    setNaming(null);
+    if (current === "new" || !conv) {
+      pendingName.current = name || undefined;
+      return;
+    }
+    props.onOrganize(current, { name: name || undefined });
+    setConv({ ...conv, name: name || undefined });
+  }
 
   function record(c: Conversation) {
     started.current = true;
+    if (pendingName.current && !c.name) c = { ...c, name: pendingName.current };
+    pendingName.current = undefined;
     props.onRecord(c);
     setConv(c);
     setCurrent(c.id);
@@ -93,18 +120,41 @@ export function SideChat(props: ReaderChatProps & {
 
   const known = current !== "new" && !mine.some((e) => e.id === current) && conv ? [{ id: conv.id, title: conv.title, updated: conv.updated } as Entry] : [];
   const options = [...known, ...mine];
+  const shown = mine.find((e) => e.id === current) ?? (conv ? (conv as Entry) : undefined);
+  const nameNow = current === "new" ? pendingName.current ?? "" : shown ? titleOf(shown) : "";
+  const size = conv && current !== "new" ? chatSize(conv.turns) : null;
+  const long = size && isLong(size) && !waved.has(current) ? size : null;
 
   return (
     <div class="side-chat">
       <div class="side-chat-bar">
-        <select aria-label="Chat about this paper" value={current} onChange={(e) => pick(e.currentTarget.value)}>
-          <option value="new">New chat</option>
-          {options.map((e) => (
-            <option key={e.id} value={e.id}>
-              {titleOf(e).slice(0, 70)} · {dayLabel(e.updated)}
-            </option>
-          ))}
-        </select>
+        {naming !== null ? (
+          <form class="side-chat-name" onSubmit={rename}>
+            <input
+              value={naming}
+              autoFocus
+              aria-label="Name of this chat"
+              placeholder="Name this chat"
+              onInput={(e) => setNaming(e.currentTarget.value)}
+              onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setNaming(null))}
+            />
+            <button class="small primary" type="submit">Save</button>
+          </form>
+        ) : (
+          <>
+            <select aria-label="Chat about this paper" value={current} onChange={(e) => pick(e.currentTarget.value)}>
+              <option value="new">{current === "new" && pendingName.current ? pendingName.current : "New chat"}</option>
+              {options.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {titleOf(e).slice(0, 70)} · {dayLabel(e.updated)}
+                </option>
+              ))}
+            </select>
+            <button class="icon-btn" title="Name this chat" aria-label="Name this chat" onClick={() => setNaming(nameNow)}>
+              <Icon name="edit" />
+            </button>
+          </>
+        )}
         <button class="icon-btn" title="New chat about this paper" aria-label="New chat" onClick={() => pick("new")}>
           <Icon name="plus" />
         </button>
@@ -132,6 +182,20 @@ export function SideChat(props: ReaderChatProps & {
           pdfOf={async () => props.pdf()}
           onRecord={record}
           onBusy={(b) => (busy.current = b)}
+          notice={
+            long && (
+              <div class="side-chat-long" role="status">
+                <p class="small">
+                  This chat is getting long: {long.messages} messages, about {long.tokens.toLocaleString()} tokens of text sent again with each
+                  question (the PDF is cached). A new chat costs less and keeps Claude on the point.
+                </p>
+                <div class="row">
+                  <button type="button" class="small primary" onClick={() => pick("new")}>New chat</button>
+                  <button type="button" class="small ghost" onClick={() => setWaved(new Set([...waved, current]))}>Keep going</button>
+                </div>
+              </div>
+            )
+          }
           onOpen={(id, page) => (id === props.paper.id ? props.onPage(page) : props.onOpenPaper(id, page))}
         />
       )}
