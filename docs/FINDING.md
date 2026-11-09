@@ -157,6 +157,26 @@ works several of your papers cite that your library doesn't have yet, most
 cited first. A paper's details also offer **Find related** for its
 neighbours.
 
+## How others cite this
+
+**How others cite this**, in a paper's details, shows the sentences in later
+papers that cite it, from Semantic Scholar's citation contexts. It reads the
+newest thousand citing papers, puts those that come with their sentences first,
+and among them the ones Semantic Scholar marks as influential and the most
+cited. Filters pick out those Semantic Scholar tags as citing it for a result,
+a method or background, and those already in your library; any other can be
+added in one tap.
+
+With a Claude key, **Sort with Claude** reads sixty at a time and marks each
+as *supporting* (confirms it, reproduces it, builds on it), *contrasting*
+(disputes it, finds a different value, points out a limitation) or
+*mentioning*, with a few words on what the citing paper does with it.
+Contrasting ones come first. Claude judges from the citing sentence alone,
+so open the paper before leaning on a verdict.
+
+Semantic Scholar limits anonymous use; a free key under **Settings → Related
+papers** makes it steadier.
+
 ## Organizing
 
 - **Folders** sit in the side bar and can nest (`Physics/QFT`). A paper can be

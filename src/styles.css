@@ -995,3 +995,20 @@ details.guide ul { margin-top: 8px; }
 .health-notice.retracted strong, .health-notice.withdrawn strong { color: var(--danger); }
 .health-notice.concern { background: color-mix(in srgb, var(--warm) 14%, transparent); }
 .health-reason { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+/* How others cite this */
+.citedby-of { margin-top: -6px; }
+.citedby-panel label.check { display: inline-flex; align-items: center; gap: 6px; }
+.citedby-panel label.check input { width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--accent); flex: none; }
+.citedby-filters { margin: 12px 0 4px; gap: 6px; flex-wrap: wrap; }
+.citedby-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.citedby-list > li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.citedby-list blockquote { margin: 0 0 6px; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-strong); line-height: 1.5; }
+.citedby-list li.s-supports blockquote { border-left-color: var(--accent); }
+.citedby-list li.s-contrasts blockquote { border-left-color: var(--danger); }
+.citedby-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
+.citedby-meta .verdict { margin-left: 0; }
+.verdict.contrasts { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.citedby-meta .intent { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
+.citedby-paper .title { font-weight: 560; }
+.citedby-list .row { margin-top: 6px; }

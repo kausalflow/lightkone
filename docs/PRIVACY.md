@@ -12,6 +12,7 @@ app talks to it from your browser.
 | Your chats with Claude | Your own storage (`lightkone/history/`). In a shared or read-only library, this browser only. |
 | Asking beyond your library | The words of your question go to OpenAlex's search. |
 | Cite my draft | Your draft is read in your browser. A few words from each sentence you look up go to OpenAlex's search. With your Claude key, the uncited sentences (each with the one before it) and the passages found for them go straight to Anthropic. |
+| How others cite this | The paper's DOI or arXiv id goes to Semantic Scholar. With your Claude key, the citing sentences and the paper's details go straight to Anthropic when you sort them. |
 | Paper health | Your papers' DOIs go to Crossref, and their arXiv ids to arXiv through the site, about once a month. Nothing else about them is sent. |
 | Journal citation styles | The style's name goes to the Citation Style Language project on GitHub, and the list of styles is fetched from Zotero. Your papers are formatted in your browser. |
 | Adding and looking up papers | The DOI, arXiv id or title goes to Crossref, OpenAlex, Semantic Scholar or arXiv. For open-access PDFs, the DOI and your contact email go to Unpaywall through the site. A web page you add is fetched through the site, which passes only its address to the page's own server. If that server turns the site away, the address goes to Jina Reader (r.jina.ai) instead, unless you switch that off in Settings → DOI, arXiv and BibTeX. |
