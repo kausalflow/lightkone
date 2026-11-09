@@ -70,6 +70,19 @@ a paper to take it out. There is no "whole library" and no "select all":
 Claude reads every paper you add with your own API key, so you choose what
 it costs.
 
+**Whole PDFs for a few papers.** When the papers you add are five or
+fewer and all have their PDF in Lightkone, **Read the whole PDFs** (on by
+default) sends the PDFs themselves to Claude instead of passages, so the
+answer can use figures, tables and equations as well as the text. Claude's
+citations say which page each point comes from; they show as [1], [2] and
+open the paper at that page, as for passages. The first question pays for
+the PDFs; follow-ups within a few minutes reuse them from Anthropic's cache.
+A paper named with `[[` later in the chat is added as its PDF while there is
+room for five, then as its title and abstract. Untick the box to ask from
+passages, which costs less. When the PDFs are too big for one request
+(about 22 MB together, or more than 600 pages), Ask says so and hands the
+question back to ask from passages.
+
 Instead of your papers, **Published papers beyond your library** has
 OpenAlex search all published work for the words of your question, and
 Claude answers from the abstracts of what it finds, saying that it has only

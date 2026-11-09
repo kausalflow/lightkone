@@ -379,6 +379,7 @@ function Engine(props: WorkProps & { resume?: Conversation; mode?: Mode; pick?: 
       pick={props.pick}
       onRecord={props.onRecord}
       onCompare={compare}
+      pdfOf={props.pdfOf}
       onOpen={props.onOpen}
     />
   );

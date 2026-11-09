@@ -218,7 +218,7 @@ function Data() {
   const rows: [string, string][] = [
     ["Your papers, notes, highlights and PDFs", "Only your own storage. This site never receives them, except when you use the AI app address (MCP): then its server reads your library from your storage for each request, with your storage keys sealed inside your private address."],
     ["Keys and tokens (Claude, GitHub, bucket, OpenAlex)", "Only this browser's settings. Each is sent only to the service it belongs to. Invite links for shared libraries never carry them."],
-    ["Ask, Explain, Compare papers and the check in Cite this", "When you use them, your question and the passages picked from your papers (for a comparison table, each chosen paper's text) go from your browser straight to Anthropic, with your own Claude key."],
+    ["Ask, Explain, Compare papers and the check in Cite this", "When you use them, your question and the passages picked from your papers (for a comparison table, each chosen paper's text; for Ask about five papers or fewer with Read the whole PDFs on, the PDFs themselves) go from your browser straight to Anthropic, with your own Claude key."],
     ["Your chats with Claude", "Your own storage. In a shared or read-only library, this browser only, so the group never sees your questions."],
     ["Asking beyond your library", "The words of your question go to OpenAlex's search."],
     ["Cite my draft", "Your draft is read in your browser. A few words from each sentence you look up go to OpenAlex's search. With your Claude key, the uncited sentences and the passages found for them go straight to Anthropic."],
