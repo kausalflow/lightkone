@@ -124,6 +124,8 @@ export function PaperChat(props: {
     return x ? sourceLabel(x, byId.get(x.paperId)) : null;
   };
   const render = (md: string) => (sources.length ? linkCitations(renderMarkdown(md, math), label) : renderMarkdown(md, math));
+  // Typesetting long answers with math is slow: done once per answer, not on every redraw around it.
+  const html = useMemo(() => turns.map((t) => (t.role === "assistant" ? render(t.text) : "")), [turns, sources, math]);
   function onClick(e: MouseEvent) {
     const a = (e.target as HTMLElement).closest<HTMLElement>("a.src");
     if (!a) return;
@@ -153,7 +155,7 @@ export function PaperChat(props: {
           t.role === "user" ? (
             hideFirst && i === 0 ? null : <p key={i} class="ask-q"><QuestionText text={t.text} papers={byId} /></p>
           ) : (
-            <div key={i} class="answer" dangerouslySetInnerHTML={{ __html: render(t.text) }} />
+            <div key={i} class="answer" dangerouslySetInnerHTML={{ __html: html[i] }} />
           ),
         )}
         {saved && streaming === null && <SavedNote at={saved} onAgain={() => again.current?.()} disabled={!hasKey} />}

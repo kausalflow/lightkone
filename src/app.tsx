@@ -667,12 +667,27 @@ export function App() {
     }
   }
 
+  const running = useRef(new Set<string>());
   async function runAction(id: string, p: Paper, fresh = false) {
     // Asking Claude about a paper is a chat, kept and carried on in Chats.
     if (id === "claude.ask") return openChats({ start: { mode: "ask", ids: [p.id] } });
     const action = actions().find((a) => `${a.plugin}.${a.id}` === id);
     if (!action) return;
+    // A second press while the first is still working would ask (and pay) twice.
+    const runKey = `${id} ${p.id}`;
+    if (running.current.has(runKey)) return;
+    // A summary already in the paper's chat is shown at once, not asked for again (Summarize again asks afresh).
+    if (id === "claude.summarize" && !fresh && historyStore) {
+      const kept = await keptSummary(p.id).catch(() => null);
+      if (kept) {
+        setError(null);
+        setResult({ kind: "text", title: "Summary", text: kept.text, saved: kept.at, again: "Summarize again" });
+        setResultConv(kept.chat);
+        return;
+      }
+    }
     setLastAction(id);
+    running.current.add(runKey);
     setBusy(action.label);
     setError(null);
     try {
@@ -719,6 +734,7 @@ export function App() {
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      running.current.delete(runKey);
       setBusy(null);
     }
   }
@@ -817,7 +833,29 @@ export function App() {
         joined.current.set(c.id, j.part);
         return saveConversation(store, j.conv);
       })
-      .then((es) => es && setConversations(es), (e) => setError(`Could not keep this chat: ${(e as Error).message}`));
+      .then(
+        (es) => {
+          if (!es) return;
+          // Seen at once by the next summary or explanation in the queue, before the list redraws.
+          conversationsRef.current = es;
+          setConversations(es);
+        },
+        (e) => setError(`Could not keep this chat: ${(e as Error).message}`),
+      );
+  }
+  /** The latest summary in any of the paper's chats. */
+  async function keptSummary(paperId: string): Promise<{ text: string; at: string; chat: string } | null> {
+    if (!historyStore) return null;
+    for (const e of chatsAbout(conversationsRef.current, paperId)) {
+      const c = await loadConversation(historyStore, e.id);
+      const turns = c?.turns ?? [];
+      for (let i = turns.length - 2; i >= 0; i--) {
+        if (turns[i].role === "user" && turns[i].text === "Summarize this paper." && turns[i + 1].role === "assistant") {
+          return { text: turns[i + 1].text, at: c!.updated, chat: c!.id };
+        }
+      }
+    }
+    return null;
   }
   function forget(id: string) {
     if (!historyStore) return;

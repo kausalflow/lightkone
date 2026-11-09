@@ -262,3 +262,13 @@
   .reader-body.dock-bottom .side-resize:hover, .reader-body.dock-bottom .side-resize:focus-visible { background: linear-gradient(180deg, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); }
 }
 @media (max-width: 860px) { .side-snap { display: none; } }
+/* The chat picker: a button and a plain list under it, quick to scan and tap. */
+.side-chat-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; justify-content: space-between; text-align: left; font-weight: 560; padding: 6px 10px; }
+.side-chat-pick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-chat-pick .icon.down { transform: rotate(90deg); flex: none; }
+.side-chat-list { list-style: none; margin: -2px 0 8px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); max-height: 50%; overflow: auto; flex: none; box-shadow: 0 6px 18px rgb(0 0 0 / 0.08); }
+.side-chat-list li { display: grid; gap: 2px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.side-chat-list li:hover { background: var(--sunken, var(--hover)); }
+.side-chat-list li.on { background: var(--accent-soft); }
+.side-chat-item-title { font: 560 14.5px/1.35 var(--serif); display: flex; align-items: center; gap: 4px; overflow-wrap: anywhere; }
+.side-chat-list .small { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
