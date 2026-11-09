@@ -272,3 +272,12 @@
 .side-chat-list li.on { background: var(--accent-soft); }
 .side-chat-item-title { font: 560 14.5px/1.35 var(--serif); display: flex; align-items: center; gap: 4px; overflow-wrap: anywhere; }
 .side-chat-list .small { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* Floating over the page: a window moved by its tab bar, sized from its corner. */
+@media (min-width: 861px) {
+  .reader-body { position: relative; }
+  .reader-body.dock-float .reader-side { position: absolute; z-index: 15; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px rgb(0 0 0 / 0.22); overflow: hidden; }
+  .reader-body.dock-float .side-resize { display: none; }
+  .reader-body.dock-float .side-tabs { cursor: grab; touch-action: none; }
+  .reader-body.dock-float .side-tabs:active { cursor: grabbing; }
+  .side-corner { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; z-index: 4; touch-action: none; background: linear-gradient(135deg, transparent 50%, var(--line-strong, var(--line)) 50%, var(--line-strong, var(--line)) 60%, transparent 60%, transparent 70%, var(--line-strong, var(--line)) 70%, var(--line-strong, var(--line)) 80%, transparent 80%); }
+}
