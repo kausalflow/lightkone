@@ -144,7 +144,15 @@ export interface Importer {
 }
 
 export type ActionResult =
-  | { kind: "text"; title: string; text: string; /** A button under the text that runs the action again. */ again?: string }
+  | {
+      kind: "text";
+      title: string;
+      text: string;
+      /** A button under the text that runs the action again, asking afresh. */
+      again?: string;
+      /** When the text is a saved answer: when it was first given. */
+      saved?: string;
+    }
   | { kind: "papers"; title: string; papers: PaperDraft[] }
   | { kind: "none" };
 
@@ -155,6 +163,8 @@ export interface ActionContext {
   open(url: string): void;
   /** Asks the user for some text in a dialog; null when they cancel. */
   ask(question: string, placeholder?: string): Promise<string | null>;
+  /** Run again on purpose: don't show a saved answer, make a new one. */
+  fresh?: boolean;
 }
 
 /** A button on a paper. */

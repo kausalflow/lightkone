@@ -7,10 +7,13 @@ import { sourcesPrompt, type Source } from "./core/ask";
 import { shortAuthors } from "./core/cite";
 import { libraryToBibtex } from "./core/bibtex";
 import { checkSupport, triageDraft } from "./plugins/claude";
+import { readKept, writeKept } from "./core/answers";
 
 const COMMANDS = ["cite", "citep", "citet", "autocite", "parencite"];
 const RANK: Record<Verdict["support"], number> = { supports: 0, related: 1, no: 2 };
 const STORE = "lightkone.citedraft";
+/** The same, kept with the library, so another device (or a cleared browser) picks up where you were. */
+export const CITE_DRAFT_PATH = "lightkone/cite-draft.json";
 /** Sentences sent to Claude in one triage request. */
 const TRIAGE_BATCH = 80;
 
@@ -30,11 +33,45 @@ interface Found {
   note?: string;
 }
 
+/** A suggestion as kept: the library's paper by id, a found one whole. */
+interface KeptSuggestion {
+  paperId: string;
+  outside?: Outside;
+  passage: Source;
+  verdict?: Verdict;
+}
+
 interface Saved {
   tex: string;
   name: string;
   chosen: [number, string[]][];
   triage: Triage[];
+  /** The papers found for each sentence, with Claude's checks, so they aren't asked for again. */
+  found?: [number, { items: KeptSuggestion[]; picked: string[]; checked: boolean; note?: string }][];
+  /** When this was last changed, so the newer of this browser's copy and the library's wins. */
+  at?: string;
+}
+
+function keepFound(found: Map<number, Found>): Saved["found"] {
+  return [...found].map(([n, f]) => [n, { items: f.items.map((x) => ({ paperId: x.paper.id, outside: x.outside, passage: x.passage, verdict: x.verdict })), picked: [...f.picked], checked: f.checked, note: f.note }]);
+}
+
+function foundOf(kept: Saved["found"], papers: Paper[]): Map<number, Found> {
+  const byId = new Map(papers.map((p) => [p.id, p]));
+  return new Map(
+    (kept ?? []).map(([n, f]) => [
+      n,
+      {
+        ...f,
+        picked: new Set(f.picked),
+        // A library paper since removed drops out.
+        items: f.items.flatMap((x) => {
+          const paper = x.outside ?? byId.get(x.paperId);
+          return paper ? [{ paper, outside: x.outside, passage: x.passage, verdict: x.verdict }] : [];
+        }),
+      },
+    ]),
+  );
 }
 
 function load(): Saved | null {
@@ -75,7 +112,7 @@ export function CiteDraft(props: {
   const [chosen, setChosen] = useState<Map<number, string[]>>(() => new Map(saved?.chosen ?? []));
   const [triage, setTriage] = useState<Map<number, Triage> | null>(() => (saved?.triage?.length ? new Map(saved.triage.map((t) => [t.n, t])) : null));
   const [showAll, setShowAll] = useState(false);
-  const [found, setFound] = useState<Map<number, Found>>(new Map());
+  const [found, setFound] = useState<Map<number, Found>>(() => foundOf(saved?.found, props.papers));
   const [working, setWorking] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -100,7 +137,35 @@ export function CiteDraft(props: {
   const out = useMemo(() => applyCites(tex, sentences, chosen, cmd), [tex, sentences, chosen, cmd]);
   const added = [...chosen.values()].filter((k) => k.length).length;
 
-  useEffect(() => save({ tex, name, chosen: [...chosen], triage: triage ? [...triage.values()] : [] }), [tex, name, chosen, triage]);
+  // The library's copy, when it is newer than this browser's (from another device).
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let live = true;
+    readKept<Saved>(CITE_DRAFT_PATH).then((kept) => {
+      if (!live) return;
+      if (kept?.tex && (kept.at ?? "") > (saved?.at ?? "")) {
+        setTex(kept.tex);
+        setName(kept.name ?? "");
+        setEditing(false);
+        setChosen(new Map(kept.chosen ?? []));
+        setTriage(kept.triage?.length ? new Map(kept.triage.map((t) => [t.n, t])) : null);
+        setFound(foundOf(kept.found, props.papers));
+      }
+      setReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const keepTimer = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!ready) return;
+    const s: Saved = { tex, name, chosen: [...chosen], triage: triage ? [...triage.values()] : [], found: keepFound(found), at: new Date().toISOString() };
+    save(s);
+    // Kept with the library a moment after the last change, not on every keystroke.
+    clearTimeout(keepTimer.current);
+    keepTimer.current = window.setTimeout(() => writeKept(CITE_DRAFT_PATH, s), 1500);
+  }, [tex, name, chosen, triage, found, ready]);
   useEffect(() => () => abort.current?.abort(), []);
 
   function read(e?: Event) {

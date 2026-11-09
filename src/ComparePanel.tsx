@@ -11,6 +11,7 @@ import { shortAuthors } from "./core/cite";
 import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
 import { draftReview, extractRow, weighClaim } from "./plugins/claude";
+import { SavedNote } from "./SavedNote";
 import { newConversationId, type Conversation, type Kind } from "./core/history";
 import { ScopePicker } from "./ScopePicker";
 import { Icon } from "./icons";
@@ -148,13 +149,15 @@ function TableTab(props: TabProps) {
   const [table, setTable] = useState<{ columns: string[]; rows: Row[] } | null>(saved);
   const [progress, setProgress] = useState<[number, number] | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // Rows read from saved answers (the same paper, text and columns as before), and the latest of them.
+  const [reused, setReused] = useState<{ n: number; at: string } | null>(null);
   const math = useMath();
   const stop = useStop();
   const columns = parseColumns(columnsText);
   const todo = props.chosen.slice(0, TABLE_MAX);
 
-  async function fill(e: Event) {
-    e.preventDefault();
+  async function fill(e: Event | null, fresh = false) {
+    e?.preventDefault();
     if (!columns.length || !todo.length) return;
     keep(COLUMNS_KEY, columnsText);
     stop.current = new AbortController();
@@ -166,6 +169,9 @@ function TableTab(props: TabProps) {
     };
     setTable({ columns, rows: [] });
     setNote(null);
+    setReused(null);
+    let hits = 0;
+    let latest = "";
     const id = conv.fresh();
     props.setBusy(true);
     let done = 0;
@@ -174,7 +180,13 @@ function TableTab(props: TabProps) {
       await inTurn(todo, 3, async (p, i) => {
         const { text, full, cut } = paperText(p, props.texts.get(p.id));
         try {
-          const reply = await extractRow(props.settings, p, text, full, columns, signal);
+          const reply = await extractRow(props.settings, p, text, full, columns, signal, {
+            fresh,
+            onSaved: (at) => {
+              hits++;
+              if (at > latest) latest = at;
+            },
+          });
           // Without the PDF's text there are no pages to point to.
           const cells = parseRow(reply, columns)?.map((c) => (full ? c : { ...c, page: 0 })) ?? null;
           rows[i] = cells ? { paperId: p.id, cells, abstractOnly: !full || undefined } : { paperId: p.id, cells: null, error: "Claude's reply could not be read." };
@@ -187,6 +199,7 @@ function TableTab(props: TabProps) {
         show();
       }, signal);
       if (signal.aborted) setNote("Stopped.");
+      if (hits) setReused({ n: hits, at: latest });
       const kept = rows.filter((r) => r.cells || r.error);
       if (kept.length) props.record("table", id, columns.join(", "), kept.map((r) => r.paperId), { columns, rows: kept });
     } finally {
@@ -228,6 +241,15 @@ function TableTab(props: TabProps) {
         </div>
       </form>
       {note && <p class="message" role="status">{note}</p>}
+      {reused && !progress && (
+        <SavedNote
+          at={reused.at}
+          text={reused.n === rows.length ? "Every row is a saved answer: the same papers and columns were read before, so Claude was not asked again." : `${reused.n} of the rows are saved answers, so Claude was not asked again for them.`}
+          again="Fill again"
+          disabled={!props.hasKey || props.busy}
+          onAgain={() => fill(null, true)}
+        />
+      )}
       {rows.length > 0 && (
         <div class="compare-table">
           <table>
@@ -307,11 +329,13 @@ function WeighTab(props: TabProps) {
   useEffect(() => props.setHas(Boolean(result)), [Boolean(result)]);
   const conv = useConv(props.resume);
   const [note, setNote] = useState<string | null>(null);
+  // When the weighing is a saved one (this claim on these passages before): when it was made.
+  const [saved, setSaved] = useState<string | null>(null);
   const math = useMath();
   const stop = useStop();
 
-  async function weigh(e: Event) {
-    e.preventDefault();
+  async function weigh(e: Event | null, fresh = false) {
+    e?.preventDefault();
     const c = claim.trim();
     if (!c) return;
     const sources = retrieve(props.chosen, props.texts, c, { max: 40, perPaper: 3, papers: 40 });
@@ -321,10 +345,13 @@ function WeighTab(props: TabProps) {
     }
     setNote(null);
     setResult(null);
+    setSaved(null);
     props.setBusy(true);
     stop.current = new AbortController();
     try {
-      const reply = await weighClaim(props.settings, c, sourcesPrompt(sources, props.byId), stop.current.signal);
+      let at: string | undefined;
+      const reply = await weighClaim(props.settings, c, sourcesPrompt(sources, props.byId), stop.current.signal, { fresh, onSaved: (a) => (at = a) });
+      setSaved(at ?? null);
       const w = parseWeighing(reply, new Set(sources.map((s) => s.n)));
       if (!w) setNote("Claude's reply could not be read. Try again.");
       else {
@@ -332,7 +359,8 @@ function WeighTab(props: TabProps) {
         const used = new Set(w.points.flatMap((p) => p.sources));
         // A new claim is a new conversation; the same one weighed again replaces it.
         const id = conv.current && back?.claim === c ? conv.current : conv.fresh();
-        props.record("weigh", id, c, [...new Set(sources.filter((s) => used.has(s.n)).map((s) => s.paperId))], { claim: c, weighing: w }, sources.filter((s) => used.has(s.n)));
+        // A saved weighing is in Chats already, unless this is it, opened from there.
+        if (!at || id === conv.current) props.record("weigh", id, c, [...new Set(sources.filter((s) => used.has(s.n)).map((s) => s.paperId))], { claim: c, weighing: w }, sources.filter((s) => used.has(s.n)));
       }
     } catch (err) {
       if (!stop.current?.signal.aborted) setNote((err as Error).message);
@@ -373,6 +401,7 @@ function WeighTab(props: TabProps) {
         </div>
       </form>
       {note && <p class="message" role="status">{note}</p>}
+      {saved && !props.busy && <SavedNote at={saved} again="Weigh again" disabled={!props.hasKey} onAgain={() => weigh(null, true)} />}
       {result && (
         <div class="weighing">
           {result.weighing.summary && <div class="answer" dangerouslySetInnerHTML={{ __html: renderMarkdown(result.weighing.summary, math) }} />}
@@ -426,21 +455,27 @@ function ReviewTab(props: TabProps) {
   useEffect(() => props.setHas(Boolean(draft)), [Boolean(draft)]);
   const conv = useConv(props.resume);
   const [note, setNote] = useState<string | null>(null);
+  // When the draft is a saved one (the same papers, focus and format before): when it was written.
+  const [saved, setSaved] = useState<string | null>(null);
   const stop = useStop();
   const papers = props.chosen.slice(0, REVIEW_MAX);
 
-  async function write(e: Event) {
-    e.preventDefault();
+  async function write(e: Event | null, fresh = false) {
+    e?.preventDefault();
     if (!papers.length) return;
     setNote(null);
+    setSaved(null);
     setDraft("");
     props.setBusy(true);
     stop.current = new AbortController();
     try {
-      const text = await draftReview(props.settings, reviewSources(papers, props.texts), focus, format, setDraft, stop.current.signal);
+      let at: string | undefined;
+      const text = await draftReview(props.settings, reviewSources(papers, props.texts), focus, format, setDraft, stop.current.signal, { fresh, onSaved: (a) => (at = a) });
       setDraft(text);
+      setSaved(at ?? null);
       const cited = new Set(keysIn(text));
-      props.record("review", conv.fresh(), focus.trim() || `Review of ${papersText(papers.length)}`, papers.filter((p) => cited.has(p.key)).map((p) => p.id), { focus, format, draft: text });
+      // A saved draft is in Chats already.
+      if (!at) props.record("review", conv.fresh(), focus.trim() || `Review of ${papersText(papers.length)}`, papers.filter((p) => cited.has(p.key)).map((p) => p.id), { focus, format, draft: text });
     } catch (err) {
       if (!stop.current?.signal.aborted) setNote((err as Error).message);
     } finally {
@@ -480,6 +515,7 @@ function ReviewTab(props: TabProps) {
         </div>
       </form>
       {note && <p class="message" role="status">{note}</p>}
+      {saved && !props.busy && <SavedNote at={saved} again="Write again" disabled={!props.hasKey} onAgain={() => write(null, true)} />}
       {(draft || props.busy) && (
         <>
           <textarea class="review-draft" rows={16} value={draft} readOnly={props.busy} placeholder="Writing…" onInput={(e) => setDraft(e.currentTarget.value)} aria-label="The review draft" />

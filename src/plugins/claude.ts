@@ -3,6 +3,11 @@ import type { ActionContext, LightkonePlugin, Paper, PaperDraft } from "../core/
 import { lookups } from "../core/plugins";
 import { loadSettings } from "../core/settings";
 import { withoutNumbers, type CitationLike, type CitedBlock, type Doc } from "../core/wholepdf";
+import { recall, remember, requestKey, type Reuse } from "../core/answers";
+
+export type { Reuse };
+
+type Req = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 
 // AI on a paper with your own Anthropic API key. The key stays in this
 // browser and requests go straight to the Anthropic API. When the PDF is in
@@ -53,8 +58,30 @@ const textOf = (content: Anthropic.Beta.BetaContentBlock[]) =>
     .join("\n")
     .trim();
 
-async function askClaude(p: Paper, ctx: ActionContext, instruction: string): Promise<string> {
-  const client = await clientFor(ctx.settings);
+/**
+ * The saved answer to exactly this request, or Claude's, kept for next time.
+ * `shown` gets a saved answer as if it had streamed in. An answer cut off or
+ * refused is not kept, as an error is never kept.
+ */
+async function reused<T>(kind: string, request: { model: string }, reuse: Reuse | undefined, run: () => Promise<T>, shown?: (v: T) => void, keep: (v: T) => boolean = () => true): Promise<T> {
+  const key = await requestKey(request).catch(() => null);
+  if (key && !reuse?.fresh) {
+    const a = await recall<T>(key);
+    if (a) {
+      shown?.(a.value);
+      reuse?.onSaved?.(a.at);
+      return a.value;
+    }
+  }
+  const v = await run();
+  if (key && keep(v)) await remember(key, kind, request.model, v);
+  return v;
+}
+
+const CUT = "(The answer was cut off at the length limit.)";
+const whole = (t: string) => !t.endsWith(CUT) && !t.endsWith("% The draft was cut off at the length limit.");
+
+async function askClaude(p: Paper, ctx: ActionContext, instruction: string, kind: string, reuse?: Reuse): Promise<string> {
 
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (p.pdf && ctx.storage) {
@@ -65,7 +92,7 @@ async function askClaude(p: Paper, ctx: ActionContext, instruction: string): Pro
   }
   content.push({ type: "text", text: `${describe(p)}\n\n${instruction}` });
 
-  const response = await client.beta.messages.create({
+  const request: Req = {
     model: ctx.settings["claude.model"] || DEFAULT_MODEL,
     max_tokens: 16000,
     system: SYSTEM,
@@ -74,13 +101,16 @@ async function askClaude(p: Paper, ctx: ActionContext, instruction: string): Pro
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     messages: [{ role: "user", content }],
-  });
-
-  if (response.stop_reason === "refusal") {
-    throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
-  }
-  const text = textOf(response.content);
-  return response.stop_reason === "max_tokens" ? `${text}\n\n(The answer was cut off at the length limit.)` : text;
+  };
+  return reused(kind, request, reuse, async () => {
+    const client = await clientFor(ctx.settings);
+    const response = await client.beta.messages.create(request);
+    if (response.stop_reason === "refusal") {
+      throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
+    }
+    const text = textOf(response.content);
+    return response.stop_reason === "max_tokens" ? `${text}\n\n${CUT}` : text;
+  }, undefined, whole);
 }
 
 export interface ChatTurn {
@@ -109,9 +139,8 @@ export async function chatAboutPaper(
   turns: ChatTurn[],
   onText: (soFar: string) => void,
   signal?: AbortSignal,
-  where: "library" | "literature" = "library",
+  reuse?: Reuse,
 ): Promise<string> {
-  const client = await clientFor(settings);
   const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((t, i) => {
     if (t.role === "assistant") return { role: "assistant", content: t.text };
     const content: Anthropic.Beta.BetaContentBlockParam[] = [];
@@ -127,18 +156,22 @@ export async function chatAboutPaper(
     return { role: "user", content };
   });
 
-  const stream = client.beta.messages.stream(
-    {
-      model: settings["claude.model"] || DEFAULT_MODEL,
-      max_tokens: 8000,
-      system: EXPLAIN,
-      output_config: { effort: "low" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      messages,
-    },
-    { signal },
-  );
+  const request: Req = {
+    model: settings["claude.model"] || DEFAULT_MODEL,
+    max_tokens: 8000,
+    system: EXPLAIN,
+    output_config: { effort: "low" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    messages,
+  };
+  return reused("paper", request, reuse, () => streamText(settings, request, onText, signal), onText, whole);
+}
+
+/** A request streamed as text; the answer, marked when cut off at the length limit. */
+async function streamText(settings: Record<string, string>, request: Req, onText: (soFar: string) => void, signal?: AbortSignal, cut = CUT): Promise<string> {
+  const client = await clientFor(settings);
+  const stream = client.beta.messages.stream(request, { signal });
   let text = "";
   for await (const event of stream) {
     if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
@@ -150,7 +183,7 @@ export async function chatAboutPaper(
   if (final.stop_reason === "refusal") {
     throw new Error(`Claude declined this request${final.stop_details?.explanation ? `: ${final.stop_details.explanation}` : "."}`);
   }
-  return text;
+  return final.stop_reason === "max_tokens" ? `${text}\n\n${cut}` : text;
 }
 
 const LIBRARY =
@@ -188,8 +221,8 @@ export async function askLibrary(
   onText: (soFar: string) => void,
   signal?: AbortSignal,
   where: "library" | "literature" = "library",
+  reuse?: Reuse,
 ): Promise<string> {
-  const client = await clientFor(settings);
   const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((t, i) =>
     t.role === "assistant"
       ? { role: "assistant", content: t.text }
@@ -200,31 +233,17 @@ export async function askLibrary(
             : t.text,
         },
   );
-  const stream = client.beta.messages.stream(
-    {
-      model: settings["claude.model"] || DEFAULT_MODEL,
-      max_tokens: 16000,
-      system: where === "literature" ? LITERATURE : LIBRARY,
-      thinking: { type: "adaptive" },
-      output_config: { effort: "medium" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      messages,
-    },
-    { signal },
-  );
-  let text = "";
-  for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-      text += event.delta.text;
-      onText(text);
-    }
-  }
-  const final = await stream.finalMessage();
-  if (final.stop_reason === "refusal") {
-    throw new Error(`Claude declined this request${final.stop_details?.explanation ? `: ${final.stop_details.explanation}` : "."}`);
-  }
-  return final.stop_reason === "max_tokens" ? `${text}\n\n(The answer was cut off at the length limit.)` : text;
+  const request: Req = {
+    model: settings["claude.model"] || DEFAULT_MODEL,
+    max_tokens: 16000,
+    system: where === "literature" ? LITERATURE : LIBRARY,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "medium" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    messages,
+  };
+  return reused(where === "literature" ? "beyond" : "ask", request, reuse, () => streamText(settings, request, onText, signal), onText, whole);
 }
 
 const WHOLE =
@@ -253,8 +272,8 @@ export async function askWholePdfs(
   material: Map<string, WholeMaterial>,
   onBlocks: (blocks: CitedBlock[]) => void,
   signal?: AbortSignal,
+  reuse?: Reuse,
 ): Promise<{ blocks: CitedBlock[]; cut: boolean }> {
-  const client = await clientFor(settings);
   const document = (d: Doc, last: boolean): Anthropic.Beta.BetaContentBlockParam => {
     const m = material.get(d.paperId);
     const p = m?.paper;
@@ -271,19 +290,22 @@ export async function askWholePdfs(
     const docs = t.docs ?? [];
     return { role: "user", content: [...docs.map((d, j) => document(d, i === 0 && j === docs.length - 1)), { type: "text", text: t.text }] };
   });
-  const stream = client.beta.messages.stream(
-    {
-      model: settings["claude.model"] || DEFAULT_MODEL,
-      max_tokens: 16000,
-      system: WHOLE,
-      thinking: { type: "adaptive" },
-      output_config: { effort: "medium" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      messages,
-    },
-    { signal },
-  );
+  const request: Req = {
+    model: settings["claude.model"] || DEFAULT_MODEL,
+    max_tokens: 16000,
+    system: WHOLE,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "medium" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    messages,
+  };
+  return reused("whole", request, reuse, () => streamWhole(settings, request, onBlocks, signal), (v) => onBlocks(v.blocks), (v) => !v.cut);
+}
+
+async function streamWhole(settings: Record<string, string>, request: Req, onBlocks: (blocks: CitedBlock[]) => void, signal?: AbortSignal): Promise<{ blocks: CitedBlock[]; cut: boolean }> {
+  const client = await clientFor(settings);
+  const stream = client.beta.messages.stream(request, { signal });
   // Text blocks by their index in the message; thinking blocks are left out.
   const byIndex = new Map<number, CitedBlock>();
   const blocks = () => [...byIndex.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1]);
@@ -319,24 +341,24 @@ const SUPPORT =
   "Give a quote only for supports, copied exactly from the source.";
 
 /** Which of the passages back a sentence, as Claude reads them. */
-export async function checkSupport(settings: Record<string, string>, sentence: string, sources: string, signal?: AbortSignal): Promise<string> {
-  const client = await clientFor(settings);
-  const response = await client.beta.messages.create(
-    {
-      model: settings["claude.model"] || DEFAULT_MODEL,
-      max_tokens: 4000,
-      system: SUPPORT,
-      output_config: { effort: "low" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      messages: [{ role: "user", content: `<sources>\n${sources}\n</sources>\n\nThe sentence: ${sentence}` }],
-    },
-    { signal },
-  );
-  if (response.stop_reason === "refusal") {
-    throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
-  }
-  return textOf(response.content);
+export async function checkSupport(settings: Record<string, string>, sentence: string, sources: string, signal?: AbortSignal, reuse?: Reuse): Promise<string> {
+  const request: Req = {
+    model: settings["claude.model"] || DEFAULT_MODEL,
+    max_tokens: 4000,
+    system: SUPPORT,
+    output_config: { effort: "low" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    messages: [{ role: "user", content: `<sources>\n${sources}\n</sources>\n\nThe sentence: ${sentence}` }],
+  };
+  return reused("support", request, reuse, async () => {
+    const client = await clientFor(settings);
+    const response = await client.beta.messages.create(request, { signal });
+    if (response.stop_reason === "refusal") {
+      throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
+    }
+    return textOf(response.content);
+  });
 }
 
 const TRIAGE =
@@ -349,24 +371,24 @@ const TRIAGE =
   'words on why. Reply with only a JSON array, no other text: [{"n": 3, "needs": true, "query": "", "why": ""}, {"n": 4, "needs": false}].';
 
 /** Which uncited sentences of a manuscript need a citation, as Claude reads them. */
-export async function triageDraft(settings: Record<string, string>, sentences: string, signal?: AbortSignal): Promise<string> {
-  const client = await clientFor(settings);
-  const response = await client.beta.messages.create(
-    {
-      model: settings["claude.model"] || DEFAULT_MODEL,
-      max_tokens: 16000,
-      system: TRIAGE,
-      output_config: { effort: "low" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      messages: [{ role: "user", content: sentences }],
-    },
-    { signal },
-  );
-  if (response.stop_reason === "refusal") {
-    throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
-  }
-  return textOf(response.content);
+export async function triageDraft(settings: Record<string, string>, sentences: string, signal?: AbortSignal, reuse?: Reuse): Promise<string> {
+  const request: Req = {
+    model: settings["claude.model"] || DEFAULT_MODEL,
+    max_tokens: 16000,
+    system: TRIAGE,
+    output_config: { effort: "low" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    messages: [{ role: "user", content: sentences }],
+  };
+  return reused("triage", request, reuse, async () => {
+    const client = await clientFor(settings);
+    const response = await client.beta.messages.create(request, { signal });
+    if (response.stop_reason === "refusal") {
+      throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
+    }
+    return textOf(response.content);
+  });
 }
 
 const STANCE =
@@ -379,24 +401,24 @@ const STANCE =
   'Reply with only a JSON array, no other text: [{"n": 1, "stance": "mentions", "note": ""}].';
 
 /** What later papers do with a paper, from the sentences that cite it, as Claude reads them. */
-export async function sortCitations(settings: Record<string, string>, paper: Paper, citations: string, signal?: AbortSignal): Promise<string> {
-  const client = await clientFor(settings);
-  const response = await client.beta.messages.create(
-    {
-      model: settings["claude.model"] || DEFAULT_MODEL,
-      max_tokens: 16000,
-      system: STANCE,
-      output_config: { effort: "low" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      messages: [{ role: "user", content: `<paper>\n${describe(paper)}\n</paper>\n\n<citations>\n${citations}\n</citations>` }],
-    },
-    { signal },
-  );
-  if (response.stop_reason === "refusal") {
-    throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
-  }
-  return textOf(response.content);
+export async function sortCitations(settings: Record<string, string>, paper: Paper, citations: string, signal?: AbortSignal, reuse?: Reuse): Promise<string> {
+  const request: Req = {
+    model: settings["claude.model"] || DEFAULT_MODEL,
+    max_tokens: 16000,
+    system: STANCE,
+    output_config: { effort: "low" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    messages: [{ role: "user", content: `<paper>\n${describe(paper)}\n</paper>\n\n<citations>\n${citations}\n</citations>` }],
+  };
+  return reused("stances", request, reuse, async () => {
+    const client = await clientFor(settings);
+    const response = await client.beta.messages.create(request, { signal });
+    if (response.stop_reason === "refusal") {
+      throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
+    }
+    return textOf(response.content);
+  });
 }
 
 const FIND =
@@ -493,13 +515,17 @@ const plugin: LightkonePlugin = {
       id: "summarize",
       label: "Summarize",
       async run(p, ctx) {
+        // A summary already made for this paper (and this PDF) is shown again rather than paid for twice.
+        let saved: string | undefined;
         const text = await askClaude(
           p,
           ctx,
           "Summarize this paper for me in four short parts: the question, the setup and method, the main result " +
             "(with the key equation if there is one), and the assumptions or limits a careful reader should keep in mind.",
+          "summary",
+          { fresh: ctx.fresh, onSaved: (at) => (saved = at) },
         );
-        return { kind: "text", title: "Summary", text };
+        return { kind: "text", title: "Summary", text, saved, again: "Summarize again" };
       },
     },
     {
@@ -508,7 +534,7 @@ const plugin: LightkonePlugin = {
       async run(p, ctx) {
         const q = await ctx.ask("What would you like to know about this paper?", "How does this relate to the renormalization group?");
         if (!q) return { kind: "none" };
-        return { kind: "text", title: q, text: await askClaude(p, ctx, q), again: "Ask another question" };
+        return { kind: "text", title: q, text: await askClaude(p, ctx, q, "paper"), again: "Ask another question" };
       },
     },
   ],
@@ -524,29 +550,29 @@ const EXTRACT =
   'Reply with only a JSON object, no other text: {"cells": [{"column": "", "value": "", "page": 3, "quote": ""}]}.';
 
 /** One row of a comparison table: the columns' values read out of one paper. */
-export async function extractRow(settings: Record<string, string>, paper: Paper, text: string, full: boolean, columns: string[], signal?: AbortSignal): Promise<string> {
-  const client = await clientFor(settings);
-  const response = await client.beta.messages.create(
-    {
-      model: settings["claude.model"] || DEFAULT_MODEL,
-      max_tokens: 4000,
-      system: EXTRACT,
-      output_config: { effort: "low" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      messages: [
-        {
-          role: "user",
-          content: `${describe({ ...paper, abstract: full ? paper.abstract : undefined, notes: undefined })}\n\n${full ? `<text>\n${text}\n</text>` : `There is no full text, only this:\n${text || "(no abstract)"}`}\n\nColumns: ${JSON.stringify(columns)}`,
-        },
-      ],
-    },
-    { signal },
-  );
-  if (response.stop_reason === "refusal") {
-    throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
-  }
-  return textOf(response.content);
+export async function extractRow(settings: Record<string, string>, paper: Paper, text: string, full: boolean, columns: string[], signal?: AbortSignal, reuse?: Reuse): Promise<string> {
+  const request: Req = {
+    model: settings["claude.model"] || DEFAULT_MODEL,
+    max_tokens: 4000,
+    system: EXTRACT,
+    output_config: { effort: "low" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    messages: [
+      {
+        role: "user",
+        content: `${describe({ ...paper, abstract: full ? paper.abstract : undefined, notes: undefined })}\n\n${full ? `<text>\n${text}\n</text>` : `There is no full text, only this:\n${text || "(no abstract)"}`}\n\nColumns: ${JSON.stringify(columns)}`,
+      },
+    ],
+  };
+  return reused("table-row", request, reuse, async () => {
+    const client = await clientFor(settings);
+    const response = await client.beta.messages.create(request, { signal });
+    if (response.stop_reason === "refusal") {
+      throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
+    }
+    return textOf(response.content);
+  });
 }
 
 const WEIGH =
@@ -559,25 +585,25 @@ const WEIGH =
   'Reply with only a JSON object, no other text: {"summary": "", "points": [{"stance": "supports" | "qualifies" | "contradicts", "text": "", "sources": [1, 4]}]}.';
 
 /** Where the passages agree and disagree on a claim, as Claude reads them. */
-export async function weighClaim(settings: Record<string, string>, claim: string, sources: string, signal?: AbortSignal): Promise<string> {
-  const client = await clientFor(settings);
-  const response = await client.beta.messages.create(
-    {
-      model: settings["claude.model"] || DEFAULT_MODEL,
-      max_tokens: 16000,
-      system: WEIGH,
-      thinking: { type: "adaptive" },
-      output_config: { effort: "medium" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      messages: [{ role: "user", content: `<sources>\n${sources}\n</sources>\n\nThe claim: ${claim}` }],
-    },
-    { signal },
-  );
-  if (response.stop_reason === "refusal") {
-    throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
-  }
-  return textOf(response.content);
+export async function weighClaim(settings: Record<string, string>, claim: string, sources: string, signal?: AbortSignal, reuse?: Reuse): Promise<string> {
+  const request: Req = {
+    model: settings["claude.model"] || DEFAULT_MODEL,
+    max_tokens: 16000,
+    system: WEIGH,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "medium" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    messages: [{ role: "user", content: `<sources>\n${sources}\n</sources>\n\nThe claim: ${claim}` }],
+  };
+  return reused("weigh", request, reuse, async () => {
+    const client = await clientFor(settings);
+    const response = await client.beta.messages.create(request, { signal });
+    if (response.stop_reason === "refusal") {
+      throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
+    }
+    return textOf(response.content);
+  });
 }
 
 const REVIEW = (format: "latex" | "markdown") =>
@@ -600,31 +626,17 @@ export async function draftReview(
   format: "latex" | "markdown",
   onText: (soFar: string) => void,
   signal?: AbortSignal,
+  reuse?: Reuse,
 ): Promise<string> {
-  const client = await clientFor(settings);
-  const stream = client.beta.messages.stream(
-    {
-      model: settings["claude.model"] || DEFAULT_MODEL,
-      max_tokens: 32000,
-      system: REVIEW(format),
-      thinking: { type: "adaptive" },
-      output_config: { effort: "medium" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      messages: [{ role: "user", content: `<papers>\n${papers}\n</papers>\n\n${focus.trim() ? `What the review is for: ${focus.trim()}` : "Review these papers."}` }],
-    },
-    { signal },
-  );
-  let text = "";
-  for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-      text += event.delta.text;
-      onText(text);
-    }
-  }
-  const final = await stream.finalMessage();
-  if (final.stop_reason === "refusal") {
-    throw new Error(`Claude declined this request${final.stop_details?.explanation ? `: ${final.stop_details.explanation}` : "."}`);
-  }
-  return final.stop_reason === "max_tokens" ? `${text}\n\n% The draft was cut off at the length limit.` : text;
+  const request: Req = {
+    model: settings["claude.model"] || DEFAULT_MODEL,
+    max_tokens: 32000,
+    system: REVIEW(format),
+    thinking: { type: "adaptive" },
+    output_config: { effort: "medium" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    messages: [{ role: "user", content: `<papers>\n${papers}\n</papers>\n\n${focus.trim() ? `What the review is for: ${focus.trim()}` : "Review these papers."}` }],
+  };
+  return reused("review", request, reuse, () => streamText(settings, request, onText, signal, "% The draft was cut off at the length limit."), onText, whole);
 }

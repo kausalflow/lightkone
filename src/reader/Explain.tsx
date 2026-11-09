@@ -6,6 +6,7 @@ import { renderMarkdown } from "../core/markdown";
 import { useMath } from "../core/math";
 import { chatAboutPaper, type ChatTurn } from "../plugins/claude";
 import { newConversationId, type Conversation } from "../core/history";
+import { SavedNote } from "../SavedNote";
 
 export interface Subject {
   page: number;
@@ -26,16 +27,23 @@ export function Explain(props: { paper: Paper; pdf: Uint8Array | null; subject: 
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const conv = useRef({ id: newConversationId(), created: new Date().toISOString() });
+  // When the last answer is a saved one (this passage was explained before): when it was given.
+  const [saved, setSaved] = useState<string | null>(null);
 
-  async function ask(next: ChatTurn[]) {
+  async function ask(next: ChatTurn[], fresh = false) {
     setTurns(next);
     setStreaming("");
     setError(null);
+    setSaved(null);
     abort.current = new AbortController();
     try {
-      const answer = await chatAboutPaper(settings, props.paper, props.pdf, next, setStreaming, abort.current.signal);
+      let at: string | undefined;
+      const answer = await chatAboutPaper(settings, props.paper, props.pdf, next, setStreaming, abort.current.signal, { fresh, onSaved: (a) => (at = a) });
       const done: ChatTurn[] = [...next, { role: "assistant", text: answer }];
       setTurns(done);
+      setSaved(at ?? null);
+      // Explained before, and kept in Chats then.
+      if (at && next.length === 1) return;
       // Kept in History without the picture, which only Claude needed.
       const quote = subject.text.replace(/\s+/g, " ").trim();
       props.onRecord?.({
@@ -99,6 +107,9 @@ export function Explain(props: { paper: Paper; pdf: Uint8Array | null; subject: 
           ) : (
             <div key={i} class="explain-a" dangerouslySetInnerHTML={{ __html: renderMarkdown(t.text, math) }} />
           ),
+        )}
+        {saved && streaming === null && (
+          <SavedNote at={saved} again="Explain again" disabled={!settings["claude.apiKey"]} onAgain={() => ask(turns.slice(0, -1), true)} />
         )}
         {streaming !== null &&
           (streaming ? (
