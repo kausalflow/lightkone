@@ -103,6 +103,15 @@ export function chatsAbout(entries: Entry[], paperId: string): Entry[] {
     .sort((a, b) => b.updated.localeCompare(a.updated));
 }
 
+/** How much a chat sends again with each question: its messages, and about how many tokens of text (the PDF aside). */
+export function chatSize(turns: Pick<Turn, "text" | "sources">[]): { messages: number; tokens: number } {
+  const chars = turns.reduce((n, t) => n + t.text.length + (t.sources?.length ?? 0), 0);
+  return { messages: turns.length, tokens: Math.round(chars / 4) };
+}
+
+/** A chat long enough that a new one would be cheaper and keep Claude on the point. */
+export const isLong = (size: { messages: number; tokens: number }) => size.messages >= 20 || size.tokens >= 15_000;
+
 /** Where a turn joined a running chat: from which turn, and how many turns, so a follow-up replaces them. */
 export interface Part {
   chat: string;

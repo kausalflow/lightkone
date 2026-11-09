@@ -1290,6 +1290,7 @@ export function App() {
             texts: textIndex?.texts ?? new Map(),
             settings,
             onRecord: record,
+            onOrganize: organize,
             onChats: (at) => openChats(at),
             onOpenPaper: (id, page) => openAt(id, page),
           }}

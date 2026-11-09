@@ -42,7 +42,10 @@ the pages, with two tabs:
   instead of starting new ones, and **Ask** on a selected passage asks in it.
   **+** starts a separate chat when you want a clean start, which then
   becomes the running one; the list at the top switches between the paper's
-  chats. Claude reads the whole PDF
+  chats, and the pencil names the chat shown (or the new one, before you
+  ask). When a chat grows long (20 messages, or about 15,000 tokens of text
+  sent again with each question), a note above the question box offers a
+  new chat; **Keep going** hides it for that chat. Claude reads the whole PDF
   with each question, and a page it cites scrolls the paper there. Every chat
   is kept with your other chats, under the paper, in `lightkone/history/`
   (in a shared or read-only library, in this browser only). The chat button
