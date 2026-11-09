@@ -75,7 +75,7 @@ fewer and all have their PDF in Lightkone, **Read the whole PDFs** (on by
 default) sends the PDFs themselves to Claude instead of passages, so the
 answer can use figures, tables and equations as well as the text. Claude's
 citations say which page each point comes from; they show as [1], [2] and
-open the paper at that page, as for passages. The first question pays for
+open the paper at that page with the quoted passage highlighted. The first question pays for
 the PDFs; follow-ups within a few minutes reuse them from Anthropic's cache.
 A paper named with `[[` later in the chat is added as its PDF while there is
 room for five, then as its title and abstract. Untick the box to ask from

@@ -5,6 +5,7 @@ import { chatsAbout, chatSize, dayLabel, isLong, loadConversation, titleOf, type
 export { chatsAbout };
 import { PaperChat } from "../PaperChat";
 import { Icon } from "../icons";
+import type { Source } from "../core/ask";
 
 /** What the reader's Chat tab needs from the app: the kept chats and where they live. */
 export interface ReaderChatProps {
@@ -21,7 +22,7 @@ export interface ReaderChatProps {
   /** Open the full Chats panel, on one chat or on this paper's chats. */
   onChats(at: { open?: string; paperId?: string }): void;
   /** A citation to another paper was tapped. */
-  onOpenPaper(paperId: string, page: number): void;
+  onOpenPaper(paperId: string, page: number, quote?: string): void;
 }
 
 /**
@@ -37,6 +38,10 @@ export function SideChat(props: ReaderChatProps & {
   /** Text to put in the question box (a passage asked about); n changes for each new one. */
   seed?: { text: string; n: number };
   autoFocus?: boolean;
+  /** The passages of the paper the latest answer cites, to highlight. */
+  onCited?(sources: Source[]): void;
+  /** A citation to a passage of the paper was tapped. */
+  onCite?(source: Source): void;
 }) {
   const mine = useMemo(() => chatsAbout(props.entries, props.paper.id), [props.entries, props.paper.id]);
   // "new", or the id of the chat shown. The latest chat about the paper to begin with.
@@ -200,6 +205,8 @@ export function SideChat(props: ReaderChatProps & {
           pdfOf={async () => props.pdf()}
           onRecord={record}
           onBusy={(b) => (busy.current = b)}
+          onCited={props.onCited}
+          onCite={props.onCite}
           notice={
             long && (
               <div class="side-chat-long" role="status">
@@ -214,7 +221,7 @@ export function SideChat(props: ReaderChatProps & {
               </div>
             )
           }
-          onOpen={(id, page) => (id === props.paper.id ? props.onPage(page) : props.onOpenPaper(id, page))}
+          onOpen={(id, page, quote) => (id === props.paper.id ? props.onPage(page) : props.onOpenPaper(id, page, quote))}
         />
       )}
     </div>

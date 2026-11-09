@@ -28,7 +28,8 @@ export function AskPanel(props: {
   texts: Map<string, string>;
   unindexed: number;
   settings: Record<string, string>;
-  onOpen(paperId: string, page: number): void;
+  /** Open a paper at a page, with the cited passage highlighted when given. */
+  onOpen(paperId: string, page: number, quote?: string): void;
   onIndex(): void;
   onAdd(d: PaperDraft): boolean;
   /** A conversation from Chats to carry on. */
@@ -267,7 +268,7 @@ export function AskPanel(props: {
     if (far && !own) {
       const link = far.doi ? `https://doi.org/${far.doi}` : far.url;
       if (link) window.open(link, "_blank", "noopener");
-    } else props.onOpen(own?.id ?? s.paperId, own ? 0 : s.page);
+    } else props.onOpen(own?.id ?? s.paperId, own ? 0 : s.page, own || !s.page ? undefined : s.text);
   }
 
   function record(done: LibraryTurn[], all: Source[], far: Map<string, Outside>) {

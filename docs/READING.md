@@ -46,10 +46,33 @@ the pages, with two tabs:
   ask). When a chat grows long (20 messages, or about 15,000 tokens of text
   sent again with each question), a note above the question box offers a
   new chat; **Keep going** hides it for that chat. Claude reads the whole PDF
-  with each question, and a page it cites scrolls the paper there. Every chat
+  with each question. Every chat
   is kept with your other chats, under the paper, in `lightkone/history/`
   (in a shared or read-only library, in this browser only). The chat button
   opens it in Chats, to rename, pin or bring in other papers.
+
+### Sources highlighted on the paper
+
+Claude backs each answer with quotes from the PDF: the passages that answer
+your question and those that help you follow the answer, such as a
+definition, an assumption, a step or an equation, several when several parts
+of the paper matter. Each quoted passage is highlighted in blue right on the
+page, with a numbered marker in the margin beside it, and the answer shows
+the same numbers with the page, like **2 · p. 3**. Tap a number in the
+answer, or a marker on the page, to go to that passage.
+
+The **Sources** bar over the page steps through them: **‹** and **›** go to
+the previous and next passage, and **Back** returns to where you were
+reading before the first jump. **×** hides the highlights (tapping a number
+in the answer shows them again). A passage whose words can't be found on the
+page (rare, for some scanned or unusual PDFs) is counted as "not marked",
+and its number opens its page instead. The highlights are those of the
+latest answer in the chat shown, and come back when you reopen the chat;
+they are not saved as your own highlights. A saved answer keeps its quotes,
+so it shows the same highlights without asking Claude again.
+
+Numbers in Ask and in Chats that point to a page of a paper open the paper
+there with the quoted passage highlighted the same way.
 
 On a computer, the three panel buttons next to the close button snap the panel to the right, the left or below the page, and the fourth floats it over the page as a window: drag its tab bar to move it and its bottom-right corner to resize it. Drag its inner edge to make it wider or narrower (taller or shorter below the page), or focus the edge and use the arrow keys; Lightkone remembers the place and the size for each place, and a double-click on the edge goes back to the default size. On a phone the panel is a sheet over the lower half of the screen, so the
 page stays in view above it; the arrow makes it taller, and it moves up above
