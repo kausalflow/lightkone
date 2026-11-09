@@ -118,6 +118,7 @@ export function App() {
   const [reading, setReading] = useState<string | null>(null);
   const [readingWeb, setReadingWeb] = useState<string | null>(null);
   const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | "offline" | null>(null);
+  const [writingTab, setWritingTab] = useState<"draft" | "cite" | "bib">("draft");
   // Chats: every conversation with Claude, gathered by paper, in one panel.
   const [conversations, setConversations] = useState<Entry[]>([]);
   // Chats open as a window, or snapped to the right or bottom edge to stay beside your papers.
@@ -825,7 +826,8 @@ export function App() {
     { id: "equation", group: "Discover", label: "Search by equation", icon: "sigma", hint: "Find the papers that use an equation", show: Boolean(storage && library.papers.some((p) => p.arxiv)), run: go("equation") },
     { id: "chats", group: "Discover", label: "Chats", icon: "chat", hint: "Every conversation with Claude, gathered by paper: carry on, rename, pin, find", show: Boolean(historyStore), run: () => openChats() },
     { id: "compare", group: "Discover", label: "Compare papers", icon: "table", hint: "A table of methods and results, where papers agree or disagree, a review draft", show: hasPapers, run: () => openChats({ start: { mode: "table" } }) },
-    { id: "writing", group: "Write", label: "Writing helpers", icon: "book", hint: "What to cite for a sentence; a .bib for a manuscript", show: hasPapers, run: go("writing") },
+    { id: "citedraft", group: "Write", label: "Cite my draft", icon: "edit", hint: "Find the claims in a .tex that cite nothing, and cite them", show: hasPapers, run: () => { setWritingTab("draft"); go("writing")(); } },
+    { id: "writing", group: "Write", label: "Writing helpers", icon: "book", hint: "What to cite for a sentence; a .bib for a manuscript", show: hasPapers, run: () => { setWritingTab("cite"); go("writing")(); } },
     { id: "manuscript", group: "Write", label: "Watch my manuscript", icon: "sync", hint: "Keep a LaTeX manuscript's .bib in step with what it cites", show: Boolean(storage), run: go("manuscript") },
     { id: "obsidian", group: "Write", label: "Export to Obsidian", icon: "file", hint: "Highlights and notes as Markdown notes", show: Boolean(storage), run: go("obsidian") },
     { id: "tidy", group: "Organize", label: "Tidy up", icon: "broom", hint: "Duplicates, published versions of preprints", show: Boolean(storage), run: () => { setTidying(true); setSideOpen(false); } },
@@ -1295,7 +1297,16 @@ export function App() {
       )}
 
       {panel === "writing" && (
-        <WritingPanel papers={library.papers} texts={textIndex?.texts ?? new Map()} settings={settings} hidden={Boolean(reading)} onOpen={openAt} onClose={() => setPanel(null)} />
+        <WritingPanel
+          papers={library.papers}
+          texts={textIndex?.texts ?? new Map()}
+          settings={settings}
+          hidden={Boolean(reading)}
+          start={writingTab}
+          onOpen={openAt}
+          onAdd={(d) => addDrafts([d])[0] ?? library.findDuplicate(d)}
+          onClose={() => setPanel(null)}
+        />
       )}
 
       {question && <QuestionDialog question={question} subject={paper?.title} />}

@@ -233,17 +233,50 @@ const SUPPORT =
   "Give a quote only for supports, copied exactly from the source.";
 
 /** Which of the passages back a sentence, as Claude reads them. */
-export async function checkSupport(settings: Record<string, string>, sentence: string, sources: string): Promise<string> {
+export async function checkSupport(settings: Record<string, string>, sentence: string, sources: string, signal?: AbortSignal): Promise<string> {
   const client = await clientFor(settings);
-  const response = await client.beta.messages.create({
-    model: settings["claude.model"] || DEFAULT_MODEL,
-    max_tokens: 4000,
-    system: SUPPORT,
-    output_config: { effort: "low" },
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    messages: [{ role: "user", content: `<sources>\n${sources}\n</sources>\n\nThe sentence: ${sentence}` }],
-  });
+  const response = await client.beta.messages.create(
+    {
+      model: settings["claude.model"] || DEFAULT_MODEL,
+      max_tokens: 4000,
+      system: SUPPORT,
+      output_config: { effort: "low" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages: [{ role: "user", content: `<sources>\n${sources}\n</sources>\n\nThe sentence: ${sentence}` }],
+    },
+    { signal },
+  );
+  if (response.stop_reason === "refusal") {
+    throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
+  }
+  return textOf(response.content);
+}
+
+const TRIAGE =
+  SYSTEM +
+  " The researcher is checking a LaTeX manuscript for claims that should cite earlier work. Each numbered sentence below cites " +
+  "nothing; the sentence before it is given for context. A sentence needs a citation when it states a result, measurement, method, " +
+  "definition or idea that comes from other work, or says what is known or has been done. It does not when it describes the " +
+  "manuscript's own work, steps or results, follows from the manuscript's own equations, or is common to any textbook in the field. " +
+  "For each sentence that needs one, give a literature search of three to six words that would find the paper to cite, and a few " +
+  'words on why. Reply with only a JSON array, no other text: [{"n": 3, "needs": true, "query": "", "why": ""}, {"n": 4, "needs": false}].';
+
+/** Which uncited sentences of a manuscript need a citation, as Claude reads them. */
+export async function triageDraft(settings: Record<string, string>, sentences: string, signal?: AbortSignal): Promise<string> {
+  const client = await clientFor(settings);
+  const response = await client.beta.messages.create(
+    {
+      model: settings["claude.model"] || DEFAULT_MODEL,
+      max_tokens: 16000,
+      system: TRIAGE,
+      output_config: { effort: "low" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages: [{ role: "user", content: sentences }],
+    },
+    { signal },
+  );
   if (response.stop_reason === "refusal") {
     throw new Error(`Claude declined this request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."}`);
   }

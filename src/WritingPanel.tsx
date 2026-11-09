@@ -1,5 +1,6 @@
 import { useMemo, useState } from "preact/hooks";
-import type { Paper } from "./core/types";
+import type { Paper, PaperDraft } from "./core/types";
+import { CiteDraft } from "./CiteDraft";
 import { candidatesFor, citeCommand, citeKeysIn, papersForKeys, parseVerdicts, type Candidate, type Verdict } from "./core/writing";
 import { sourcesPrompt } from "./core/ask";
 import { shortAuthors } from "./core/cite";
@@ -19,19 +20,22 @@ export function WritingPanel(props: {
   texts: Map<string, string>;
   settings: Record<string, string>;
   hidden?: boolean;
+  start?: "draft" | "cite" | "bib";
   onOpen(paperId: string, page: number): void;
+  onAdd(d: PaperDraft): Paper | undefined;
   onClose(): void;
 }) {
-  const [tab, setTab] = useState<"cite" | "bib">("cite");
+  const [tab, setTab] = useState<"draft" | "cite" | "bib">(props.start ?? "draft");
   return (
     <div class="overlay" hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && props.onClose()}>
       <div class="panel wide writing-panel">
         <h2>Writing helpers</h2>
         <div class="tabs" role="tablist">
+          <button role="tab" aria-selected={tab === "draft"} class={tab === "draft" ? "on" : ""} onClick={() => setTab("draft")}>Cite my draft</button>
           <button role="tab" aria-selected={tab === "cite"} class={tab === "cite" ? "on" : ""} onClick={() => setTab("cite")}>Cite this</button>
           <button role="tab" aria-selected={tab === "bib"} class={tab === "bib" ? "on" : ""} onClick={() => setTab("bib")}>.bib for a manuscript</button>
         </div>
-        {tab === "cite" ? <CiteThis {...props} /> : <BibForManuscript papers={props.papers} />}
+        {tab === "draft" ? <CiteDraft {...props} /> : tab === "cite" ? <CiteThis {...props} /> : <BibForManuscript papers={props.papers} />}
         <div class="row">
           <button onClick={props.onClose}>Close</button>
         </div>
