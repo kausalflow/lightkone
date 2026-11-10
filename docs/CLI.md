@@ -3,8 +3,7 @@
 The `lightkone` command and Python package read and write the same files as
 the web app, wherever your library lives, so you can switch between the
 browser, the terminal and a notebook freely. Its code is in the `cli/` folder
-of this repository. `kirsche` is a second name for the command, after the
-citation-graph tool it grew from.
+of this repository.
 
 ## Set up
 

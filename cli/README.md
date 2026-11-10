@@ -6,8 +6,6 @@ plain files in your Cloudflare R2 / S3 bucket, your GitHub repository, or a
 folder on disk. Search, add, tag, file, annotate, export BibTeX and draw the
 citation map from the terminal, a script or a notebook.
 
-The command is `lightkone`; `kirsche` is a second name for it.
-
 ```bash
 pipx install lightkone               # or: pip install lightkone
 lightkone login --from-backup lightkone-settings.json   # Lightkone: Settings → Backup → Export settings
@@ -40,3 +38,8 @@ written by `tests/cli-golden.test.ts` in the app's tests, and `npm run check`
 fails when the app's output no longer matches it. After changing one of those
 formats in the app, run `UPDATE_GOLDEN=1 npx vitest run tests/cli-golden.test.ts`
 and make the Python side pass `pytest` again.
+
+## License
+
+Apache-2.0 (see [LICENSE](LICENSE) and [NOTICE](NOTICE)). The Lightkone web
+app in the rest of this repository is under AGPL-3.0.

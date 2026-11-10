@@ -1,4 +1,4 @@
-"""The Lightkone command line, built with Typer. Installed as ``lightkone``, with ``kirsche`` as a second name.
+"""The Lightkone command line, built with Typer. Installed as ``lightkone``.
 
 It works on the same library the Lightkone web app uses: the files in your
 S3/R2 bucket, GitHub repository or a folder on disk. Changes are merged with

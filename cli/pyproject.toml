@@ -8,12 +8,15 @@ version = "0.1.0"
 description = "Lightkone from the command line and from Python: your papers, tags, folders, notes, BibTeX and citation map, in the same files as the web app."
 readme = "README.md"
 requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "KausalFlow" }]
 keywords = ["references", "bibtex", "papers", "citations", "research", "lightkone"]
 classifiers = [
     "Environment :: Console",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
@@ -35,7 +38,6 @@ Documentation = "https://lightkone.lab.kausalflow.com/docs/cli.html"
 
 [project.scripts]
 lightkone = "lightkone.cli:run"
-kirsche = "lightkone.cli:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["lightkone"]
