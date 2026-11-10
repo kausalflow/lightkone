@@ -97,6 +97,21 @@ work without either of these.
   connector**, paste the address.
 - **Claude Code:** `claude mcp add --transport http lightkone <address>`
 
+## A skill for Claude
+
+Claude works better with the library when it knows the habits: search before
+answering, cite by key, check the text before claiming a paper says something,
+and ask before changing anything. Those are written down as a skill, served at
+`/skills/lightkone/SKILL.md` on the site (`public/skills/lightkone/` in the
+repository).
+
+- **Claude Code:** save it as `~/.claude/skills/lightkone/SKILL.md`, for example
+  `mkdir -p ~/.claude/skills/lightkone && curl -o ~/.claude/skills/lightkone/SKILL.md https://lightkone.lab.kausalflow.com/skills/lightkone/SKILL.md`.
+- **claude.ai and the Claude apps:** put `SKILL.md` in a folder named `lightkone`,
+  zip the folder, and upload it under Settings → Capabilities → Skills.
+
+The site also serves `/llms.txt`, a short map of Lightkone and its docs for AI tools.
+
 ## Notes
 
 - Changes made through MCP appear in the app when you come back to its tab.
