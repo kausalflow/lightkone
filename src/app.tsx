@@ -26,6 +26,7 @@ import { browserHistoryStore, chatsAbout, dayLabel, joinChat, KINDS, loadConvers
 import { savedLabel, setAnswerStore } from "./core/answers";
 import { chooseStyle, chosenStyles, findStyles, formatBibliography, styleIndex, type CslStyle } from "./core/csl";
 import { CitationMap } from "./CitationMap";
+import { doiOf } from "./core/citations";
 import { FreshPanel } from "./FreshPanel";
 import { ManuscriptPanel } from "./ManuscriptPanel";
 import { EquationPanel } from "./EquationPanel";
@@ -124,6 +125,7 @@ export function App() {
   const [panel, setPanel] = useState<"add" | "settings" | "ask" | "obsidian" | "writing" | "map" | "fresh" | "manuscript" | "equation" | "shared" | "palette" | "info" | "offline" | null>(null);
   const [writingTab, setWritingTab] = useState<"draft" | "cite" | "bib">("draft");
   const [citedBy, setCitedBy] = useState<string | null>(null);
+  const [exploreFrom, setExploreFrom] = useState<string | null>(null);
   // Chats: every conversation with Claude, gathered by paper, in one panel.
   const [conversations, setConversations] = useState<Entry[]>([]);
   // Chats open as a window, or snapped to the right or bottom edge to stay beside your papers.
@@ -926,7 +928,7 @@ export function App() {
 
   const tools: Tool[] = [
     { id: "fresh", group: "Discover", label: "New on arXiv", icon: "sparkle", hint: "Each day's arXiv preprints near your library", show: Boolean(storage && hasPapers), run: go("fresh") },
-    { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: go("map") },
+    { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, explore out from seed papers, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: go("map") },
     { id: "dullaby", group: "Discover", label: "Read at night in Dullaby", icon: "moon", hint: "Opens Dullaby with your library, so it finds papers near yours", show: hasPapers, run: () => window.open(nightLink(dullabyBase(settings), library.papers, appAddress(location.href)), "_blank", "noopener") },
     { id: "equation", group: "Discover", label: "Search by equation", icon: "sigma", hint: "Find the papers that use an equation", show: Boolean(storage && library.papers.some((p) => p.arxiv)), run: go("equation") },
     { id: "chats", group: "Discover", label: "Chats", icon: "chat", hint: "Every conversation with Claude, gathered by paper: carry on, rename, pin, find", show: Boolean(historyStore), run: () => openChats() },
@@ -1303,6 +1305,7 @@ export function App() {
           }}
           onAdd={(d) => addDrafts([d]).length > 0}
           onCitedBy={s2Id(paper) ? () => setCitedBy(paper.id) : undefined}
+          onExplore={storage && doiOf(paper) ? () => { setExploreFrom(paper.id); setPanel("map"); } : undefined}
           onError={setError}
           scheduleSave={scheduleSave}
           others={otherLibraries()}
@@ -1346,13 +1349,16 @@ export function App() {
 
       {panel === "map" && storage && (
         <CitationMap
+          key={exploreFrom ?? "map"}
           papers={library.papers}
           storage={storage}
           settings={settings}
           hidden={Boolean(reading)}
+          explore={exploreFrom ?? undefined}
+          readOnly={readOnly}
           onOpen={openAt}
           onAdd={(d) => addDrafts([d]).length > 0}
-          onClose={() => setPanel(null)}
+          onClose={() => { setPanel(null); setExploreFrom(null); }}
         />
       )}
 
@@ -1763,6 +1769,7 @@ function Detail(props: {
   onAdd(d: PaperDraft): boolean;
   /** Show the sentences in later papers that cite it; undefined when it has no DOI or arXiv id. */
   onCitedBy?(): void;
+  onExplore?(): void;
   onError(msg: string): void;
   scheduleSave(): void;
   /** Other libraries this paper can be copied to. */
@@ -1900,6 +1907,11 @@ function Detail(props: {
           {props.onCitedBy && (
             <button onClick={props.onCitedBy} title="The sentences in later papers that cite this one, from Semantic Scholar">
               <Icon name="chat" /> How others cite this
+            </button>
+          )}
+          {props.onExplore && (
+            <button onClick={props.onExplore} title="Walk out from this paper through the citation network: what cites it, what it cites, what shares its references">
+              <Icon name="link" /> Explore around this
             </button>
           )}
           {available.map((a) => {
