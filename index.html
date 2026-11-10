@@ -144,6 +144,9 @@
       .store span { color: var(--muted); font-size: 15px; }
       .term { font: 14px/1.7 var(--mono); color: var(--text); background: var(--sunken); border-radius: 12px; padding: 16px 18px; margin: 0; overflow-x: auto; white-space: pre; }
       .term .c { color: var(--muted); }
+      .help { color: var(--muted); margin: 24px 0 0; max-width: 46em; }
+      .help strong { color: var(--text); font-weight: 600; }
+      .help code { font: 15px var(--mono); background: var(--sunken); padding: 1px 5px; border-radius: 5px; color: var(--text); }
       .files { font: 14px/1.7 var(--mono); color: var(--muted); background: var(--sunken); border-radius: 12px; padding: 16px 18px; margin: 24px 0 0; overflow-x: auto; white-space: pre; }
 
       .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
@@ -191,7 +194,7 @@
               <a href="docs/getting-started.html"><strong>Getting started</strong><span>Open the app and set up your library</span></a>
               <a href="docs/storage.html"><strong>Storage</strong><span>R2, S3, GitHub or this browser, step by step</span></a>
               <a href="docs/paperpile.html"><strong>Moving from Paperpile</strong><span>Folders, labels, keys and PDFs</span></a>
-              <!-- Set up with AI (docs/setup-with-ai.html) goes here, with a one-line description like the three above. -->
+              <a href="docs/setup-with-ai.html"><strong>Set up with AI</strong><span>Let Claude or another assistant set up your storage</span></a>
               <hr />
               <a href="docs/reading.html">Reading and highlighting</a>
               <a href="docs/finding.html">Finding papers and asking Claude</a>
@@ -230,7 +233,7 @@
             <a class="btn primary" href="app/">Open Lightkone</a>
             <a class="btn" href="docs/paperpile.html">Moving from Paperpile</a>
           </div>
-          <p class="news"><strong>New in 0.5:</strong> Branches, which grows your library through its citations, and <a href="docs/cli.html"><code>lightkone</code></a>, the same library from the terminal and Python.</p>
+          <p class="news"><strong>New:</strong> <a href="docs/setup-with-ai.html">let an AI assistant set up your storage</a>, use your library inside Claude, grow it through its citations with Branches, and reach it from the terminal and Python with <a href="docs/cli.html"><code>lightkone</code></a>.</p>
           <p class="bookmark">Bookmark <code id="app-address">app/</code> to go straight to your library next time.</p>
         </div>
       </section>
@@ -273,7 +276,7 @@
             </div>
             <div class="feature">
               <h3>Ask your library</h3>
-              <p>Questions answered from your own papers, citing the pages, or from up to five whole PDFs at once. Claude, Claude Code and other AI apps can also use your library through MCP.</p>
+              <p>Questions answered from your own papers, citing the pages, or from up to five whole PDFs at once. Claude, Claude Code and other AI apps can search, read and cite your library through MCP, from the site's address or with <code>lightkone mcp</code>.</p>
             </div>
             <div class="feature">
               <h3>Write with it</h3>
@@ -313,6 +316,11 @@
               <strong>This browser</strong><span>No setup, for trying it out.</span>
             </a>
           </div>
+          <p class="help">
+            Setting up a bucket is the fiddly part, so Lightkone helps. <strong>Check these settings</strong> in the app tests the storage and says what
+            is wrong, down to the CORS rule your bucket needs. <code>lightkone setup</code> does the whole setup from a terminal, and
+            <a href="docs/setup-with-ai.html">Set up with AI</a> shows how to let Claude do it for you.
+          </p>
           <pre class="files" aria-label="The files in your storage">lightkone/library.json        your papers, folders, tags and notes
 lightkone/library.bib         the whole library as BibTeX, for LaTeX
 lightkone/annotations/        your highlights, one file per paper
@@ -328,9 +336,10 @@ papers/All Papers/HINTON/     the PDFs, filed the way Paperpile files them</pre>
           <div>
             <h2 id="cli">From the terminal and Python</h2>
             <p class="sub" style="margin-bottom: 20px">
-              The <code>lightkone</code> command reads and writes the same files as the app, wherever your library lives. Search it, export it, or load
-              your papers and their citation network as pandas tables or a networkx graph, and save the map as GraphML or GEXF for Gephi. <code>lightkone
-              web</code> opens the app when you want the pages.
+              The <code>lightkone</code> command reads and writes the same files as the app, wherever your library lives. <code>lightkone setup</code> sets up
+              your storage and checks it. Then search the library, export it, or load your papers and their citation network as pandas tables or a
+              networkx graph, and save the map as GraphML or GEXF for Gephi. <code>lightkone mcp</code> hands it to Claude Code or Claude desktop, and
+              <code>lightkone web</code> opens the app when you want the pages.
             </p>
             <div class="cta">
               <a class="btn" href="docs/cli.html">Read the command line guide</a>
@@ -338,10 +347,11 @@ papers/All Papers/HINTON/     the PDFs, filed the way Paperpile files them</pre>
             </div>
           </div>
           <pre class="term" aria-label="Using the lightkone command">pip install lightkone
-lightkone login --from-backup settings.json
+lightkone setup                     <span class="c"># storage, a check, CORS</span>
 lightkone ls author:einstein year:1915-1920
 lightkone map in:Thesis -o thesis.graphml
 lightkone open Hinton2012-in -p 3   <span class="c"># the reader, at page 3</span>
+claude mcp add lightkone -- lightkone mcp
 
 <span class="c"># in Python</span>
 G = lib.citation_graph("in:Thesis").to_networkx()
@@ -384,11 +394,13 @@ df = lib.to_dataframe()</pre>
         <a href="app/">Open Lightkone</a>
         <a href="docs/">Documentation</a>
         <a href="docs/getting-started.html">Getting started</a>
+        <a href="docs/setup-with-ai.html">Set up with AI</a>
         <a href="docs/paperpile.html">From Paperpile</a>
         <a href="docs/storage.html">Storage</a>
         <a href="docs/cli.html">Command line</a>
         <a href="docs/privacy.html">Your data</a>
         <a href="docs/hosting.html">Host your own</a>
+        <a href="llms.txt">llms.txt</a>
         <span class="maker-foot">Made by <a href="https://kausalflow.com" rel="noopener">KausalFlow</a></span>
       </div>
     </footer>
