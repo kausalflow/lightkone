@@ -7,6 +7,7 @@ import { useMath } from "../core/math";
 import { chatAboutPaper, type ChatTurn } from "../plugins/claude";
 import { newConversationId, type Conversation } from "../core/history";
 import { SavedNote } from "../SavedNote";
+import { JumpLatest, useFollow } from "../follow";
 
 export interface Subject {
   page: number;
@@ -77,7 +78,7 @@ export function Explain(props: { paper: Paper; pdf: Uint8Array | null; subject: 
     return () => abort.current?.abort();
   }, []);
 
-  useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [turns.length, streaming]);
+  const follow = useFollow(bottom, streaming, [turns.length, error, saved]);
 
   const answers = turns.filter((t) => t.role === "assistant");
   const lastAnswer = answers[answers.length - 1]?.text;
@@ -120,6 +121,7 @@ export function Explain(props: { paper: Paper; pdf: Uint8Array | null; subject: 
         {error && <p class="message">{error}</p>}
         <div ref={bottom} />
       </div>
+      <JumpLatest show={follow.away} writing={streaming !== null} onJump={follow.toBottom} />
       {settings["claude.apiKey"] && (
         <form class="explain-ask" onSubmit={followUp}>
           <input value={question} placeholder="Ask a follow-up" onInput={(e) => setQuestion(e.currentTarget.value)} disabled={streaming !== null} />
