@@ -535,7 +535,8 @@ function ExploreGraph(props: { result: Neighbourhood; shown: Candidate[]; fresh:
             <text x={view.x + 4} y={plane.yOf(t) - 3} class="axis-label">{t ? t.toLocaleString() : "0"}</text>
           </g>
         ))}
-        {ticks.map((t) => <text key={t} x={plane.xOf(t)} y={height - 4} class="tick-label">{t}</text>)}
+        {/* Years stay on the visible bottom edge while zooming, as the citation counts stay on the left edge. */}
+        {ticks.map((t) => <text key={t} x={plane.xOf(t)} y={Math.min(height, view.y + view.h) - 4} class="tick-label">{t}</text>)}
         {edges.map(([a, b]) => {
           const p = at.get(a)!;
           const q = at.get(b)!;

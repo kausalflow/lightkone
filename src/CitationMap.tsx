@@ -352,7 +352,7 @@ function MapView(props: {
         {ticks.map((t) => (
           <g key={t}>
             {!plane && <line x1={xOf(t)} x2={xOf(t)} y1={0} y2={floor} class="tick" />}
-            <text x={xOf(t)} y={floor + 18} class="tick-label">{t}</text>
+            <text x={xOf(t)} y={Math.min(floor + 18, view.y + view.h - 4)} class="tick-label">{t}</text>
           </g>
         ))}
         {graph.edges.map(([a, b]) => {
