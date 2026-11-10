@@ -14,10 +14,36 @@ Whatever the storage, the files are the same:
 | `lightkone/library.bib` | The whole library as BibTeX, rewritten on every save, for LaTeX. |
 | `lightkone/annotations/<id>.json` | Highlights and their notes, one file per paper. |
 | `lightkone/text/`, `citations.json`, `equations.json`, `new-on-arxiv.json` | Work done once and kept (PDF text for search, the citation map, equations) so it isn't done again. Safe to delete; it is rebuilt. |
+| `lightkone/branches.json` | Branches you kept in the citation map: their root papers and the works already shown, so the next visit can mark what is fresh. |
 | `papers/All Papers/...` | The PDFs, filed by first author like Paperpile (`papers/All Papers/HINTON/Hinton et al. 2012 - ....pdf`). |
 
 These are open formats (JSON, BibTeX, PDF), so you can back them up, read them
 with other tools, or leave with them.
+
+### The citation files
+
+Other tools may read and write these too, so their shapes stay stable.
+
+`lightkone/citations.json` holds each paper's references from OpenAlex:
+
+```json
+{ "format": "lightkone-citations", "version": 1,
+  "works": { "<paper id>": { "oa": "W2741809807", "year": 2017, "cited": 120000,
+                             "refs": ["W1522301498", "..."], "at": "2026-11-10T02:00:00Z" } } }
+```
+
+`oa` is `null` when OpenAlex didn't know the paper at `at`; it is asked again
+after a month.
+
+`lightkone/branches.json` holds kept branches. A branch with a `scope` takes its
+roots from the library (all of it, or one folder) each time, and stores none:
+
+```json
+{ "format": "lightkone-branches", "version": 1,
+  "items": [{ "id": "x…", "name": "Attention Is All You Need", "scope": "library | folder:<name>, or absent",
+              "roots": [{ "oa": "W2626778328", "title": "…", "paperId": "<paper id, if in the library>" }],
+              "seen": ["W…"], "made": "2026-11-10T02:00:00Z", "looked": "2026-11-10T02:00:00Z" }] }
+```
 
 ## Choosing
 

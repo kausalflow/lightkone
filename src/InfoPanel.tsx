@@ -143,7 +143,7 @@ function Guide() {
       "Discovering",
       [
         "New on arXiv ranks each day's preprints in the categories you follow by how close they are to your library.",
-        "The citation map shows which of your papers cite which, and what they cite that you don't have yet. Find related, on a paper, lists its neighbours.",
+        "The citation map shows which of your papers cite which, by folder or by year and citations. Branches grow out from root papers through what cites them and what they cite, and kept branches mark what is fresh. Missing lists what your papers cite that you don't have yet.",
       ],
     ],
     [

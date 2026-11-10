@@ -2,8 +2,8 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Icon } from "./icons";
 
-/** Where a working panel sits: a window over the app, or snapped to the right or the bottom edge, beside the library and the reader. */
-export type Place = "modal" | "right" | "bottom";
+/** Where a working panel sits: a window over the app, the whole window, or snapped to the right or the bottom edge, beside the library and the reader. */
+export type Place = "modal" | "right" | "bottom" | "full";
 
 export interface DockTab {
   label: string;
@@ -64,9 +64,11 @@ export function PanelFrame(props: {
   onClick?(e: MouseEvent): void;
   /** As a window, over the reader too. */
   front?: boolean;
+  /** Offer the whole window as a place too. */
+  full?: boolean;
   children: ComponentChildren;
 }) {
-  const docked = props.place !== "modal";
+  const docked = props.place === "right" || props.place === "bottom";
   const self = useRef<HTMLElement>(null);
 
   function grip(e: PointerEvent) {
@@ -121,6 +123,17 @@ export function PanelFrame(props: {
             )}
           </span>
         )}
+        {props.onPlace && props.full && (
+          props.place === "full" ? (
+            <button class="icon-btn" disabled={props.busy} onClick={() => props.onPlace!("modal")} title="Back to a window" aria-label="Back to a window">
+              <Icon name="shrink" />
+            </button>
+          ) : (
+            <button class="icon-btn" disabled={props.busy} onClick={() => props.onPlace!("full")} title="Fill the whole window" aria-label="Full page">
+              <Icon name="expand" />
+            </button>
+          )
+        )}
         <button class="icon-btn" onClick={props.onClose} disabled={props.busy} aria-label="Close"><Icon name="x" /></button>
       </div>
     </div>
@@ -128,8 +141,8 @@ export function PanelFrame(props: {
 
   if (!docked) {
     return (
-      <div class={`overlay ${props.front ? "front" : ""}`} hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && !props.busy && props.onClose()}>
-        <section ref={self} class={`panel ${props.class ?? ""}`} aria-label={props.label} onClick={props.onClick}>
+      <div class={`overlay ${props.front ? "front" : ""} ${props.place === "full" ? "full-page" : ""}`} hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && !props.busy && props.place !== "full" && props.onClose()}>
+        <section ref={self} class={`panel ${props.place === "full" ? "full" : ""} ${props.class ?? ""}`} aria-label={props.label} onClick={props.onClick}>
           {head}
           {props.children}
         </section>

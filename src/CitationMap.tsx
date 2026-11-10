@@ -1,30 +1,45 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Paper, PaperDraft, StorageAdapter } from "./core/types";
 import { buildGraph, fetchCitations, layout, loadCitations, needsFetch, saveCitations, worksById, type CitationStore } from "./core/citations";
+import { scatter, type Root } from "./core/explore";
 import { shortAuthors } from "./core/cite";
 import { Icon } from "./icons";
+import { ExploreView } from "./ExploreView";
+import { downloadSvg } from "./svgfile";
+import { PanelFrame, type DockTab, type Place } from "./PanelFrame";
 
-// The citation map panel: your papers by year, in bands by folder (or tag),
-// linked where one cites another; and the works your papers keep citing
-// that you do not have yet.
+// The citation map panel: your papers by year, in bands by folder (or tag)
+// or by year and citations, linked where one cites another; Branches, which
+// grow out from root papers through what cites them and what they cite;
+// and the works your papers keep citing that you do not have yet.
 
 const COLORS = ["#4e79a7", "#e8853a", "#59a14f", "#d9534f", "#5fa8a3", "#c9a227", "#a8729a", "#8d6e5a"];
 const WIDTH = 1000;
 
 const groupOf = (p: Paper) => p.folders?.[0]?.split("/")[0] || p.tags[0] || "";
-const nameOf = (p: Paper) => `${shortAuthors(p.authors).replace(/ et al\.$/, "") || p.title.slice(0, 18)}${p.year ? ` ${p.year}` : ""}`;
+export const LAYOUT_KEY = "lightkone.map.layout";
+export const nameOf = (p: Paper) => `${shortAuthors(p.authors).replace(/ et al\.$/, "") || p.title.slice(0, 18)}${p.year ? ` ${p.year}` : ""}`;
 
 export function CitationMap(props: {
   papers: Paper[];
   storage: StorageAdapter;
   settings: Record<string, string>;
   hidden?: boolean;
+  /** Where the panel sits: a window, the whole window, or snapped right or bottom. */
+  place?: Place;
+  front?: boolean;
+  tabs?: DockTab[];
+  onPlace?(p: Place): void;
+  /** A library paper to start exploring from. */
+  explore?: string;
+  readOnly?: boolean;
   onOpen(paperId: string, page: number): void;
   onAdd(d: PaperDraft): boolean;
   onClose(): void;
 }) {
   const [store, setStore] = useState<CitationStore | null>(null);
-  const [tab, setTab] = useState<"map" | "missing">("map");
+  const [tab, setTab] = useState<"map" | "explore" | "missing">("explore");
+  const [root, setRoot] = useState<Root | string | null>(props.explore ?? null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [all, setAll] = useState(false);
@@ -61,16 +76,23 @@ export function CitationMap(props: {
   const todo = store ? needsFetch(props.papers, store).length : 0;
 
   return (
-    <div class="overlay" hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div class="panel wide map-panel">
-        <div class="ask-head">
-          <h2>Citation map</h2>
-          <button class="icon-btn" onClick={props.onClose} aria-label="Close"><Icon name="x" /></button>
-        </div>
+    <PanelFrame
+      place={props.place ?? "modal"}
+      class="wide map-panel"
+      label="Citation map"
+      title="Citation map"
+      hidden={props.hidden}
+      front={props.front}
+      tabs={props.tabs}
+      onPlace={props.onPlace}
+      onClose={props.onClose}
+      full
+    >
         <div class="tabs" role="tablist">
+          <button role="tab" aria-selected={tab === "explore"} class={tab === "explore" ? "on" : ""} onClick={() => setTab("explore")}>Branches</button>
           <button role="tab" aria-selected={tab === "map"} class={tab === "map" ? "on" : ""} onClick={() => setTab("map")}>Map</button>
           <button role="tab" aria-selected={tab === "missing"} class={tab === "missing" ? "on" : ""} onClick={() => setTab("missing")}>
-            Missing from your library{graph?.missing.length ? ` (${graph.missing.length})` : ""}
+            Missing{graph?.missing.length ? ` (${graph.missing.length})` : ""}
           </button>
         </div>
         {busy && (
@@ -84,12 +106,103 @@ export function CitationMap(props: {
             {todo} paper{todo > 1 ? "s haven't" : " hasn't"} been looked up yet. <button class="link" onClick={() => update()}>Look them up</button>
           </p>
         )}
-        {graph && tab === "map" && <MapView graph={graph} all={all} setAll={setAll} picked={picked} setPicked={setPicked} onOpen={props.onOpen} />}
-        {graph && tab === "missing" && <MissingList graph={graph} papers={props.papers} fetchKey={key} onAdd={props.onAdd} />}
-      </div>
-    </div>
+        {graph && tab === "map" && (
+          <MapView graph={graph} all={all} setAll={setAll} picked={picked} setPicked={setPicked} onOpen={props.onOpen} onExplore={(id) => { setRoot(id); setTab("explore"); }} />
+        )}
+        {store && tab === "explore" && (
+          <ExploreView
+            papers={props.papers}
+            store={store}
+            storage={props.storage}
+            fetchKey={key}
+            root={root}
+            version={version}
+            readOnly={props.readOnly}
+            onRootTaken={() => setRoot(null)}
+            onLookUp={async (p) => {
+              await fetchCitations([p], store, { key }).catch(() => 0);
+              await saveCitations(props.storage, store).catch(() => {});
+              setVersion((v) => v + 1);
+              return store.works[p.id]?.oa ?? null;
+            }}
+            onAdd={props.onAdd}
+            onOpen={props.onOpen}
+          />
+        )}
+        {graph && tab === "missing" && <MissingList graph={graph} papers={props.papers} fetchKey={key} onAdd={props.onAdd} onExplore={(s) => { setRoot(s); setTab("explore"); }} />}
+    </PanelFrame>
   );
 }
+
+/** Drag to move, pinch or scroll to zoom, for a drawn map of the given size. */
+export function usePanZoom(width: number, height: number) {
+  const [view, setView] = useState({ x: 0, y: 0, w: width, h: height });
+  useEffect(() => setView({ x: 0, y: 0, w: width, h: height }), [width, height]);
+  const svg = useRef<SVGSVGElement>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const moved = useRef(false);
+
+  function zoom(f: number, cx = view.x + view.w / 2, cy = view.y + view.h / 2) {
+    const w = Math.min(width * 1.5, Math.max(80, view.w * f));
+    const h = (w / view.w) * view.h;
+    setView({ x: cx - ((cx - view.x) * w) / view.w, y: cy - ((cy - view.y) * h) / view.h, w, h });
+  }
+  const toSvg = (e: { clientX: number; clientY: number }) => {
+    const b = svg.current!.getBoundingClientRect();
+    return { x: view.x + ((e.clientX - b.left) / b.width) * view.w, y: view.y + ((e.clientY - b.top) / b.height) * view.h };
+  };
+  function onWheel(e: WheelEvent) {
+    e.preventDefault();
+    const p = toSvg(e);
+    zoom(e.deltaY > 0 ? 1.15 : 1 / 1.15, p.x, p.y);
+  }
+  function onPointerDown(e: PointerEvent) {
+    moved.current = false;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  }
+  function onPointerMove(e: PointerEvent) {
+    const prev = pointers.current.get(e.pointerId);
+    if (!prev) return;
+    const b = svg.current!.getBoundingClientRect();
+    if (pointers.current.size === 1) {
+      const dx = ((e.clientX - prev.x) / b.width) * view.w;
+      const dy = ((e.clientY - prev.y) / b.height) * view.h;
+      if (Math.abs(e.clientX - prev.x) + Math.abs(e.clientY - prev.y) > 2) moved.current = true;
+      if (moved.current) setView({ ...view, x: view.x - dx, y: view.y - dy });
+    } else if (pointers.current.size === 2) {
+      // Pinch: zoom by the change in distance between the two fingers.
+      const [a, c] = [...pointers.current.entries()].map(([id, p]) => (id === e.pointerId ? { x: e.clientX, y: e.clientY } : p));
+      const [a0, c0] = [...pointers.current.values()];
+      const d1 = Math.hypot(a.x - c.x, a.y - c.y);
+      const d0 = Math.hypot(a0.x - c0.x, a0.y - c0.y);
+      if (d0 > 0 && d1 > 0) zoom(d0 / d1, ...(Object.values(toSvg({ clientX: (a.x + c.x) / 2, clientY: (a.y + c.y) / 2 })) as [number, number]));
+      moved.current = true;
+    }
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  }
+  const onPointerUp = (e: PointerEvent) => pointers.current.delete(e.pointerId);
+  return { view, svg, moved, zoom, handlers: { onWheel, onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp } };
+}
+
+/** Citation ticks for a log axis up to the most cited. */
+export function citationTicks(top: number, low = 0): number[] {
+  const out = low ? [] : [0];
+  for (let t = Math.max(1, low); t <= top; t *= 10) out.push(t);
+  return out;
+}
+
+/** A node's label: to its right, or to its left near the right edge. */
+export function labelAt(x: number, r: number, width: number): { x: number; "text-anchor": "start" | "end" } {
+  return x > width - 170 ? { x: x - r - 3, "text-anchor": "end" } : { x: x + r + 3, "text-anchor": "start" };
+}
+
+const readLayout = (): "bands" | "plane" => {
+  try {
+    return localStorage.getItem(LAYOUT_KEY) === "plane" ? "plane" : "bands";
+  } catch {
+    return "bands";
+  }
+};
 
 function MapView(props: {
   graph: ReturnType<typeof buildGraph>;
@@ -98,8 +211,18 @@ function MapView(props: {
   picked: string | null;
   setPicked(id: string | null): void;
   onOpen(id: string, page: number): void;
+  onExplore(id: string): void;
 }) {
   const { graph, picked } = props;
+  const [mode, setModeState] = useState(readLayout);
+  const setMode = (m: "bands" | "plane") => {
+    setModeState(m);
+    try {
+      localStorage.setItem(LAYOUT_KEY, m);
+    } catch {
+      // private window: remembered for now only
+    }
+  };
   const ids = useMemo(
     () => [...graph.nodes.values()].filter((n) => n.year && (props.all ? graph.known && n.paper : n.cites.length + n.citedBy.length > 0)).map((n) => n.paper.id),
     [graph, props.all],
@@ -122,17 +245,31 @@ function MapView(props: {
     const ys = ids.map((id) => graph.nodes.get(id)!.year);
     return ys.length ? [Math.min(...ys) - 1, Math.max(...ys) + 1] : [2000, 2025];
   }, [ids]);
+  const bandOf = (p: Paper) => Math.min(bands - 1, groups.index.get(groupOf(p)) ?? bands - 1);
+  const planeHeight = 520;
+  const plane = useMemo(
+    () =>
+      mode === "plane"
+        ? scatter(
+            ids.map((id) => {
+              const n = graph.nodes.get(id)!;
+              return { id, year: n.year, cited: n.cited, r: 3 + Math.min(8, 1.5 * Math.sqrt(n.cites.length + n.citedBy.length)) };
+            }),
+            { width: WIDTH, height: planeHeight, years },
+          )
+        : null,
+    [graph, ids, mode, years],
+  );
   const placed = useMemo(
-    () => layout(graph, ids, (p) => groups.index.get(groupOf(p)) ?? bands - 1, bands, { width: WIDTH, bandHeight, years }),
-    [graph, ids, groups],
+    () =>
+      plane
+        ? plane.spots.map((s) => ({ id: s.id, x: s.x, y: s.y, r: s.r, band: bandOf(graph.nodes.get(s.id)!.paper) }))
+        : layout(graph, ids, bandOf, bands, { width: WIDTH, bandHeight, years }),
+    [graph, ids, groups, plane],
   );
   const at = useMemo(() => new Map(placed.map((p) => [p.id, p])), [placed]);
-  const height = bands * bandHeight + 30;
-  const [view, setView] = useState({ x: 0, y: 0, w: WIDTH, h: height });
-  useEffect(() => setView({ x: 0, y: 0, w: WIDTH, h: height }), [height]);
-  const svg = useRef<SVGSVGElement>(null);
-  const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const moved = useRef(false);
+  const height = plane ? planeHeight + 10 : bands * bandHeight + 30;
+  const { view, svg, moved, zoom, handlers } = usePanZoom(WIDTH, height);
 
   const near = picked ? new Set([picked, ...graph.nodes.get(picked)!.cites, ...graph.nodes.get(picked)!.citedBy]) : null;
   const labelled = new Set(
@@ -143,46 +280,6 @@ function MapView(props: {
   );
   if (near) near.forEach((k) => labelled.add(k));
 
-  function zoom(f: number, cx = view.x + view.w / 2, cy = view.y + view.h / 2) {
-    const w = Math.min(WIDTH * 1.5, Math.max(80, view.w * f));
-    const h = (w / view.w) * view.h;
-    setView({ x: cx - ((cx - view.x) * w) / view.w, y: cy - ((cy - view.y) * h) / view.h, w, h });
-  }
-  const toSvg = (e: { clientX: number; clientY: number }) => {
-    const b = svg.current!.getBoundingClientRect();
-    return { x: view.x + ((e.clientX - b.left) / b.width) * view.w, y: view.y + ((e.clientY - b.top) / b.height) * view.h };
-  };
-  function onWheel(e: WheelEvent) {
-    e.preventDefault();
-    const p = toSvg(e);
-    zoom(e.deltaY > 0 ? 1.15 : 1 / 1.15, p.x, p.y);
-  }
-  function onDown(e: PointerEvent) {
-    moved.current = false;
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  }
-  function onMove(e: PointerEvent) {
-    const prev = pointers.current.get(e.pointerId);
-    if (!prev) return;
-    const b = svg.current!.getBoundingClientRect();
-    if (pointers.current.size === 1) {
-      const dx = ((e.clientX - prev.x) / b.width) * view.w;
-      const dy = ((e.clientY - prev.y) / b.height) * view.h;
-      if (Math.abs(e.clientX - prev.x) + Math.abs(e.clientY - prev.y) > 2) moved.current = true;
-      if (moved.current) setView({ ...view, x: view.x - dx, y: view.y - dy });
-    } else if (pointers.current.size === 2) {
-      // Pinch: zoom by the change in distance between the two fingers.
-      const [a, c] = [...pointers.current.entries()].map(([id, p]) => (id === e.pointerId ? { x: e.clientX, y: e.clientY } : p));
-      const [a0, c0] = [...pointers.current.values()];
-      const d1 = Math.hypot(a.x - c.x, a.y - c.y);
-      const d0 = Math.hypot(a0.x - c0.x, a0.y - c0.y);
-      if (d0 > 0 && d1 > 0) zoom(d0 / d1, ...Object.values(toSvg({ clientX: (a.x + c.x) / 2, clientY: (a.y + c.y) / 2 })) as [number, number]);
-      moved.current = true;
-    }
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  }
-  const onUp = (e: PointerEvent) => pointers.current.delete(e.pointerId);
-
   const y0 = years[0];
   const span = Math.max(1, years[1] - years[0]);
   const step = span > 40 ? 10 : span > 16 ? 5 : span > 6 ? 2 : 1;
@@ -190,6 +287,7 @@ function MapView(props: {
   for (let y = Math.ceil(y0 / step) * step; y <= years[1]; y += step) ticks.push(y);
   const xOf = (year: number) => 40 + ((year - y0) / span) * (WIDTH - 80);
   const sel = picked ? graph.nodes.get(picked) : null;
+  const floor = plane ? planeHeight - 18 : bands * bandHeight;
 
   if (!graph.known) return <p class="muted">No references yet. Papers need a DOI or an arXiv id to be looked up.</p>;
   if (!ids.length)
@@ -203,13 +301,21 @@ function MapView(props: {
     <>
       <div class="map-tools">
         <span class="muted small">
-          {ids.length} papers, {graph.edges.filter(([a, b]) => at.has(a) && at.has(b)).length} links. Higher and bigger means more cited.
+          {ids.length} papers, {graph.edges.filter(([a, b]) => at.has(a) && at.has(b)).length} links.{" "}
+          {plane ? "Across by year, up by citations; bigger means more links in your library." : "Higher and bigger means more cited."}
         </span>
+        <div class="seg" role="group" aria-label="Layout">
+          <button class={mode === "bands" ? "on" : ""} aria-pressed={mode === "bands"} onClick={() => setMode("bands")}>By folder</button>
+          <button class={mode === "plane" ? "on" : ""} aria-pressed={mode === "plane"} onClick={() => setMode("plane")}>Year × citations</button>
+        </div>
         <label class="small map-all">
-          <input type="checkbox" checked={props.all} onChange={(e) => props.setAll(e.currentTarget.checked)} /> Show unlinked papers
+          <input type="checkbox" checked={props.all} onChange={(e) => props.setAll(e.currentTarget.checked)} /> Show unlinked
         </label>
         <button class="icon-btn" onClick={() => zoom(1 / 1.4)} aria-label="Zoom in"><Icon name="plus" /></button>
         <button class="icon-btn" onClick={() => zoom(1.4)} aria-label="Zoom out"><Icon name="minus" /></button>
+        <button class="icon-btn" onClick={() => svg.current && downloadSvg(svg.current, { width: WIDTH, height }, "citation-map.svg")} aria-label="Download picture" title="Download the map as an SVG picture">
+          <Icon name="download" />
+        </button>
       </div>
       <svg
         ref={svg}
@@ -217,25 +323,36 @@ function MapView(props: {
         style={{ aspectRatio: `${WIDTH} / ${height}` }}
         viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
         preserveAspectRatio="xMidYMid meet"
-        onWheel={onWheel}
-        onPointerDown={onDown}
-        onPointerMove={onMove}
-        onPointerUp={onUp}
-        onPointerCancel={onUp}
+        {...handlers}
         onClick={(e) => !moved.current && (e.target as Element).tagName === "svg" && props.setPicked(null)}
         role="img"
         aria-label="Papers in your library by year, linked where one cites another"
       >
-        {groups.names.map((name, i) => (
-          <g key={name}>
-            <rect x={-2000} y={i * bandHeight} width={WIDTH + 4000} height={bandHeight} class={`band ${i % 2 ? "odd" : ""}`} />
-            <text x={view.x + 6} y={i * bandHeight + 14} class="band-label" fill={COLORS[i % COLORS.length]}>{name}</text>
+        {!plane &&
+          groups.names.map((name, i) => (
+            <g key={name}>
+              <rect x={-2000} y={i * bandHeight} width={WIDTH + 4000} height={bandHeight} class={`band ${i % 2 ? "odd" : ""}`} />
+              <text x={view.x + 6} y={i * bandHeight + 14} class="band-label" fill={COLORS[i % COLORS.length]}>{name}</text>
+            </g>
+          ))}
+        {plane &&
+          citationTicks(plane.top, plane.low).map((t) => (
+            <g key={`c${t}`}>
+              <line x1={0} x2={WIDTH} y1={plane.yOf(t)} y2={plane.yOf(t)} class="tick" />
+              <text x={view.x + 4} y={plane.yOf(t) - 3} class="axis-label">{t === 1 ? "1 citation" : `${t.toLocaleString()} citations`}</text>
+            </g>
+          ))}
+        {plane && groups.names.length > 1 && (
+          <g class="legend">
+            {groups.names.map((name, i) => (
+              <text key={name} x={WIDTH - 8} y={14 + i * 14} class="band-label legend-label" fill={COLORS[i % COLORS.length]}>{name}</text>
+            ))}
           </g>
-        ))}
+        )}
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={xOf(t)} x2={xOf(t)} y1={0} y2={bands * bandHeight} class="tick" />
-            <text x={xOf(t)} y={bands * bandHeight + 18} class="tick-label">{t}</text>
+            {!plane && <line x1={xOf(t)} x2={xOf(t)} y1={0} y2={floor} class="tick" />}
+            <text x={xOf(t)} y={floor + 18} class="tick-label">{t}</text>
           </g>
         ))}
         {graph.edges.map(([a, b]) => {
@@ -254,7 +371,7 @@ function MapView(props: {
             <g key={p.id} class={`node ${picked === p.id ? "picked" : ""}`} opacity={!near || near.has(p.id) ? 1 : 0.25} onClick={(e) => { e.stopPropagation(); if (!moved.current) props.setPicked(p.id === picked ? null : p.id); }}>
               <circle cx={p.x} cy={p.y} r={p.r} fill={COLORS[p.band % COLORS.length]} />
               <title>{`${n.paper.title} (${n.year})`}</title>
-              {labelled.has(p.id) && <text x={p.x + p.r + 3} y={p.y + 3} class="node-label">{nameOf(n.paper)}</text>}
+              {labelled.has(p.id) && <text {...labelAt(p.x, p.r, WIDTH)} y={p.y + 3} class="node-label">{nameOf(n.paper)}</text>}
             </g>
           );
         })}
@@ -269,6 +386,9 @@ function MapView(props: {
           <PaperLinks label="Cited by, in your library" ids={sel.citedBy} graph={graph} pick={props.setPicked} />
           <div class="row">
             <button class="primary" onClick={() => props.onOpen(sel.paper.id, 0)}>Open paper</button>
+            <button onClick={() => props.onExplore(sel.paper.id)} title="Grow a branch from this paper: what cites it, what it cites, and what shares its references">
+              <Icon name="link" /> Branch out from this
+            </button>
           </div>
         </div>
       ) : (
@@ -296,7 +416,7 @@ function PaperLinks(props: { label: string; ids: string[]; graph: ReturnType<typ
   );
 }
 
-function MissingList(props: { graph: ReturnType<typeof buildGraph>; papers: Paper[]; fetchKey?: string; onAdd(d: PaperDraft): boolean }) {
+function MissingList(props: { graph: ReturnType<typeof buildGraph>; papers: Paper[]; fetchKey?: string; onAdd(d: PaperDraft): boolean; onExplore(s: Root): void }) {
   const top = props.graph.missing.slice(0, 50);
   const [meta, setMeta] = useState<Map<string, PaperDraft & { cited?: number }> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -340,6 +460,7 @@ function MissingList(props: { graph: ReturnType<typeof buildGraph>; papers: Pape
                   </ul>
                 )}
               </div>
+              <div class="missing-actions">
               <button
                 class={added.has(m.oa) ? "" : "primary"}
                 disabled={!d || added.has(m.oa)}
@@ -349,6 +470,10 @@ function MissingList(props: { graph: ReturnType<typeof buildGraph>; papers: Pape
               >
                 {added.has(m.oa) ? "Added" : "Add"}
               </button>
+              <button disabled={!d} onClick={() => d && props.onExplore({ oa: m.oa, title: d.title })} title="Walk out from this work through what cites it and what it cites">
+                Branch out
+              </button>
+              </div>
             </li>
           );
         })}

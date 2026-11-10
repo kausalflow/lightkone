@@ -26,6 +26,7 @@ import { browserHistoryStore, chatsAbout, dayLabel, joinChat, KINDS, loadConvers
 import { savedLabel, setAnswerStore } from "./core/answers";
 import { chooseStyle, chosenStyles, findStyles, formatBibliography, styleIndex, type CslStyle } from "./core/csl";
 import { CitationMap } from "./CitationMap";
+import { doiOf } from "./core/citations";
 import { FreshPanel } from "./FreshPanel";
 import { ManuscriptPanel } from "./ManuscriptPanel";
 import { EquationPanel } from "./EquationPanel";
@@ -59,15 +60,15 @@ const library = new Library();
 
 type SaveState = "idle" | "pending" | "saving" | "saved" | "merged" | "error" | "offline";
 
-type Dockable = "chats";
-const DOCKABLE: Dockable[] = ["chats"];
-const TOOL_NAMES: Record<Dockable, string> = { chats: "Chats" };
+type Dockable = "chats" | "map";
+const DOCKABLE: Dockable[] = ["chats", "map"];
+const TOOL_NAMES: Record<Dockable, string> = { chats: "Chats", map: "Citation map" };
 const PLACES_KEY = "lightkone.dock.places";
 /** Where a tool was kept last on a wide screen, so a snapped tool comes back snapped. */
 function lastPlace(t: Dockable): Place {
   try {
     const p = JSON.parse(localStorage.getItem(PLACES_KEY) || "{}")[t];
-    if (p === "right" || p === "bottom") return p;
+    if (p === "right" || p === "bottom" || p === "full") return p;
   } catch {
     // private window
   }
@@ -130,13 +131,13 @@ export function App() {
   const [places, setPlaces] = useState<Partial<Record<Dockable, Place>>>({});
   const [front, setFront] = useState<Partial<Record<"right" | "bottom", Dockable>>>({});
   // Each opening that carries something (a conversation to continue, papers handed over) starts the tool afresh.
-  const [launch, setLaunch] = useState<Record<Dockable, { n: number; open?: string; start?: Start; paperId?: string }>>({ chats: { n: 0 } });
+  const [launch, setLaunch] = useState<Record<Dockable, { n: number; open?: string; start?: Start; paperId?: string }>>({ chats: { n: 0 }, map: { n: 0 } });
   // Chats opened from the reader show over it; a citation followed from Chats opens the reader over them.
   const [overReader, setOverReader] = useState(false);
   const wide = useWide();
   // Snapped tools are only for screens wide enough to show them beside the papers.
-  const placeOf = (t: Dockable): Place | undefined => (places[t] && !wide ? "modal" : places[t]);
-  const modalTool = DOCKABLE.some((t) => placeOf(t) === "modal");
+  const placeOf = (t: Dockable): Place | undefined => ((places[t] === "right" || places[t] === "bottom") && !wide ? "modal" : places[t]);
+  const modalTool = DOCKABLE.some((t) => placeOf(t) === "modal" || placeOf(t) === "full");
   const [resultConv, setResultConv] = useState<string | null>(null);
   // PDFs kept on this device on purpose (Offline papers), by storage path.
   const [keptPdfs, setKeptPdfs] = useState<Map<string, number>>(new Map());
@@ -878,7 +879,7 @@ export function App() {
   /** Open a tool where it was last kept; `init` starts it afresh on a conversation or on papers. */
   function openTool(t: Dockable, init?: { open?: string; start?: Start; paperId?: string }) {
     if (init) setLaunch((l) => ({ ...l, [t]: { n: l[t].n + 1, ...init } }));
-    placeTool(t, places[t] ?? (wide ? lastPlace(t) : "modal"));
+    placeTool(t, places[t] ?? lastPlace(t));
     setPanel(null);
     setSideOpen(false);
   }
@@ -886,11 +887,11 @@ export function App() {
     setPlaces((p) => {
       const next = { ...p, [t]: place };
       // One window at a time; snapped tools stay.
-      if (place === "modal") for (const o of DOCKABLE) if (o !== t && next[o] === "modal") delete next[o];
+      if (place === "modal" || place === "full") for (const o of DOCKABLE) if (o !== t && (next[o] === "modal" || next[o] === "full")) delete next[o];
       return next;
     });
-    if (place !== "modal") setFront((f) => ({ ...f, [place]: t }));
-    if (wide) rememberPlace(t, place);
+    if (place === "right" || place === "bottom") setFront((f) => ({ ...f, [place]: t }));
+    if (wide || place === "modal" || place === "full") rememberPlace(t, place);
   }
   function closeTool(t: Dockable) {
     const was = places[t];
@@ -899,7 +900,7 @@ export function App() {
       delete next[t];
       return next;
     });
-    if (was && was !== "modal") setFront((f) => ({ ...f, [was]: DOCKABLE.find((o) => o !== t && places[o] === was) }));
+    if (was === "right" || was === "bottom") setFront((f) => ({ ...f, [was]: DOCKABLE.find((o) => o !== t && places[o] === was) }));
   }
   // The app and the reader make room for what is snapped.
   useEffect(() => {
@@ -911,7 +912,7 @@ export function App() {
   }, [places, wide]);
   const dockProps = (t: Dockable) => {
     const place = placeOf(t)!;
-    if (place === "modal") return { place, hidden: Boolean(reading || readingWeb) && !overReader, front: overReader, onPlace: wide ? (p: Place) => placeTool(t, p) : undefined, onClose: () => closeTool(t) };
+    if (place === "modal" || place === "full") return { place, hidden: Boolean(reading || readingWeb) && !overReader, front: overReader, onPlace: (p: Place) => placeTool(t, p), onClose: () => closeTool(t) };
     // Tools snapped to the same edge share it as tabs.
     const mates = DOCKABLE.filter((o) => placeOf(o) === place);
     const lead = front[place] && mates.includes(front[place]!) ? front[place]! : mates[0];
@@ -919,14 +920,14 @@ export function App() {
       place,
       hidden: lead !== t,
       tabs: mates.map((o) => ({ label: TOOL_NAMES[o], active: lead === o, onClick: () => setFront((f) => ({ ...f, [place]: o })) })),
-      onPlace: wide ? (p: Place) => placeTool(t, p) : undefined,
+      onPlace: (p: Place) => placeTool(t, p),
       onClose: () => closeTool(t),
     };
   };
 
   const tools: Tool[] = [
     { id: "fresh", group: "Discover", label: "New on arXiv", icon: "sparkle", hint: "Each day's arXiv preprints near your library", show: Boolean(storage && hasPapers), run: go("fresh") },
-    { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: go("map") },
+    { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, branch out from root papers, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: () => openTool("map") },
     { id: "dullaby", group: "Discover", label: "Read at night in Dullaby", icon: "moon", hint: "Opens Dullaby with your library, so it finds papers near yours", show: hasPapers, run: () => window.open(nightLink(dullabyBase(settings), library.papers, appAddress(location.href)), "_blank", "noopener") },
     { id: "equation", group: "Discover", label: "Search by equation", icon: "sigma", hint: "Find the papers that use an equation", show: Boolean(storage && library.papers.some((p) => p.arxiv)), run: go("equation") },
     { id: "chats", group: "Discover", label: "Chats", icon: "chat", hint: "Every conversation with Claude, gathered by paper: carry on, rename, pin, find", show: Boolean(historyStore), run: () => openChats() },
@@ -1303,6 +1304,7 @@ export function App() {
           }}
           onAdd={(d) => addDrafts([d]).length > 0}
           onCitedBy={s2Id(paper) ? () => setCitedBy(paper.id) : undefined}
+          onExplore={storage && doiOf(paper) ? () => openTool("map", { paperId: paper.id }) : undefined}
           onError={setError}
           scheduleSave={scheduleSave}
           others={otherLibraries()}
@@ -1344,15 +1346,17 @@ export function App() {
         <PageReader paper={library.papers.find((p) => p.id === readingWeb)!} storage={storage} onClose={() => setReadingWeb(null)} onError={setError} />
       )}
 
-      {panel === "map" && storage && (
+      {placeOf("map") && storage && (
         <CitationMap
+          key={`map-${launch.map.n}`}
+          {...dockProps("map")}
           papers={library.papers}
           storage={storage}
           settings={settings}
-          hidden={Boolean(reading)}
-          onOpen={openAt}
+          explore={launch.map.paperId}
+          readOnly={readOnly}
+          onOpen={(id, page) => { setOverReader(false); openAt(id, page); }}
           onAdd={(d) => addDrafts([d]).length > 0}
-          onClose={() => setPanel(null)}
         />
       )}
 
@@ -1763,6 +1767,7 @@ function Detail(props: {
   onAdd(d: PaperDraft): boolean;
   /** Show the sentences in later papers that cite it; undefined when it has no DOI or arXiv id. */
   onCitedBy?(): void;
+  onExplore?(): void;
   onError(msg: string): void;
   scheduleSave(): void;
   /** Other libraries this paper can be copied to. */
@@ -1900,6 +1905,11 @@ function Detail(props: {
           {props.onCitedBy && (
             <button onClick={props.onCitedBy} title="The sentences in later papers that cite this one, from Semantic Scholar">
               <Icon name="chat" /> How others cite this
+            </button>
+          )}
+          {props.onExplore && (
+            <button onClick={props.onExplore} title="Walk out from this paper through the citation network: what cites it, what it cites, what shares its references">
+              <Icon name="link" /> Branch out from this
             </button>
           )}
           {available.map((a) => {
