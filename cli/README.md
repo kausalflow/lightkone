@@ -15,6 +15,7 @@ lightkone add 2106.09685 10.1103/PhysRevLett.116.061102 -t lensing -f Physics/GR
 lightkone export in:Thesis -o thesis.bib
 lightkone map in:Thesis --open        # which of your papers cite which
 lightkone open Hinton2012-in -p 3     # read it in the web app, at page 3
+claude mcp add lightkone -- lightkone mcp   # let Claude Code search and cite your library
 ```
 
 Extras: `lightkone[data]` (pandas DataFrames), `lightkone[graph]` (networkx,
