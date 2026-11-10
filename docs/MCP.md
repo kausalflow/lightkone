@@ -110,8 +110,6 @@ repository).
 - **claude.ai and the Claude apps:** put `SKILL.md` in a folder named `lightkone`,
   zip the folder, and upload it under Settings → Capabilities → Skills.
 
-The site also serves `/llms.txt`, a short map of Lightkone and its docs for AI tools.
-
 ## Notes
 
 - Changes made through MCP appear in the app when you come back to its tab.
