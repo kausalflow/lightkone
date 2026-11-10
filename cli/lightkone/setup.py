@@ -131,7 +131,7 @@ def check(storage: Storage, provider: str) -> Check:
     step = "list"
     try:
         n = len(storage.list("lightkone/"))
-        c.steps.append(("List the library's files", True, f"{n} in lightkone/" if n else "empty: a new library starts here"))
+        c.steps.append(("List the library's files", True, f"{n} in lightkone/" if n else "none yet, so a new library starts here"))
         step = "write"
         storage.write(probe, body, "text/plain")
         c.steps.append(("Save a small test file", True, ""))
