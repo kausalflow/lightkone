@@ -477,7 +477,7 @@ function ExploreGraph(props: { result: Neighbourhood; shown: Candidate[]; fresh:
     <div class="explore-graph" ref={box}>
       <div class="map-tools">
         <span class="muted small">Across by year, up by citations. Bigger means closer ties.</span>
-        <span class="legend-key small"><i class="k root" /> root <i class="k have" /> in your library <i class="k out" /> not yet <i class="k fresh" /> fresh</span>
+        <span class="legend-key small"><i class="k root" /> {result.library ? "your papers (roots)" : "root"} {!result.library && <><i class="k have" /> in your library</>} <i class="k out" /> not yet <i class="k fresh" /> fresh</span>
         <button class="icon-btn" onClick={() => zoom(1 / 1.4)} aria-label="Zoom in"><Icon name="plus" /></button>
         <button class="icon-btn" onClick={() => zoom(1.4)} aria-label="Zoom out"><Icon name="minus" /></button>
         <button class="icon-btn" onClick={() => svg.current && downloadSvg(svg.current, { width, height }, "branch.svg")} aria-label="Download picture" title="Download as an SVG picture"><Icon name="download" /></button>
