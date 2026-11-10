@@ -37,6 +37,19 @@ make a new address.
 
 A library kept only in the browser can't be reached this way.
 
+## On your own computer, with the CLI
+
+Claude Code and Claude desktop can also start Lightkone themselves, with the
+[command line](CLI.md#in-claude-and-other-ai-apps): `pip install lightkone`,
+set the library up once with `lightkone login`, then
+
+```bash
+claude mcp add lightkone -- lightkone mcp
+```
+
+This needs no address and no secret on the site, works with a library in a
+plain folder too, and keeps your keys on your computer.
+
 ## For whoever hosts the site
 
 Personal addresses need one secret on the Pages project. In Cloudflare, open
