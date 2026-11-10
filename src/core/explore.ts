@@ -2,23 +2,23 @@ import type { PaperDraft, StorageAdapter } from "./types";
 import { type CitationStore, type FetchOptions } from "./citations";
 import { workToDraft } from "./literature";
 
-// Explore: start from one or more seed papers and walk one step through the
-// citation network around them. Candidates are the works that cite a seed,
-// that a seed cites, or that share many references with the seeds; they are
-// ranked by how tightly they tie to the seeds (and to the rest of the
+// Explore: start from one or more root papers and walk one step through the
+// citation network around them. Candidates are the works that cite a root,
+// that a root cites, or that share many references with the roots; they are
+// ranked by how tightly they tie to the roots (and to the rest of the
 // library), not by popularity alone. Explorations are kept in
-// lightkone/explorations.json, with the works already seen, so opening one
+// lightkone/branches.json, with the works already seen, so opening one
 // again shows what is new since. citations.json is left as it is.
 
-export const EXPLORE_PATH = "lightkone/explorations.json";
+export const EXPLORE_PATH = "lightkone/branches.json";
 const API = "https://api.openalex.org/works";
 const SELECT = "id,doi,title,publication_year,authorships,primary_location,cited_by_count,referenced_works,abstract_inverted_index";
 /** How many citing works to read per run, most cited first. */
 const CITING = 200;
-/** How many of the seeds' references to read. */
+/** How many of the roots' references to read. */
 const CITED = 150;
 
-export interface Seed {
+export interface Root {
   /** OpenAlex id. */
   oa: string;
   title: string;
@@ -29,7 +29,7 @@ export interface Seed {
 export interface Exploration {
   id: string;
   name: string;
-  seeds: Seed[];
+  roots: Root[];
   /** OpenAlex ids of candidates already shown. */
   seen: string[];
   /** ISO; when the exploration was first made. */
@@ -39,12 +39,12 @@ export interface Exploration {
 }
 
 export interface ExploreStore {
-  format: "lightkone-explorations";
+  format: "lightkone-branches";
   version: 1;
   items: Exploration[];
 }
 
-const emptyStore = (): ExploreStore => ({ format: "lightkone-explorations", version: 1, items: [] });
+const emptyStore = (): ExploreStore => ({ format: "lightkone-branches", version: 1, items: [] });
 const decoder = new TextDecoder();
 
 export async function loadExplorations(storage: StorageAdapter): Promise<ExploreStore> {
@@ -52,7 +52,7 @@ export async function loadExplorations(storage: StorageAdapter): Promise<Explore
   if (!raw) return emptyStore();
   try {
     const s = JSON.parse(decoder.decode(raw)) as ExploreStore;
-    return s.format === "lightkone-explorations" && Array.isArray(s.items) ? s : emptyStore();
+    return s.format === "lightkone-branches" && Array.isArray(s.items) ? s : emptyStore();
   } catch {
     return emptyStore();
   }
@@ -68,11 +68,11 @@ export interface Candidate {
   year: number;
   cited: number;
   refs: string[];
-  /** Seeds (OpenAlex ids) this work cites. */
-  citesSeeds: string[];
-  /** Seeds that cite this work. */
-  citedBySeeds: string[];
-  /** References it shares with the seeds. */
+  /** Roots (OpenAlex ids) this work cites. */
+  citesRoots: string[];
+  /** Roots that cite this work. */
+  citedByRoots: string[];
+  /** References it shares with the roots. */
   shared: number;
   /** Library papers it cites or is cited by. */
   libraryLinks: string[];
@@ -82,7 +82,7 @@ export interface Candidate {
 }
 
 export interface Neighbourhood {
-  seeds: (Seed & { year: number; cited: number; refs: string[] })[];
+  roots: (Root & { year: number; cited: number; refs: string[] })[];
   candidates: Candidate[];
 }
 
@@ -117,56 +117,56 @@ export function libraryIndex(store: CitationStore | null): { byOa: Map<string, s
 }
 
 /**
- * Walk one step out from the seeds: the works that cite them (the most cited
+ * Walk one step out from the roots: the works that cite them (the most cited
  * first), the works they cite, and score each by its ties.
  */
-export async function explore(seeds: Seed[], store: CitationStore | null, o: FetchOptions = {}): Promise<Neighbourhood> {
-  const seedIds = seeds.map((s) => s.oa);
-  const seedSet = new Set(seedIds);
-  const seedRows = await byIds(seedIds, o);
-  const seedInfo = new Map(seedRows.map((x) => [shortId(x.id), x]));
-  const seedRefs = new Map(seedIds.map((id) => [id, new Set<string>((seedInfo.get(id)?.referenced_works ?? []).map(shortId))]));
-  const allSeedRefs = new Map<string, number>();
-  for (const refs of seedRefs.values()) for (const r of refs) allSeedRefs.set(r, (allSeedRefs.get(r) ?? 0) + 1);
+export async function explore(roots: Root[], store: CitationStore | null, o: FetchOptions = {}): Promise<Neighbourhood> {
+  const rootIds = roots.map((s) => s.oa);
+  const rootSet = new Set(rootIds);
+  const rootRows = await byIds(rootIds, o);
+  const rootInfo = new Map(rootRows.map((x) => [shortId(x.id), x]));
+  const rootRefs = new Map(rootIds.map((id) => [id, new Set<string>((rootInfo.get(id)?.referenced_works ?? []).map(shortId))]));
+  const allRootRefs = new Map<string, number>();
+  for (const refs of rootRefs.values()) for (const r of refs) allRootRefs.set(r, (allRootRefs.get(r) ?? 0) + 1);
 
-  const citing = (await getJson(`${API}?filter=cites:${seedIds.join("|")}&sort=cited_by_count:desc&per-page=${CITING}&select=${SELECT}`, o)).results ?? [];
+  const citing = (await getJson(`${API}?filter=cites:${rootIds.join("|")}&sort=cited_by_count:desc&per-page=${CITING}&select=${SELECT}`, o)).results ?? [];
   const citingIds = new Set(citing.map((x: any) => shortId(x.id)));
-  // The references most of the seeds share first, then the rest, as many as are read.
-  const cited = [...allSeedRefs]
-    .filter(([id]) => !seedSet.has(id) && !citingIds.has(id))
+  // The references most of the roots share first, then the rest, as many as are read.
+  const cited = [...allRootRefs]
+    .filter(([id]) => !rootSet.has(id) && !citingIds.has(id))
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, CITED)
     .map(([id]) => id);
   const citedRows = await byIds(cited, o);
 
   const lib = libraryIndex(store);
-  const seedPapers = seeds.map((s) => s.paperId).filter(Boolean) as string[];
+  const rootPapers = roots.map((s) => s.paperId).filter(Boolean) as string[];
   const candidates: Candidate[] = [];
   for (const x of [...citing, ...citedRows]) {
     const oa = shortId(x.id);
-    if (seedSet.has(oa) || !x.title || candidates.some((c) => c.oa === oa)) continue;
+    if (rootSet.has(oa) || !x.title || candidates.some((c) => c.oa === oa)) continue;
     const refs: string[] = (x.referenced_works ?? []).map(shortId);
     const refSet = new Set(refs);
-    const citesSeeds = seedIds.filter((s) => refSet.has(s));
-    const citedBySeeds = seedIds.filter((s) => seedRefs.get(s)!.has(oa));
+    const citesRoots = rootIds.filter((s) => refSet.has(s));
+    const citedByRoots = rootIds.filter((s) => rootRefs.get(s)!.has(oa));
     let shared = 0;
-    for (const r of refs) if (allSeedRefs.has(r)) shared++;
+    for (const r of refs) if (allRootRefs.has(r)) shared++;
     const libraryLinks = new Set<string>();
     for (const r of refs) if (lib.byOa.has(r)) libraryLinks.add(lib.byOa.get(r)!);
     for (const [id, rs] of lib.refs) if (rs.has(oa)) libraryLinks.add(id);
     const paperId = lib.byOa.get(oa);
     if (paperId) libraryLinks.delete(paperId);
-    for (const id of seedPapers) libraryLinks.delete(id);
+    for (const id of rootPapers) libraryLinks.delete(id);
     const cites = x.cited_by_count ?? 0;
-    const score = 3 * (citesSeeds.length + citedBySeeds.length) + Math.min(12, shared) * 0.5 + Math.min(6, libraryLinks.size) + Math.log10(1 + cites) * 0.6;
+    const score = 3 * (citesRoots.length + citedByRoots.length) + Math.min(12, shared) * 0.5 + Math.min(6, libraryLinks.size) + Math.log10(1 + cites) * 0.6;
     candidates.push({
       oa,
       draft: workToDraft(x),
       year: x.publication_year ?? 0,
       cited: cites,
       refs,
-      citesSeeds,
-      citedBySeeds,
+      citesRoots,
+      citedByRoots,
       shared,
       libraryLinks: [...libraryLinks],
       paperId,
@@ -175,20 +175,20 @@ export async function explore(seeds: Seed[], store: CitationStore | null, o: Fet
   }
   candidates.sort((a, b) => b.score - a.score || b.cited - a.cited || a.oa.localeCompare(b.oa));
   return {
-    seeds: seeds.map((s) => {
-      const x = seedInfo.get(s.oa);
-      return { ...s, title: x?.title ?? s.title, year: x?.publication_year ?? 0, cited: x?.cited_by_count ?? 0, refs: [...(seedRefs.get(s.oa) ?? [])] };
+    roots: roots.map((s) => {
+      const x = rootInfo.get(s.oa);
+      return { ...s, title: x?.title ?? s.title, year: x?.publication_year ?? 0, cited: x?.cited_by_count ?? 0, refs: [...(rootRefs.get(s.oa) ?? [])] };
     }),
     candidates,
   };
 }
 
 /** Why a candidate is here, in words. */
-export function reasons(c: Candidate, seedCount: number): string[] {
+export function reasons(c: Candidate, rootCount: number): string[] {
   const out: string[] = [];
-  const of = (n: number) => (seedCount > 1 ? `${n} of the ${seedCount} seeds` : "the seed");
-  if (c.citesSeeds.length) out.push(`cites ${of(c.citesSeeds.length)}`);
-  if (c.citedBySeeds.length) out.push(`cited by ${of(c.citedBySeeds.length)}`);
+  const of = (n: number) => (rootCount > 1 ? `${n} of the ${rootCount} roots` : "the root");
+  if (c.citesRoots.length) out.push(`cites ${of(c.citesRoots.length)}`);
+  if (c.citedByRoots.length) out.push(`cited by ${of(c.citedByRoots.length)}`);
   if (c.shared >= 2) out.push(`shares ${c.shared} references`);
   if (c.libraryLinks.length) out.push(`linked to ${c.libraryLinks.length} of your papers`);
   return out;
@@ -262,9 +262,9 @@ export function scatter(dots: Dot[], size: { width: number; height: number; year
   return { spots, yOf, xOf, top, low };
 }
 
-/** A name for a new exploration from its seeds. */
-export function nameFor(seeds: Seed[]): string {
-  if (!seeds.length) return "Exploration";
-  const first = seeds[0].title.length > 48 ? `${seeds[0].title.slice(0, 46).trim()}…` : seeds[0].title;
-  return seeds.length > 1 ? `${first} + ${seeds.length - 1}` : first;
+/** A name for a new exploration from its roots. */
+export function nameFor(roots: Root[]): string {
+  if (!roots.length) return "Exploration";
+  const first = roots[0].title.length > 48 ? `${roots[0].title.slice(0, 46).trim()}…` : roots[0].title;
+  return roots.length > 1 ? `${first} + ${roots.length - 1}` : first;
 }

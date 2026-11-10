@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Paper, PaperDraft, StorageAdapter } from "./core/types";
 import { buildGraph, fetchCitations, layout, loadCitations, needsFetch, saveCitations, worksById, type CitationStore } from "./core/citations";
-import { scatter, type Seed } from "./core/explore";
+import { scatter, type Root } from "./core/explore";
 import { shortAuthors } from "./core/cite";
 import { Icon } from "./icons";
 import { ExploreView } from "./ExploreView";
 import { downloadSvg } from "./svgfile";
 
 // The citation map panel: your papers by year, in bands by folder (or tag)
-// or by year and citations, linked where one cites another; Explore, which
-// walks out from seed papers through what cites them and what they cite;
+// or by year and citations, linked where one cites another; Branches, which
+// grow out from root papers through what cites them and what they cite;
 // and the works your papers keep citing that you do not have yet.
 
 const COLORS = ["#4e79a7", "#e8853a", "#59a14f", "#d9534f", "#5fa8a3", "#c9a227", "#a8729a", "#8d6e5a"];
@@ -17,6 +17,14 @@ const WIDTH = 1000;
 
 const groupOf = (p: Paper) => p.folders?.[0]?.split("/")[0] || p.tags[0] || "";
 export const LAYOUT_KEY = "lightkone.map.layout";
+const FULL_KEY = "lightkone.map.full";
+const readFull = () => {
+  try {
+    return localStorage.getItem(FULL_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
 export const nameOf = (p: Paper) => `${shortAuthors(p.authors).replace(/ et al\.$/, "") || p.title.slice(0, 18)}${p.year ? ` ${p.year}` : ""}`;
 
 export function CitationMap(props: {
@@ -33,7 +41,7 @@ export function CitationMap(props: {
 }) {
   const [store, setStore] = useState<CitationStore | null>(null);
   const [tab, setTab] = useState<"map" | "explore" | "missing">(props.explore ? "explore" : "map");
-  const [seed, setSeed] = useState<Seed | string | null>(props.explore ?? null);
+  const [root, setRoot] = useState<Root | string | null>(props.explore ?? null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [all, setAll] = useState(false);
@@ -41,6 +49,16 @@ export function CitationMap(props: {
   const [version, setVersion] = useState(0);
   const abort = useRef<AbortController | null>(null);
   const key = props.settings["related.openalexKey"] || undefined;
+  // Full page: the panel takes the whole window, for long sessions on a big map.
+  const [full, setFullState] = useState(readFull);
+  const setFull = (v: boolean) => {
+    setFullState(v);
+    try {
+      localStorage.setItem(FULL_KEY, v ? "1" : "0");
+    } catch {
+      // private window: for now only
+    }
+  };
 
   useEffect(() => {
     loadCitations(props.storage).then((s) => {
@@ -70,15 +88,20 @@ export function CitationMap(props: {
   const todo = store ? needsFetch(props.papers, store).length : 0;
 
   return (
-    <div class="overlay" hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div class="panel wide map-panel">
+    <div class={`overlay ${full ? "full-page" : ""}`} hidden={props.hidden} onClick={(e) => e.target === e.currentTarget && props.onClose()}>
+      <div class={`panel wide map-panel ${full ? "full" : ""}`}>
         <div class="ask-head">
           <h2>Citation map</h2>
-          <button class="icon-btn" onClick={props.onClose} aria-label="Close"><Icon name="x" /></button>
+          <div class="panel-tools">
+            <button class="icon-btn" onClick={() => setFull(!full)} aria-label={full ? "Back to a window" : "Full page"} title={full ? "Back to a window" : "Fill the whole window"}>
+              <Icon name={full ? "shrink" : "expand"} />
+            </button>
+            <button class="icon-btn" onClick={props.onClose} aria-label="Close"><Icon name="x" /></button>
+          </div>
         </div>
         <div class="tabs" role="tablist">
           <button role="tab" aria-selected={tab === "map"} class={tab === "map" ? "on" : ""} onClick={() => setTab("map")}>Map</button>
-          <button role="tab" aria-selected={tab === "explore"} class={tab === "explore" ? "on" : ""} onClick={() => setTab("explore")}>Explore</button>
+          <button role="tab" aria-selected={tab === "explore"} class={tab === "explore" ? "on" : ""} onClick={() => setTab("explore")}>Branches</button>
           <button role="tab" aria-selected={tab === "missing"} class={tab === "missing" ? "on" : ""} onClick={() => setTab("missing")}>
             Missing{graph?.missing.length ? ` (${graph.missing.length})` : ""}
           </button>
@@ -95,7 +118,7 @@ export function CitationMap(props: {
           </p>
         )}
         {graph && tab === "map" && (
-          <MapView graph={graph} all={all} setAll={setAll} picked={picked} setPicked={setPicked} onOpen={props.onOpen} onExplore={(id) => { setSeed(id); setTab("explore"); }} />
+          <MapView graph={graph} all={all} setAll={setAll} picked={picked} setPicked={setPicked} onOpen={props.onOpen} onExplore={(id) => { setRoot(id); setTab("explore"); }} />
         )}
         {store && tab === "explore" && (
           <ExploreView
@@ -103,9 +126,9 @@ export function CitationMap(props: {
             store={store}
             storage={props.storage}
             fetchKey={key}
-            seed={seed}
+            root={root}
             readOnly={props.readOnly}
-            onSeedTaken={() => setSeed(null)}
+            onRootTaken={() => setRoot(null)}
             onLookUp={async (p) => {
               await fetchCitations([p], store, { key }).catch(() => 0);
               await saveCitations(props.storage, store).catch(() => {});
@@ -116,7 +139,7 @@ export function CitationMap(props: {
             onOpen={props.onOpen}
           />
         )}
-        {graph && tab === "missing" && <MissingList graph={graph} papers={props.papers} fetchKey={key} onAdd={props.onAdd} onExplore={(s) => { setSeed(s); setTab("explore"); }} />}
+        {graph && tab === "missing" && <MissingList graph={graph} papers={props.papers} fetchKey={key} onAdd={props.onAdd} onExplore={(s) => { setRoot(s); setTab("explore"); }} />}
       </div>
     </div>
   );
@@ -374,8 +397,8 @@ function MapView(props: {
           <PaperLinks label="Cited by, in your library" ids={sel.citedBy} graph={graph} pick={props.setPicked} />
           <div class="row">
             <button class="primary" onClick={() => props.onOpen(sel.paper.id, 0)}>Open paper</button>
-            <button onClick={() => props.onExplore(sel.paper.id)} title="Walk out from this paper: what cites it, what it cites, and what shares its references">
-              <Icon name="link" /> Explore from this
+            <button onClick={() => props.onExplore(sel.paper.id)} title="Grow a branch from this paper: what cites it, what it cites, and what shares its references">
+              <Icon name="link" /> Branch out from this
             </button>
           </div>
         </div>
@@ -404,7 +427,7 @@ function PaperLinks(props: { label: string; ids: string[]; graph: ReturnType<typ
   );
 }
 
-function MissingList(props: { graph: ReturnType<typeof buildGraph>; papers: Paper[]; fetchKey?: string; onAdd(d: PaperDraft): boolean; onExplore(s: Seed): void }) {
+function MissingList(props: { graph: ReturnType<typeof buildGraph>; papers: Paper[]; fetchKey?: string; onAdd(d: PaperDraft): boolean; onExplore(s: Root): void }) {
   const top = props.graph.missing.slice(0, 50);
   const [meta, setMeta] = useState<Map<string, PaperDraft & { cited?: number }> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -459,7 +482,7 @@ function MissingList(props: { graph: ReturnType<typeof buildGraph>; papers: Pape
                 {added.has(m.oa) ? "Added" : "Add"}
               </button>
               <button disabled={!d} onClick={() => d && props.onExplore({ oa: m.oa, title: d.title })} title="Walk out from this work through what cites it and what it cites">
-                Explore
+                Branch out
               </button>
               </div>
             </li>

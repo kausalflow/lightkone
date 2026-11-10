@@ -42,6 +42,8 @@ const paths = {
   sigma: <path d="M18 5H6l6 7-6 7h12" />,
   dockRight: <><rect x="3.5" y="4.5" width="17" height="15" rx="1.5" /><path d="M14 4.5v15" /><path d="M16.5 9h1.5M16.5 12h1.5" /></>,
   dockBottom: <><rect x="3.5" y="4.5" width="17" height="15" rx="1.5" /><path d="M3.5 14h17" /></>,
+  expand: <path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />,
+  shrink: <path d="M20 10h-6V4M4 14h6v6M14 10l7-7M10 14l-7 7" />,
   window: <><rect x="6.5" y="6.5" width="11" height="11" rx="1.5" /><path d="M3.5 13V5a1.5 1.5 0 0 1 1.5-1.5h8" /></>,
   chat: <path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8.5A1.5 1.5 0 0 1 19 17h-8l-4.5 3.5V17H5a1.5 1.5 0 0 1-1.5-1.5V7A1.5 1.5 0 0 1 5 5.5z" />,
   table: <><rect x="3.5" y="4.5" width="17" height="15" rx="1.5" /><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10" /></>,

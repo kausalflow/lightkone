@@ -928,7 +928,7 @@ export function App() {
 
   const tools: Tool[] = [
     { id: "fresh", group: "Discover", label: "New on arXiv", icon: "sparkle", hint: "Each day's arXiv preprints near your library", show: Boolean(storage && hasPapers), run: go("fresh") },
-    { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, explore out from seed papers, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: go("map") },
+    { id: "map", group: "Discover", label: "Citation map", icon: "link", hint: "Which of your papers cite which, branch out from root papers, and what they cite that you don't have", show: Boolean(storage && hasPapers), run: go("map") },
     { id: "dullaby", group: "Discover", label: "Read at night in Dullaby", icon: "moon", hint: "Opens Dullaby with your library, so it finds papers near yours", show: hasPapers, run: () => window.open(nightLink(dullabyBase(settings), library.papers, appAddress(location.href)), "_blank", "noopener") },
     { id: "equation", group: "Discover", label: "Search by equation", icon: "sigma", hint: "Find the papers that use an equation", show: Boolean(storage && library.papers.some((p) => p.arxiv)), run: go("equation") },
     { id: "chats", group: "Discover", label: "Chats", icon: "chat", hint: "Every conversation with Claude, gathered by paper: carry on, rename, pin, find", show: Boolean(historyStore), run: () => openChats() },
@@ -1911,7 +1911,7 @@ function Detail(props: {
           )}
           {props.onExplore && (
             <button onClick={props.onExplore} title="Walk out from this paper through the citation network: what cites it, what it cites, what shares its references">
-              <Icon name="link" /> Explore around this
+              <Icon name="link" /> Branch out from this
             </button>
           )}
           {available.map((a) => {

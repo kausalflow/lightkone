@@ -4,7 +4,7 @@ import { EXPLORE_PATH, explore, filterCandidates, loadExplorations, nameFor, rea
 import type { StorageAdapter } from "../src/core/types";
 
 // A tiny citation network:
-//   S1, S2 are the seeds. S1 cites R1, R2; S2 cites R1, R3.
+//   S1, S2 are the roots. S1 cites R1, R2; S2 cites R1, R3.
 //   C1 cites S1 and S2 (and R1, R2); C2 cites S1 only; C3 cites S2 and shares R1, R3.
 //   L1 is a library paper that cites C2.
 const W: Record<string, { year: number; cited: number; refs: string[] }> = {
@@ -33,8 +33,8 @@ function fake(calls: string[] = []) {
     const filter = new URL(String(url)).searchParams.get("filter")!;
     if (filter.startsWith("openalex:")) return new Response(JSON.stringify({ results: filter.slice(9).split("|").filter((id) => W[id]).map(row) }));
     if (filter.startsWith("cites:")) {
-      const seeds = filter.slice(6).split("|");
-      const ids = Object.keys(W).filter((id) => W[id].refs.some((r) => seeds.includes(r))).sort((a, b) => W[b].cited - W[a].cited);
+      const roots = filter.slice(6).split("|");
+      const ids = Object.keys(W).filter((id) => W[id].refs.some((r) => roots.includes(r))).sort((a, b) => W[b].cited - W[a].cited);
       return new Response(JSON.stringify({ results: ids.map(row) }));
     }
     return new Response("{}", { status: 400 });
@@ -56,27 +56,27 @@ function memory(): StorageAdapter & { files: Map<string, string> } {
 }
 
 describe("explore", () => {
-  it("walks out from seeds and ranks by ties, not just citations", async () => {
+  it("walks out from roots and ranks by ties, not just citations", async () => {
     const store = emptyStore();
     store.works.lib1 = { oa: "L1", refs: ["C2"], at: "2026-01-01T00:00:00Z" };
     store.works.s1 = { oa: "S1", refs: ["R1", "R2"], at: "2026-01-01T00:00:00Z" };
     const calls: string[] = [];
     const r = await explore([{ oa: "S1", title: "S1", paperId: "s1" }, { oa: "S2", title: "S2" }], store, { fetch: fake(calls), key: "k" });
     expect(calls.every((c) => c.includes("api_key=k"))).toBe(true);
-    expect(r.seeds.map((s) => [s.oa, s.year])).toEqual([["S1", 2015], ["S2", 2017]]);
+    expect(r.roots.map((s) => [s.oa, s.year])).toEqual([["S1", 2015], ["S2", 2017]]);
     const ids = r.candidates.map((c) => c.oa);
     expect(ids).not.toContain("S1");
-    // C1 cites both seeds; R1 is cited by both. Both outrank the more cited C2.
+    // C1 cites both roots; R1 is cited by both. Both outrank the more cited C2.
     expect(ids.slice(0, 2).sort()).toEqual(["C1", "R1"]);
     const c1 = r.candidates.find((c) => c.oa === "C1")!;
-    expect(c1.citesSeeds).toEqual(["S1", "S2"]);
+    expect(c1.citesRoots).toEqual(["S1", "S2"]);
     expect(c1.shared).toBe(2);
     const r1 = r.candidates.find((c) => c.oa === "R1")!;
-    expect(r1.citedBySeeds).toEqual(["S1", "S2"]);
+    expect(r1.citedByRoots).toEqual(["S1", "S2"]);
     // C2 is cited by a library paper.
     expect(r.candidates.find((c) => c.oa === "C2")!.libraryLinks).toEqual(["lib1"]);
-    expect(reasons(c1, 2)).toEqual(["cites 2 of the 2 seeds", "shares 2 references"]);
-    expect(reasons(r.candidates.find((c) => c.oa === "C2")!, 2)).toEqual(["cites 1 of the 2 seeds", "linked to 1 of your papers"]);
+    expect(reasons(c1, 2)).toEqual(["cites 2 of the 2 roots", "shares 2 references"]);
+    expect(reasons(r.candidates.find((c) => c.oa === "C2")!, 2)).toEqual(["cites 1 of the 2 roots", "linked to 1 of your papers"]);
     expect(r.candidates.find((c) => c.oa === "C2")!.draft.arxiv).toBe("1901.00001");
   });
 
@@ -96,9 +96,9 @@ describe("explore", () => {
   it("keeps explorations in their own file", async () => {
     const s = memory();
     expect((await loadExplorations(s)).items).toEqual([]);
-    const ex = { id: "x1", name: nameFor([{ oa: "S1", title: "Attention" }, { oa: "S2", title: "B" }]), seeds: [{ oa: "S1", title: "Attention" }], seen: ["C1"], made: "2026-11-10T00:00:00Z" };
+    const ex = { id: "x1", name: nameFor([{ oa: "S1", title: "Attention" }, { oa: "S2", title: "B" }]), roots: [{ oa: "S1", title: "Attention" }], seen: ["C1"], made: "2026-11-10T00:00:00Z" };
     expect(ex.name).toBe("Attention + 1");
-    await saveExplorations(s, { format: "lightkone-explorations", version: 1, items: [ex] });
+    await saveExplorations(s, { format: "lightkone-branches", version: 1, items: [ex] });
     expect(s.files.has(EXPLORE_PATH)).toBe(true);
     expect((await loadExplorations(s)).items[0].seen).toEqual(["C1"]);
     s.files.set(EXPLORE_PATH, "not json");

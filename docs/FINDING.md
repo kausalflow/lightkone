@@ -191,28 +191,28 @@ paper to see what it cites and what cites it. Two layouts:
 The download button saves the map as an SVG picture, styled as you see it, for
 slides, a thesis or a web page.
 
-### Explore
+### Branches
 
-**Explore** walks out from one or more *seed* papers through the citation
-network. Start it from a paper's details (**Explore around this**), from a paper
-on the map (**Explore from this**), from a work on the *Missing* tab, or by
-typing a paper's name into the seeds box. It reads
+**Branches** grow out from one or more *root* papers through the citation
+network, the way Kirsche connected references. Start one from a paper's details
+or a paper on the map (**Branch out from this**), from a work on the *Missing*
+tab (**Branch out**), or by typing a paper's name into the roots box. It reads
 
-- the works that cite the seeds (the 200 most cited),
-- the works the seeds cite, and
-- for each, how many references it shares with the seeds and how many of your
+- the works that cite the roots (the 200 most cited),
+- the works the roots cite, and
+- for each, how many references it shares with the roots and how many of your
   own papers it cites or is cited by,
 
-and ranks them by how closely they tie to the seeds, not by fame alone. Each
-says why it is there ("cites 2 of the 3 seeds · shares 14 references · linked
-to 4 of your papers"). The picture places seeds, papers you have (filled) and
+and ranks them by how closely they tie to the roots, not by fame alone. Each
+says why it is there ("cites 2 of the 3 roots · shares 14 references · linked
+to 4 of your papers"). The picture places roots, papers you have (filled) and
 papers you don't (hollow) by year and citations, linked where one cites another.
 Filter by words or years, order by ties, citations or date, hide the ones you
-have, **Add** one to your library, or **+ Seed** to widen the walk.
+have, **Add** one to your library, or **+ Root** to grow the branch from it too.
 
-**Keep this exploration** saves it, with every work shown so far. Opening it
-again reads the network afresh and marks what is **new** since last time, so a
-kept exploration doubles as a watch on a topic.
+**Keep this branch** saves it, with every work shown so far. Opening it again
+reads the network afresh and marks what is **fresh** since last time, so a kept
+branch doubles as a watch on a topic.
 
 ### Missing from your library
 

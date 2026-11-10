@@ -14,16 +14,16 @@ import {
   type ExploreStore,
   type Exploration,
   type Neighbourhood,
-  type Seed,
+  type Root,
 } from "./core/explore";
 import { shortAuthors } from "./core/cite";
 import { Icon } from "./icons";
 import { citationTicks, labelAt, nameOf, usePanZoom } from "./CitationMap";
 import { downloadSvg } from "./svgfile";
 
-// Explore: pick seed papers, from the library or outside it, and see the
+// Explore: pick root papers, from the library or outside it, and see the
 // works around them in the citation network, placed by year and citations
-// and ranked by how tightly they tie to the seeds. Explorations are kept
+// and ranked by how tightly they tie to the roots. Explorations are kept
 // with what was seen, so opening one again marks what is new.
 
 const SHOWN = 60;
@@ -37,9 +37,9 @@ export function ExploreView(props: {
   storage: StorageAdapter;
   fetchKey?: string;
   /** A library paper id or an outside work to start from. */
-  seed: Seed | string | null;
+  root: Root | string | null;
   readOnly?: boolean;
-  onSeedTaken(): void;
+  onRootTaken(): void;
   /** Look a library paper up in OpenAlex; its OpenAlex id, or null. */
   onLookUp(p: Paper): Promise<string | null>;
   onAdd(d: PaperDraft): boolean;
@@ -47,7 +47,7 @@ export function ExploreView(props: {
 }) {
   const [saved, setSaved] = useState<ExploreStore | null>(null);
   const [current, setCurrent] = useState<Exploration | null>(null);
-  const [seeds, setSeeds] = useState<Seed[]>([]);
+  const [roots, setRoots] = useState<Root[]>([]);
   const [result, setResult] = useState<Neighbourhood | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
@@ -65,25 +65,25 @@ export function ExploreView(props: {
     return () => abort.current?.abort();
   }, [props.storage]);
 
-  // A seed handed over from the map, a paper's details or Missing: start a new exploration with it.
+  // A root handed over from the map, a paper's details or Missing: start a new exploration with it.
   useEffect(() => {
-    if (!props.seed || !saved) return;
-    const s = props.seed;
-    props.onSeedTaken();
+    if (!props.root || !saved) return;
+    const s = props.root;
+    props.onRootTaken();
     (async () => {
-      const seed = typeof s === "string" ? await seedOf(byId.get(s)) : s;
-      if (!seed) return;
-      const found = saved.items.find((x) => x.seeds.length === 1 && x.seeds[0].oa === seed.oa);
+      const root = typeof s === "string" ? await rootOf(byId.get(s)) : s;
+      if (!root) return;
+      const found = saved.items.find((x) => x.roots.length === 1 && x.roots[0].oa === root.oa);
       if (found) open(found);
       else {
         setCurrent(null);
-        setSeeds([seed]);
-        run([seed], null);
+        setRoots([root]);
+        run([root], null);
       }
     })();
-  }, [props.seed, saved]);
+  }, [props.root, saved]);
 
-  async function seedOf(p: Paper | undefined): Promise<Seed | null> {
+  async function rootOf(p: Paper | undefined): Promise<Root | null> {
     if (!p) return null;
     let oa = props.store.works[p.id]?.oa ?? null;
     if (!oa && !props.store.works[p.id]) {
@@ -92,7 +92,7 @@ export function ExploreView(props: {
       setBusy(null);
     }
     if (!oa) {
-      setError(`OpenAlex doesn't know “${p.title}” yet, so it can't be explored from. ${doiOf(p) ? "" : "It needs a DOI or an arXiv id."}`);
+      setError(`OpenAlex doesn't know “${p.title}” yet, so you can't branch out from it yet. ${doiOf(p) ? "" : "It needs a DOI or an arXiv id."}`);
       return null;
     }
     return { oa, title: p.title, paperId: p.id };
@@ -103,14 +103,14 @@ export function ExploreView(props: {
     if (!props.readOnly) await saveExplorations(props.storage, next).catch(() => {});
   }
 
-  async function run(ss: Seed[], ex: Exploration | null) {
+  async function run(ss: Root[], ex: Exploration | null) {
     if (!ss.length) return;
     abort.current?.abort();
     abort.current = new AbortController();
     setError(null);
     setPicked(null);
     setMore(PAGE);
-    setBusy(`Walking out from ${ss.length > 1 ? `${ss.length} seeds` : "the seed"}…`);
+    setBusy(`Walking out from ${ss.length > 1 ? `${ss.length} roots` : "the root"}…`);
     try {
       const r = await explore(ss, props.store, { key: props.fetchKey, signal: abort.current.signal });
       const seen = new Set(ex?.seen ?? []);
@@ -119,7 +119,7 @@ export function ExploreView(props: {
       setFresh(ex?.looked ? new Set(r.candidates.filter((c) => !c.paperId && !seen.has(c.oa)).map((c) => c.oa)) : new Set());
       setResult(r);
       if (ex && saved) {
-        const updated = { ...ex, seeds: ss, seen: [...new Set([...ex.seen, ...r.candidates.map((c) => c.oa)])], looked: new Date().toISOString() };
+        const updated = { ...ex, roots: ss, seen: [...new Set([...ex.seen, ...r.candidates.map((c) => c.oa)])], looked: new Date().toISOString() };
         setCurrent(updated);
         await persist({ ...saved, items: saved.items.map((x) => (x.id === ex.id ? updated : x)) });
       }
@@ -131,14 +131,14 @@ export function ExploreView(props: {
 
   function open(ex: Exploration) {
     setCurrent(ex);
-    setSeeds(ex.seeds);
+    setRoots(ex.roots);
     setFilter({ sort: "ties", hideLibrary: true });
-    run(ex.seeds, ex);
+    run(ex.roots, ex);
   }
 
   async function keep() {
     if (!saved || !result) return;
-    const ex: Exploration = { id: newId(), name: nameFor(seeds), seeds, seen: result.candidates.map((c) => c.oa), made: new Date().toISOString(), looked: new Date().toISOString() };
+    const ex: Exploration = { id: newId(), name: nameFor(roots), roots, seen: result.candidates.map((c) => c.oa), made: new Date().toISOString(), looked: new Date().toISOString() };
     setCurrent(ex);
     await persist({ ...saved, items: [ex, ...saved.items] });
   }
@@ -149,52 +149,52 @@ export function ExploreView(props: {
     if (current?.id === ex.id) {
       setCurrent(null);
       setResult(null);
-      setSeeds([]);
+      setRoots([]);
     }
   }
 
   async function rename(ex: Exploration) {
-    const name = prompt("Name this exploration", ex.name)?.trim();
+    const name = prompt("Name this branch", ex.name)?.trim();
     if (!name || !saved) return;
     const updated = { ...ex, name };
     if (current?.id === ex.id) setCurrent(updated);
     await persist({ ...saved, items: saved.items.map((x) => (x.id === ex.id ? updated : x)) });
   }
 
-  function setSeedList(next: Seed[]) {
-    setSeeds(next);
+  function setRootList(next: Root[]) {
+    setRoots(next);
     if (current) {
-      const updated = { ...current, seeds: next, name: current.name === nameFor(current.seeds) ? nameFor(next) : current.name };
+      const updated = { ...current, roots: next, name: current.name === nameFor(current.roots) ? nameFor(next) : current.name };
       setCurrent(updated);
       if (saved) persist({ ...saved, items: saved.items.map((x) => (x.id === updated.id ? updated : x)) });
     }
-    run(next, current ? { ...current, seeds: next } : null);
+    run(next, current ? { ...current, roots: next } : null);
   }
 
-  async function addSeed(s: Seed | Paper) {
-    const seed = "oa" in s ? (s as Seed) : await seedOf(s as Paper);
+  async function addRoot(s: Root | Paper) {
+    const root = "oa" in s ? (s as Root) : await rootOf(s as Paper);
     setQuery("");
-    if (!seed || seeds.some((x) => x.oa === seed.oa)) return;
-    setSeedList([...seeds, seed]);
+    if (!root || roots.some((x) => x.oa === root.oa)) return;
+    setRootList([...roots, root]);
   }
 
   const suggestions = useMemo(() => {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return [];
     return props.papers
-      .filter((p) => !p.trashed && doiOf(p) && !seeds.some((s) => s.paperId === p.id))
+      .filter((p) => !p.trashed && doiOf(p) && !roots.some((s) => s.paperId === p.id))
       .filter((p) => {
         const hay = `${p.title} ${p.authors.join(" ")} ${p.key} ${p.year ?? ""}`.toLowerCase();
         return words.every((w) => hay.includes(w));
       })
       .slice(0, 6);
-  }, [query, props.papers, seeds]);
+  }, [query, props.papers, roots]);
 
   const shownAll = useMemo(() => (result ? filterCandidates(result.candidates, filter, fresh) : []), [result, filter, fresh]);
   // The picture keeps your own papers among the rest, so you see where the new ones sit.
   const drawn = useMemo(() => (result ? filterCandidates(result.candidates, { ...filter, hideLibrary: false }, fresh).slice(0, SHOWN) : []), [result, filter, fresh]);
   const sel = picked ? result?.candidates.find((c) => c.oa === picked) ?? null : null;
-  const selSeed = picked ? result?.seeds.find((s) => s.oa === picked) ?? null : null;
+  const selRoot = picked ? result?.roots.find((s) => s.oa === picked) ?? null : null;
 
   function add(c: Candidate) {
     if (props.onAdd(c.draft)) setAdded(new Set([...added, c.oa]));
@@ -203,47 +203,47 @@ export function ExploreView(props: {
   return (
     <div class="explore">
       {saved && saved.items.length > 0 && (
-        <div class="explore-saved" aria-label="Kept explorations">
+        <div class="explore-saved" aria-label="Kept branches">
           {saved.items.map((ex) => (
             <span key={ex.id} class={`explore-chip ${current?.id === ex.id ? "on" : ""}`}>
-              <button class="explore-chip-name" onClick={() => open(ex)} title={ex.seeds.map((s) => s.title).join("\n")}>
+              <button class="explore-chip-name" onClick={() => open(ex)} title={ex.roots.map((s) => s.title).join("\n")}>
                 <span class="explore-chip-text">{ex.name}</span>
-                {current?.id === ex.id && fresh.size > 0 && <span class="new-badge">{fresh.size} new</span>}
+                {current?.id === ex.id && fresh.size > 0 && <span class="new-badge">{fresh.size} fresh</span>}
               </button>
               <button class="explore-chip-x" onClick={() => rename(ex)} aria-label={`Rename ${ex.name}`}><Icon name="edit" size={13} /></button>
               <button class="explore-chip-x" onClick={() => forget(ex)} aria-label={`Forget ${ex.name}`}><Icon name="x" size={13} /></button>
             </span>
           ))}
-          {(current || seeds.length > 0) && (
-            <button class="link small explore-new" onClick={() => { setCurrent(null); setSeeds([]); setResult(null); }}>
-              + New exploration
+          {(current || roots.length > 0) && (
+            <button class="link small explore-new" onClick={() => { setCurrent(null); setRoots([]); setResult(null); }}>
+              + New branch
             </button>
           )}
         </div>
       )}
 
-      <div class="explore-seeds">
-        <span class="small muted">Seeds:</span>
-        {seeds.map((s) => (
-          <span key={s.oa} class="chip seed-chip" title={s.title}>
+      <div class="explore-roots">
+        <span class="small muted">Roots:</span>
+        {roots.map((s) => (
+          <span key={s.oa} class="chip root-chip" title={s.title}>
             {s.paperId && byId.get(s.paperId) ? nameOf(byId.get(s.paperId)!) : s.title.length > 40 ? `${s.title.slice(0, 38)}…` : s.title}
-            <button onClick={() => setSeedList(seeds.filter((x) => x.oa !== s.oa))} aria-label={`Remove ${s.title}`}><Icon name="x" size={12} /></button>
+            <button onClick={() => setRootList(roots.filter((x) => x.oa !== s.oa))} aria-label={`Remove ${s.title}`}><Icon name="x" size={12} /></button>
           </span>
         ))}
-        <span class="seed-add">
+        <span class="root-add">
           <input
             type="search"
             value={query}
-            placeholder={seeds.length ? "Add another paper" : "Find a paper in your library"}
-            aria-label="Add a seed paper"
+            placeholder={roots.length ? "Add another paper" : "Find a paper in your library"}
+            aria-label="Add a root paper"
             onInput={(e) => setQuery(e.currentTarget.value)}
-            onKeyDown={(e) => e.key === "Enter" && suggestions[0] && addSeed(suggestions[0])}
+            onKeyDown={(e) => e.key === "Enter" && suggestions[0] && addRoot(suggestions[0])}
           />
           {suggestions.length > 0 && (
-            <ul class="seed-suggest" role="listbox">
+            <ul class="root-suggest" role="listbox">
               {suggestions.map((p) => (
                 <li key={p.id}>
-                  <button onClick={() => addSeed(p)}>
+                  <button onClick={() => addRoot(p)}>
                     <span>{p.title}</span>
                     <span class="muted small">{[shortAuthors(p.authors), p.year].filter(Boolean).join(" ")}</span>
                   </button>
@@ -252,8 +252,8 @@ export function ExploreView(props: {
             </ul>
           )}
         </span>
-        {result && !current && seeds.length > 0 && !props.readOnly && (
-          <button class="primary small-btn" onClick={keep} title="Keep it; opening it later marks what is new since">Keep this exploration</button>
+        {result && !current && roots.length > 0 && !props.readOnly && (
+          <button class="primary small-btn" onClick={keep} title="Keep it; opening it later marks what is fresh since">Keep this branch</button>
         )}
       </div>
 
@@ -264,14 +264,14 @@ export function ExploreView(props: {
       )}
       {error && <p class="error">{error}</p>}
 
-      {!seeds.length && !busy && (
+      {!roots.length && !busy && (
         <div class="explore-empty muted">
-          <p>Start from one paper or several. Explore reads what cites them, what they cite, and what shares their references, and ranks each by how closely it ties to your seeds and the rest of your library.</p>
-          <p class="small">Tip: on the Map, tap a paper and choose <em>Explore from this</em>. Kept explorations show what is new each time you open them.</p>
+          <p>Start from one paper or several: its roots. Branching out reads what cites them, what they cite, and what shares their references, and ranks each by how closely it ties to the roots and the rest of your library.</p>
+          <p class="small">Tip: on the Map, tap a paper and choose <em>Branch out from this</em>. Kept branches mark what is fresh each time you open them.</p>
         </div>
       )}
 
-      {result && seeds.length > 0 && (
+      {result && roots.length > 0 && (
         <>
           <div class="explore-filters">
             <input type="search" placeholder="Filter by words" value={filter.text ?? ""} onInput={(e) => setFilter({ ...filter, text: e.currentTarget.value })} aria-label="Filter by words" />
@@ -287,29 +287,29 @@ export function ExploreView(props: {
             </select>
             <label class="small map-all"><input type="checkbox" checked={Boolean(filter.hideLibrary)} onChange={(e) => setFilter({ ...filter, hideLibrary: e.currentTarget.checked })} /> Hide ones I have</label>
             {fresh.size > 0 && (
-              <label class="small map-all"><input type="checkbox" checked={Boolean(filter.onlyNew)} onChange={(e) => setFilter({ ...filter, onlyNew: e.currentTarget.checked })} /> Only new ({fresh.size})</label>
+              <label class="small map-all"><input type="checkbox" checked={Boolean(filter.onlyNew)} onChange={(e) => setFilter({ ...filter, onlyNew: e.currentTarget.checked })} /> Only fresh ({fresh.size})</label>
             )}
           </div>
           <ExploreGraph result={result} shown={drawn} fresh={fresh} picked={picked} setPicked={setPicked} />
-          {(sel || selSeed) && (
+          {(sel || selRoot) && (
             <div class="map-card">
               {sel ? (
-                <CandidateCard c={sel} seeds={result.seeds.length} isNew={fresh.has(sel.oa)} added={added.has(sel.oa)} readOnly={props.readOnly} onAdd={() => add(sel)} onSeed={() => addSeed({ oa: sel.oa, title: sel.draft.title, paperId: sel.paperId })} onOpen={sel.paperId ? () => props.onOpen(sel.paperId!, 0) : undefined} />
+                <CandidateCard c={sel} roots={result.roots.length} isNew={fresh.has(sel.oa)} added={added.has(sel.oa)} readOnly={props.readOnly} onAdd={() => add(sel)} onRoot={() => addRoot({ oa: sel.oa, title: sel.draft.title, paperId: sel.paperId })} onOpen={sel.paperId ? () => props.onOpen(sel.paperId!, 0) : undefined} />
               ) : (
                 <>
-                  <div class="cand-title">{selSeed!.title}</div>
-                  <div class="muted small">Seed · {selSeed!.year || "year unknown"} · cited {selSeed!.cited} times</div>
+                  <div class="cand-title">{selRoot!.title}</div>
+                  <div class="muted small">Root · {selRoot!.year || "year unknown"} · cited {selRoot!.cited} times</div>
                 </>
               )}
             </div>
           )}
           <p class="muted small">
-            {shownAll.length} of {result.candidates.length} works around {result.seeds.length > 1 ? `${result.seeds.length} seeds` : "the seed"}{filter.hideLibrary ? ", leaving out the ones you have" : ""}. The picture shows the closest {drawn.length}, yours filled and the rest hollow.
+            {shownAll.length} of {result.candidates.length} works around {result.roots.length > 1 ? `${result.roots.length} roots` : "the root"}{filter.hideLibrary ? ", leaving out the ones you have" : ""}. The picture shows the closest {drawn.length}, yours filled and the rest hollow.
           </p>
           <ul class="candidates explore-list">
             {shownAll.slice(0, more).map((c) => (
               <li key={c.oa} class={`explore-item ${picked === c.oa ? "picked" : ""}`}>
-                <CandidateCard c={c} seeds={result.seeds.length} isNew={fresh.has(c.oa)} added={added.has(c.oa)} readOnly={props.readOnly} compact onPick={() => setPicked(c.oa)} onAdd={() => add(c)} onSeed={() => addSeed({ oa: c.oa, title: c.draft.title, paperId: c.paperId })} onOpen={c.paperId ? () => props.onOpen(c.paperId!, 0) : undefined} />
+                <CandidateCard c={c} roots={result.roots.length} isNew={fresh.has(c.oa)} added={added.has(c.oa)} readOnly={props.readOnly} compact onPick={() => setPicked(c.oa)} onAdd={() => add(c)} onRoot={() => addRoot({ oa: c.oa, title: c.draft.title, paperId: c.paperId })} onOpen={c.paperId ? () => props.onOpen(c.paperId!, 0) : undefined} />
               </li>
             ))}
           </ul>
@@ -320,15 +320,15 @@ export function ExploreView(props: {
   );
 }
 
-function CandidateCard(props: { c: Candidate; seeds: number; isNew: boolean; added: boolean; readOnly?: boolean; compact?: boolean; onPick?(): void; onAdd(): void; onSeed(): void; onOpen?(): void }) {
+function CandidateCard(props: { c: Candidate; roots: number; isNew: boolean; added: boolean; readOnly?: boolean; compact?: boolean; onPick?(): void; onAdd(): void; onRoot(): void; onOpen?(): void }) {
   const { c } = props;
-  const why = reasons(c, props.seeds);
+  const why = reasons(c, props.roots);
   return (
     <div class="cand">
       <div class="cand-main">
         <div class="cand-title">
           {props.onPick ? <a href="#" onClick={(e) => { e.preventDefault(); props.onPick!(); }}>{c.draft.title}</a> : c.draft.title}
-          {props.isNew && <span class="new-badge">new</span>}
+          {props.isNew && <span class="new-badge">fresh</span>}
         </div>
         <div class="muted small">
           {[shortAuthors(c.draft.authors ?? []), c.year || null, c.draft.venue].filter(Boolean).join(" · ")} · cited {c.cited.toLocaleString()} times
@@ -342,7 +342,7 @@ function CandidateCard(props: { c: Candidate; seeds: number; isNew: boolean; add
         ) : (
           <button class={props.added ? "" : "primary"} disabled={props.added || props.readOnly} onClick={props.onAdd}>{props.added ? "Added" : "Add"}</button>
         )}
-        <button onClick={props.onSeed} title="Add to the seeds and walk out from it too">+ Seed</button>
+        <button onClick={props.onRoot} title="Add to the roots and walk out from it too">+ Root</button>
       </div>
     </div>
   );
@@ -353,11 +353,11 @@ function ExploreGraph(props: { result: Neighbourhood; shown: Candidate[]; fresh:
   const width = narrow ? 520 : 1000;
   const height = narrow ? 460 : 480;
   const { result, shown, picked } = props;
-  const seedIds = new Set(result.seeds.map((s) => s.oa));
+  const rootIds = new Set(result.roots.map((s) => s.oa));
   const items = useMemo(() => {
     const rows = [
-      ...result.seeds.map((s) => ({ id: s.oa, year: s.year, cited: s.cited, r: 9, refs: s.refs, label: s.title })),
-      ...shown.map((c) => ({ id: c.oa, year: c.year, cited: c.cited, r: 3 + Math.min(7, 1.6 * (c.citesSeeds.length + c.citedBySeeds.length) + c.shared / 6 + c.libraryLinks.length * 0.6), refs: c.refs, label: draftName(c.draft) })),
+      ...result.roots.map((s) => ({ id: s.oa, year: s.year, cited: s.cited, r: 9, refs: s.refs, label: s.title })),
+      ...shown.map((c) => ({ id: c.oa, year: c.year, cited: c.cited, r: 3 + Math.min(7, 1.6 * (c.citesRoots.length + c.citedByRoots.length) + c.shared / 6 + c.libraryLinks.length * 0.6), refs: c.refs, label: draftName(c.draft) })),
     ].filter((x) => x.year);
     return rows;
   }, [result, shown]);
@@ -376,7 +376,7 @@ function ExploreGraph(props: { result: Neighbourhood; shown: Candidate[]; fresh:
   const { view, svg, moved, zoom, handlers } = usePanZoom(width, height);
   const near = picked ? new Set([picked, ...edges.filter(([a, b]) => a === picked || b === picked).flat()]) : null;
   const byOa = new Map(shown.map((c) => [c.oa, c]));
-  const labelled = new Set([...seedIds, ...shown.slice(0, narrow ? 5 : 10).map((c) => c.oa), ...(near ?? [])]);
+  const labelled = new Set([...rootIds, ...shown.slice(0, narrow ? 5 : 10).map((c) => c.oa), ...(near ?? [])]);
   const span = Math.max(1, years[1] - years[0]);
   const step = span > 40 ? 10 : span > 16 ? 5 : span > 6 ? 2 : 1;
   const ticks: number[] = [];
@@ -386,10 +386,10 @@ function ExploreGraph(props: { result: Neighbourhood; shown: Candidate[]; fresh:
     <div class="explore-graph">
       <div class="map-tools">
         <span class="muted small">Across by year, up by citations. Bigger means closer ties.</span>
-        <span class="legend-key small"><i class="k seed" /> seed <i class="k have" /> in your library <i class="k out" /> not yet <i class="k fresh" /> new</span>
+        <span class="legend-key small"><i class="k root" /> root <i class="k have" /> in your library <i class="k out" /> not yet <i class="k fresh" /> fresh</span>
         <button class="icon-btn" onClick={() => zoom(1 / 1.4)} aria-label="Zoom in"><Icon name="plus" /></button>
         <button class="icon-btn" onClick={() => zoom(1.4)} aria-label="Zoom out"><Icon name="minus" /></button>
-        <button class="icon-btn" onClick={() => svg.current && downloadSvg(svg.current, { width, height }, "exploration.svg")} aria-label="Download picture" title="Download as an SVG picture"><Icon name="download" /></button>
+        <button class="icon-btn" onClick={() => svg.current && downloadSvg(svg.current, { width, height }, "branch.svg")} aria-label="Download picture" title="Download as an SVG picture"><Icon name="download" /></button>
       </div>
       <svg
         ref={svg}
@@ -399,7 +399,7 @@ function ExploreGraph(props: { result: Neighbourhood; shown: Candidate[]; fresh:
         {...handlers}
         onClick={(e) => !moved.current && (e.target as Element).tagName === "svg" && props.setPicked(null)}
         role="img"
-        aria-label="Works around the seeds, by year and citations, linked where one cites another"
+        aria-label="Works around the roots, by year and citations, linked where one cites another"
       >
         {citationTicks(plane.top, plane.low).map((t) => (
           <g key={`c${t}`}>
@@ -414,18 +414,18 @@ function ExploreGraph(props: { result: Neighbourhood; shown: Candidate[]; fresh:
           const on = !near || a === picked || b === picked;
           const mx = (p.x + q.x) / 2 - (q.y - p.y) * 0.18;
           const my = (p.y + q.y) / 2 + (q.x - p.x) * 0.18;
-          return <path key={`${a}>${b}`} d={`M${p.x},${p.y} Q${mx},${my} ${q.x},${q.y}`} class={`edge ${on && near ? "on" : ""} ${seedIds.has(a) || seedIds.has(b) ? "to-seed" : ""}`} opacity={on ? undefined : 0.05} />;
+          return <path key={`${a}>${b}`} d={`M${p.x},${p.y} Q${mx},${my} ${q.x},${q.y}`} class={`edge ${on && near ? "on" : ""} ${rootIds.has(a) || rootIds.has(b) ? "to-root" : ""}`} opacity={on ? undefined : 0.05} />;
         })}
         {plane.spots.map((s) => {
           const c = byOa.get(s.id);
-          const kind = seedIds.has(s.id) ? "seed" : c?.paperId ? "have" : "out";
+          const kind = rootIds.has(s.id) ? "root" : c?.paperId ? "have" : "out";
           return (
             <g key={s.id} class={`node x-${kind} ${props.fresh.has(s.id) ? "fresh" : ""} ${picked === s.id ? "picked" : ""}`} opacity={!near || near.has(s.id) ? 1 : 0.25} onClick={(e) => { e.stopPropagation(); if (!moved.current) props.setPicked(s.id === picked ? null : s.id); }}>
               <circle cx={s.x} cy={s.y} r={s.r} />
               <title>{`${c?.draft.title ?? info.get(s.id)?.label} (${s.year}, cited ${s.cited})`}</title>
               {labelled.has(s.id) && (
                 <text {...labelAt(s.x, s.r, width)} y={s.y + 3} class="node-label">
-                  {seedIds.has(s.id) ? (info.get(s.id)!.label.length > 28 ? `${info.get(s.id)!.label.slice(0, 26)}…` : info.get(s.id)!.label) : info.get(s.id)!.label}
+                  {rootIds.has(s.id) ? (info.get(s.id)!.label.length > 28 ? `${info.get(s.id)!.label.slice(0, 26)}…` : info.get(s.id)!.label) : info.get(s.id)!.label}
                 </text>
               )}
             </g>
