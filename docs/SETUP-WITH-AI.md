@@ -3,7 +3,7 @@
 Most of setting up Lightkone is setting up storage: a bucket or a repository,
 a key for it, and (for a bucket) a CORS rule that lets the site in. An AI
 assistant can do much of that for you, and Lightkone gives it what it needs.
-This page shows three ways, from least to most automatic.
+This page shows the ways, from least to most automatic.
 
 The examples use `https://lightkone.lab.kausalflow.com`. If you run your own
 copy, use its address instead.
@@ -89,10 +89,15 @@ repository. See [Private GitHub repository](STORAGE.md#private-github-repository
 
 ## On the command line
 
-The `lightkone` command reads the same library. Once the web app works, the
-quickest way to set it up is from a settings backup:
+With Python, `pipx install lightkone` then `lightkone setup` does the same as
+the in-app check and the CORS step together: it asks for the bucket, checks it,
+adds the CORS rule for the web app (given a key allowed to), and writes a
+settings file to import in the web app. A coding assistant can run it for
+you too. See [The command line](CLI.md#starting-fresh-lightkone-setup).
+
+If the web app already works, bring its settings to the command line instead:
 **Settings → Backup → Export settings**, then
-`lightkone login --from-backup <file>`. See [The command line](CLI.md#set-up).
+`lightkone login --from-backup <file>`.
 
 ## Keeping keys safe
 

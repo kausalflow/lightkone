@@ -11,8 +11,42 @@ of this repository.
 pipx install lightkone        # or pip install lightkone
 ```
 
-The quickest way to point it at your library is a settings backup from the
-web app: **Settings → Backup → Export settings**. Then
+### Starting fresh: `lightkone setup`
+
+If you haven't set up storage in the web app yet, let the command line do it:
+
+```bash
+lightkone setup
+```
+
+It asks for the bucket (or repository), then:
+
+1. looks over what you typed for common slips (the bucket name inside the
+   endpoint, a public `r2.dev` address, a region other than `auto` on R2). A
+   bare R2 account id is turned into the endpoint for you;
+2. checks the storage by listing it and saving, reading back and removing a
+   small test file, and says what is wrong if a step fails;
+3. for a bucket, checks that the web app may reach it (CORS) and, if not,
+   offers to add the rule. The terminal can do this, the browser can't. It
+   needs a key allowed to change the bucket's settings (on R2, an *Admin Read
+   & Write* token); with an *Object Read & Write* key it prints the rule to
+   paste in the dashboard, or a `wrangler` command, instead. Other CORS rules on
+   the bucket are kept;
+4. saves the library for the command line, and writes
+   `lightkone-settings-main.json` for the web app: open Lightkone →
+   **Settings → Backup → Import settings**, pick the file, **Save**. It holds
+   your keys (readable by you only, or encrypted with `--passphrase`); delete
+   it once imported.
+
+Options: `--provider s3|github|folder` and `--set field=value` to skip the
+questions, `--origin http://localhost:5173` to also let a local copy in,
+`--url` for your own Lightkone site, `--cors/--no-cors`, `--open` to open the
+app at the end. Running it again on a working setup only checks.
+
+### From the web app's settings
+
+If the web app is already set up, the quickest way is a settings backup from
+it: **Settings → Backup → Export settings**. Then
 
 ```bash
 lightkone login --from-backup lightkone-settings-2026-11-10.json

@@ -8,7 +8,8 @@ citation map from the terminal, a script or a notebook.
 
 ```bash
 pipx install lightkone               # or: pip install lightkone
-lightkone login --from-backup lightkone-settings.json   # Lightkone: Settings → Backup → Export settings
+lightkone setup                      # set up a bucket or repo: check it, add CORS, file for the web app
+lightkone login --from-backup lightkone-settings.json   # or: Lightkone → Settings → Backup → Export settings
 lightkone ls author:hinton year:2010-2015
 lightkone add 2106.09685 10.1103/PhysRevLett.116.061102 -t lensing -f Physics/GR
 lightkone export in:Thesis -o thesis.bib
