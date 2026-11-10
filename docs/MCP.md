@@ -9,13 +9,33 @@ Claude Code) can work with your library:
 | `search_papers` | Search titles, authors, abstracts, tags and notes, with the app's filters (`tag:`, `author:`, `year:`, `has:pdf`). |
 | `get_paper` | A paper's record, your notes, your highlights with their notes, and its BibTeX. |
 | `read_paper` | The paper's full text, page by page. |
-| `list_tags` | Tags and how many papers carry each. |
+| `list_tags` | Tags and folders, and how many papers are in each. |
+| `search_full_text` | Find words inside the papers' text, with the page and a snippet. Narrow it with a search, like `tag:qft`. |
+| `get_citations` | The library papers a paper cites, and the ones that cite it, from the citation map. |
+| `find_missing_papers` | Works several of your papers cite that the library does not have. |
+| `list_branches` | Your kept Branches and their strongest candidates. |
+| `export_bibtex` | BibTeX for chosen papers or for everything a search finds. |
 | `add_paper` | Add a paper by DOI or arXiv id, with tags. |
 | `tag_papers` | Add or remove tags on several papers. |
 | `add_note` | Append to a paper's notes. |
 
+Apps that show MCP prompts (Claude Code lists them after `/`, claude.ai under
+the connector's menu) also get four ready-made asks:
+
+| Prompt | What it asks |
+| --- | --- |
+| `find_in_library` | What do I have on a topic, with my notes. |
+| `cite_draft` | Citations from my library for a paragraph, with `\cite{}` keys and BibTeX. |
+| `reading_gaps` | What my library keeps citing but lacks, and the best new candidates in my Branches. |
+| `explain_paper` | Walk me through a paper at research level, with my notes and how it connects. |
+
 The full text is extracted from the PDF the first time you open a paper in
 Lightkone's reader and saved as `lightkone/text/<id>.txt` next to it.
+`search_full_text` reads at most 40 texts per call, newest first; give it a
+search such as `tag:qft` or `year:2018-2024` to search the right ones. The
+citation tools and Branches read what the citation map saved
+(`lightkone/citations.json`, `lightkone/branches/`), so open the map once in
+Lightkone first.
 
 ## Your own address
 
