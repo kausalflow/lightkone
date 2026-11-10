@@ -76,6 +76,23 @@
       .top nav a:not(.btn) { color: var(--muted); text-decoration: none; }
       .top nav a:not(.btn):hover { color: var(--text); }
 
+      .menu { position: relative; }
+      .menu summary { list-style: none; cursor: pointer; color: var(--muted); display: flex; align-items: center; gap: 8px; min-height: 36px; }
+      .menu summary::-webkit-details-marker { display: none; }
+      .menu summary::after { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); }
+      .menu summary:hover, .menu[open] summary { color: var(--text); }
+      .menu summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+      .menu-panel {
+        position: absolute; right: -110px; top: calc(100% + 8px); z-index: 10; width: min(330px, calc(100vw - 40px));
+        background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px;
+        box-shadow: 0 18px 40px -18px rgb(27 31 42 / 0.35); display: grid;
+      }
+      .menu-panel a { display: grid; gap: 1px; padding: 8px 10px; border-radius: 8px; color: var(--text); text-decoration: none; font-size: 15px; }
+      .menu-panel a:hover { background: var(--sunken); }
+      .menu-panel a span { color: var(--muted); font-size: 13px; }
+      .menu-panel strong { font-weight: 600; }
+      .menu .short { display: none; }
+      .menu-panel hr { border: 0; border-top: 1px solid var(--line); margin: 6px 4px; }
       .btn {
         display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 20px;
         border-radius: 10px; font-weight: 600; font-size: 16px; text-decoration: none; white-space: nowrap;
@@ -97,7 +114,9 @@
       .maker { font-size: 15px; color: var(--muted); margin: 0; }
       .maker a { color: var(--text); }
       footer .maker-foot { margin-left: auto; }
-      .bookmark code { font: 14px var(--mono); color: var(--text); background: var(--sunken); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+      .news { font-size: 15px; color: var(--muted); margin: 0; }
+      .news strong { color: var(--warm); font-weight: 600; }
+      .bookmark code, .news code { font: 14px var(--mono); color: var(--text); background: var(--sunken); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
 
       .shots { padding-block: 24px 40px; }
       .shots .inner { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 28px; align-items: end; }
@@ -116,12 +135,18 @@
       .features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px 40px; }
       .feature h3 { font-size: 17px; margin: 0 0 6px; }
       .feature p { margin: 0; color: var(--muted); font-size: 16px; }
+      .sub code { font: 15px var(--mono); background: var(--sunken); padding: 1px 5px; border-radius: 5px; color: var(--text); }
       .feature code { font: 14px var(--mono); background: var(--sunken); padding: 1px 5px; border-radius: 5px; color: var(--text); }
 
       .stores { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
       .store { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 6px; align-content: start; }
       .store strong { font-size: 16px; }
       .store span { color: var(--muted); font-size: 15px; }
+      .term { font: 14px/1.7 var(--mono); color: var(--text); background: var(--sunken); border-radius: 12px; padding: 16px 18px; margin: 0; overflow-x: auto; white-space: pre; }
+      .term .c { color: var(--muted); }
+      .help { color: var(--muted); margin: 24px 0 0; max-width: 46em; }
+      .help strong { color: var(--text); font-weight: 600; }
+      .help code { font: 15px var(--mono); background: var(--sunken); padding: 1px 5px; border-radius: 5px; color: var(--text); }
       .files { font: 14px/1.7 var(--mono); color: var(--muted); background: var(--sunken); border-radius: 12px; padding: 16px 18px; margin: 24px 0 0; overflow-x: auto; white-space: pre; }
 
       .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
@@ -141,7 +166,10 @@
       }
       @media (max-width: 640px) {
         body { font-size: 16px; }
-        .top nav .hide-narrow { display: none; }
+        .top nav { gap: 14px; }
+        .top .long, .menu .long { display: none; }
+        .menu .short { display: inline; }
+        .menu-panel { position: fixed; left: 16px; right: 16px; top: 62px; width: auto; max-height: calc(100dvh - 80px); overflow-y: auto; }
         .hero { padding-block: 32px 12px; }
         .cone { width: 260px; height: 260px; right: -70px; top: -20px; }
         .shots .inner { grid-template-columns: minmax(0, 1fr); }
@@ -160,9 +188,26 @@
       <div class="inner">
         <a class="brand" href="./"><img src="./icon.svg" alt="" /> Lightkone</a>
         <nav aria-label="Site">
-          <a class="hide-narrow" href="docs/">Docs</a>
-          <a class="hide-narrow" href="docs/paperpile.html">From Paperpile</a>
-          <a class="btn primary small" href="app/">Open Lightkone</a>
+          <details class="menu">
+            <summary><span class="long">Documentation</span><span class="short">Docs</span></summary>
+            <div class="menu-panel">
+              <a href="docs/getting-started.html"><strong>Getting started</strong><span>Open the app and set up your library</span></a>
+              <a href="docs/storage.html"><strong>Storage</strong><span>R2, S3, GitHub or this browser, step by step</span></a>
+              <a href="docs/paperpile.html"><strong>Moving from Paperpile</strong><span>Folders, labels, keys and PDFs</span></a>
+              <a href="docs/setup-with-ai.html"><strong>Set up with AI</strong><span>Let Claude or another assistant set up your storage</span></a>
+              <hr />
+              <a href="docs/reading.html">Reading and highlighting</a>
+              <a href="docs/finding.html">Finding papers and asking Claude</a>
+              <a href="docs/writing.html">Writing with your library</a>
+              <a href="docs/cli.html">The command line and Python</a>
+              <a href="docs/mcp.html">Your library in AI apps (MCP)</a>
+              <a href="docs/privacy.html">What is processed where</a>
+              <a href="docs/hosting.html">Host your own</a>
+              <hr />
+              <a href="docs/">All documentation</a>
+            </div>
+          </details>
+          <a class="btn primary small" href="app/" style="gap: 0">Open<span class="long">&nbsp;Lightkone</span></a>
         </nav>
       </div>
     </header>
@@ -181,13 +226,14 @@
           <h1>Your papers, in storage you own.</h1>
           <p class="lede">
             Lightkone keeps your papers, PDFs, highlights and notes as plain files in your own bucket or GitHub repository. Read and highlight on any
-            device, search inside every PDF, keep your citation keys stable for LaTeX, and ask Claude about your library with your own key.
+            device, search inside every PDF, keep your citation keys stable for LaTeX, grow the library through its citations, and ask Claude about your papers with your own key.
           </p>
           <p class="maker">A <a href="https://kausalflow.com" rel="noopener">KausalFlow</a> project. KausalFlow builds open tools that make the life of scientists easier.</p>
           <div class="cta">
             <a class="btn primary" href="app/">Open Lightkone</a>
             <a class="btn" href="docs/paperpile.html">Moving from Paperpile</a>
           </div>
+          <p class="news"><strong>New:</strong> <a href="docs/setup-with-ai.html">let an AI assistant set up your storage</a>, use your library inside Claude, grow it through its citations with Branches, and reach it from the terminal and Python with <a href="docs/cli.html"><code>lightkone</code></a>.</p>
           <p class="bookmark">Bookmark <code id="app-address">app/</code> to go straight to your library next time.</p>
         </div>
       </section>
@@ -210,31 +256,43 @@
       <section class="band gutter" aria-labelledby="what">
         <div class="inner">
           <h2 id="what">What it does</h2>
-          <p class="sub">Everything a reference manager should, and a few things for people who read the equations.</p>
+          <p class="sub">Everything a reference manager should, and a few things for people who read the equations. Every answer Claude gives is kept in your storage, so asking the same thing again shows it at once and costs nothing.</p>
           <div class="features">
             <div class="feature">
               <h3>Add papers the quick way</h3>
-              <p>Paste DOIs, arXiv ids, links or BibTeX, import a whole .bib, or share a page to Lightkone from your phone. Free PDFs are fetched for you.</p>
+              <p>Paste DOIs, arXiv ids, links or BibTeX, import a whole .bib, drop in PDFs, or share a page to Lightkone from your phone. Free PDFs are fetched for you.</p>
             </div>
             <div class="feature">
-              <h3>Read and highlight</h3>
-              <p>A PDF reader that works on a phone, with highlights, notes and dark pages. Select an equation and Claude explains it in the context of the paper.</p>
+              <h3>Read with Claude beside you</h3>
+              <p>A PDF reader that works on a phone, with highlights, notes and dark pages. A side panel keeps your notes and a running chat about the paper next to the pages; snap it, resize it, or float it as a window.</p>
+            </div>
+            <div class="feature">
+              <h3>Answers you can check</h3>
+              <p>Claude quotes the passages behind each answer, and they are highlighted on the page with numbered markers, so one tap takes you to the definition or step it leans on.</p>
             </div>
             <div class="feature">
               <h3>Find anything</h3>
               <p>Search titles, authors, notes and the full text of every PDF, with filters like <code>author:wilson year:1971-1975</code>. Or search by equation, in LaTeX.</p>
             </div>
             <div class="feature">
-              <h3>Write with it</h3>
-              <p>Citation keys never change once given. Keep a folder's .bib in GitHub for Overleaf, or a manuscript's .bib holding exactly what it cites.</p>
-            </div>
-            <div class="feature">
-              <h3>Discover what's near</h3>
-              <p>Each day's arXiv preprints ranked by how close they are to your library, and a citation map of what your papers cite that you don't have yet.</p>
-            </div>
-            <div class="feature">
               <h3>Ask your library</h3>
-              <p>Questions answered from your own papers, citing the pages. Claude, Claude Code and other AI apps can also use your library through MCP.</p>
+              <p>Questions answered from your own papers, citing the pages, or from up to five whole PDFs at once. Claude, Claude Code and other AI apps can search, read and cite your library through MCP, from the site's address or with <code>lightkone mcp</code>.</p>
+            </div>
+            <div class="feature">
+              <h3>Write with it</h3>
+              <p>Citation keys never change once given. Cite my draft finds the sentences in your .tex that make a claim but cite nothing, and suggests papers for them. Keep a folder's .bib in GitHub for Overleaf.</p>
+            </div>
+            <div class="feature">
+              <h3>Grow it by its connections</h3>
+              <p>Branches finds the works that cite, or are cited by, several of your papers, and says why each is there. Keep a branch and it marks what is fresh next time. Each day's arXiv preprints are ranked by how close they are to your library.</p>
+            </div>
+            <div class="feature">
+              <h3>See how others cite a paper</h3>
+              <p>The sentences in later papers that cite it, newest and most influential first. Claude can sort them into supporting, contrasting and mentioning, with the contrasting ones on top.</p>
+            </div>
+            <div class="feature">
+              <h3>Know when a paper changes</h3>
+              <p>Paper health marks papers that were retracted, corrected or withdrawn on arXiv, from Crossref, Retraction Watch and arXiv, and checks the library about once a month.</p>
             </div>
           </div>
         </div>
@@ -258,10 +316,46 @@
               <strong>This browser</strong><span>No setup, for trying it out.</span>
             </a>
           </div>
+          <p class="help">
+            Setting up a bucket is the fiddly part, so Lightkone helps. <strong>Check these settings</strong> in the app tests the storage and says what
+            is wrong, down to the CORS rule your bucket needs. <code>lightkone setup</code> does the whole setup from a terminal, and
+            <a href="docs/setup-with-ai.html">Set up with AI</a> shows how to let Claude do it for you.
+          </p>
           <pre class="files" aria-label="The files in your storage">lightkone/library.json        your papers, folders, tags and notes
 lightkone/library.bib         the whole library as BibTeX, for LaTeX
 lightkone/annotations/        your highlights, one file per paper
+lightkone/history/            your chats with Claude, one file per chat
+lightkone/answers/            Claude's answers, kept so they are never paid for twice
+lightkone/branches/           the branches you grow from your library
 papers/All Papers/HINTON/     the PDFs, filed the way Paperpile files them</pre>
+        </div>
+      </section>
+
+      <section class="band gutter" aria-labelledby="cli">
+        <div class="inner split">
+          <div>
+            <h2 id="cli">From the terminal and Python</h2>
+            <p class="sub" style="margin-bottom: 20px">
+              The <code>lightkone</code> command reads and writes the same files as the app, wherever your library lives. <code>lightkone setup</code> sets up
+              your storage and checks it. Then search the library, export it, or load your papers and their citation network as pandas tables or a
+              networkx graph, and save the map as GraphML or GEXF for Gephi. <code>lightkone mcp</code> hands it to Claude Code or Claude desktop, and
+              <code>lightkone web</code> opens the app when you want the pages.
+            </p>
+            <div class="cta">
+              <a class="btn" href="docs/cli.html">Read the command line guide</a>
+              <a class="btn" href="https://pypi.org/project/lightkone/" rel="noopener">On PyPI</a>
+            </div>
+          </div>
+          <pre class="term" aria-label="Using the lightkone command">pip install lightkone
+lightkone setup                     <span class="c"># storage, a check, CORS</span>
+lightkone ls author:einstein year:1915-1920
+lightkone map in:Thesis -o thesis.graphml
+lightkone open Hinton2012-in -p 3   <span class="c"># the reader, at page 3</span>
+claude mcp add lightkone -- lightkone mcp
+
+<span class="c"># in Python</span>
+G = lib.citation_graph("in:Thesis").to_networkx()
+df = lib.to_dataframe()</pre>
         </div>
       </section>
 
@@ -300,13 +394,21 @@ papers/All Papers/HINTON/     the PDFs, filed the way Paperpile files them</pre>
         <a href="app/">Open Lightkone</a>
         <a href="docs/">Documentation</a>
         <a href="docs/getting-started.html">Getting started</a>
+        <a href="docs/setup-with-ai.html">Set up with AI</a>
+        <a href="docs/paperpile.html">From Paperpile</a>
         <a href="docs/storage.html">Storage</a>
+        <a href="docs/cli.html">Command line</a>
         <a href="docs/privacy.html">Your data</a>
         <a href="docs/hosting.html">Host your own</a>
+        <a href="llms.txt">llms.txt</a>
         <span class="maker-foot">Made by <a href="https://kausalflow.com" rel="noopener">KausalFlow</a></span>
       </div>
     </footer>
     <script>
+      // The Documentation menu closes on Escape or a tap outside it.
+      var menu = document.querySelector(".menu");
+      document.addEventListener("click", function (e) { if (menu.open && !menu.contains(e.target)) menu.open = false; });
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape" && menu.open) { menu.open = false; menu.querySelector("summary").focus(); } });
       document.getElementById("app-address").textContent = new URL("app/", location.href).href.replace(/^https?:\/\//, "");
     </script>
   </body>
