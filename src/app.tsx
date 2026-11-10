@@ -55,6 +55,7 @@ import { site } from "./core/site";
 import { fetchPage, hasPage, htmlPath, isPageFile, isWebLink, linkDraft, linkOnlyReason, markdownFile, markdownPath, pageDraft, pageFromFile, pageMarkdown, takePage, type FetchedPage } from "./core/webpage";
 import { joinPages, textPath } from "./core/fulltext";
 import { VersionLine } from "./Version";
+import { checkStorage, reportForAssistant, type CheckReport } from "./core/storagecheck";
 
 const library = new Library();
 
@@ -2738,6 +2739,7 @@ function SettingsPanel(props: { settings: Settings; onSave(s: Settings): void; o
         {provider.fields.map((f) => (
           <FieldInput key={f.name} field={f} value={draft[`storage.${provider.id}.${f.name}`] ?? ""} onInput={(v) => set(`storage.${provider.id}.${f.name}`, v)} />
         ))}
+        {provider.id !== "browser" && <StorageCheck key={provider.id} provider={provider.id} config={storageConfig(draft, provider.id)} />}
 
         {allPlugins()
           .filter((p) => p.settings?.length)
@@ -2782,6 +2784,65 @@ function SettingsPanel(props: { settings: Settings; onSave(s: Settings): void; o
         </div>
         <VersionLine />
       </form>
+    </div>
+  );
+}
+
+/** Try the storage settings before saving them, and say what to fix. */
+function StorageCheck(props: { provider: string; config: Record<string, string> }) {
+  const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState<CheckReport | null>(null);
+  const [note, setNote] = useState("");
+  // A changed setting makes an old report stale.
+  const configKey = JSON.stringify(props.config);
+  useEffect(() => setReport(null), [configKey]);
+  const origin = location.origin;
+  const siteRoot = site("");
+
+  async function run() {
+    const p = storageProviders().find((x) => x.id === props.provider);
+    if (!p) return;
+    setBusy(true);
+    setNote("");
+    setReport(await checkStorage(props.provider, props.config, () => p.create(props.config), origin).finally(() => setBusy(false)));
+  }
+  const copy = (text: string, done: string) => navigator.clipboard?.writeText(text).then(() => setNote(done), () => setNote("Could not copy: select the text and copy it by hand."));
+
+  return (
+    <div class="storage-check">
+      <div class="row">
+        <button type="button" disabled={busy} onClick={run}>{busy ? "Checking…" : "Check these settings"}</button>
+        <a class="muted small" href={site("docs/setup-with-ai.html")} target="_blank" rel="noopener">Set up with AI</a>
+      </div>
+      {report && (
+        <div class={`message check ${report.ok ? "good" : "bad"}`} role="status">
+          <ul class="check-steps">
+            {report.steps.filter((s) => s.state !== "skipped" || !report.ok).map((s) => (
+              <li key={s.id} class={s.state}>
+                <span aria-hidden="true">{s.state === "ok" ? "✓" : s.state === "failed" ? "✗" : "·"}</span> {s.label}
+                {s.detail && <span class="muted small"> · {s.detail}</span>}
+              </li>
+            ))}
+          </ul>
+          {report.ok ? (
+            <p class="small">All good. Press Save to use this library.</p>
+          ) : report.diagnosis && (
+            <>
+              <p><strong>{report.diagnosis.title}.</strong> {report.diagnosis.fix}</p>
+              {report.cors && report.diagnosis.kind === "cors" && (
+                <>
+                  <pre class="cors">{report.cors}</pre>
+                  <button type="button" class="link" onClick={() => copy(report.cors!, "CORS rule copied.")}>Copy the CORS rule</button>
+                </>
+              )}
+              <button type="button" class="link" onClick={() => copy(reportForAssistant(report, props.config, origin, siteRoot), "Copied, without your keys. Paste it into Claude or another assistant.")}>
+                Copy for an AI assistant
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {note && <p class="muted small">{note}</p>}
     </div>
   );
 }
