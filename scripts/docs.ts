@@ -134,6 +134,8 @@ export function llmsTxt(dir: string): string {
 
 To help someone set Lightkone up, start with docs/SETUP-WITH-AI.md and docs/STORAGE.md. Every page is also in one file: llms-full.txt. The app is at app/; Settings → Check these settings tests a storage setup and explains what is wrong.
 
+To work with a library from an assistant: the Claude skill is at skills/lightkone/SKILL.md, and the MCP server (remote at mcp/, or local with \`lightkone mcp\`) is described in docs/MCP.md.
+
 ${sections}
 `;
 }
