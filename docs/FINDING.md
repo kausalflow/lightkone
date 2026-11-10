@@ -213,6 +213,10 @@ linked where one cites another. Filter by words or years, order by ties,
 citations or date, hide the ones you have, **Add** one to your library, or
 **+ Root** to start a branch from it.
 
+Each branch's last result is kept in your storage (`lightkone/branches/`), so
+opening it again, on any device, shows it at once. It is read afresh when it
+is a week old, or when you press **Refresh**.
+
 **Keep this branch** saves it, with every work shown so far. Opening it again
 reads the network afresh (a library or folder branch includes papers added
 since) and marks what is **fresh**, so a kept branch doubles as a watch on

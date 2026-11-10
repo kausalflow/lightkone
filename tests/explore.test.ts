@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyStore } from "../src/core/citations";
-import { EXPLORE_PATH, explore, filterCandidates, loadExplorations, nameFor, reasons, saveExplorations, scatter } from "../src/core/explore";
+import { EXPLORE_PATH, explore, loadResult, resultPath, saveResult, filterCandidates, loadExplorations, nameFor, reasons, saveExplorations, scatter } from "../src/core/explore";
 import type { StorageAdapter } from "../src/core/types";
 
 // A tiny citation network:
@@ -118,6 +118,27 @@ describe("explore", () => {
     expect((await loadExplorations(s)).items[0].seen).toEqual(["C1"]);
     s.files.set(EXPLORE_PATH, "not json");
     expect((await loadExplorations(s)).items).toEqual([]);
+  });
+
+  it("keeps a branch's last result in storage, leaving library roots' references to citations.json", async () => {
+    const store = emptyStore();
+    const at = "2026-01-01T00:00:00Z";
+    store.works.s1 = { oa: "S1", year: 2015, cited: 900, refs: ["R1", "R2"], at };
+    store.works.s2 = { oa: "S2", year: 2017, cited: 400, refs: ["R1", "R3"], at };
+    const roots = [{ oa: "S1", title: "S1", paperId: "s1" }, { oa: "S2", title: "S2", paperId: "s2" }];
+    const r = await explore(roots, store, { fetch: fake() }, { library: true });
+    const s = memory();
+    expect(resultPath("library", roots)).toBe("lightkone/branches/library.json");
+    expect(resultPath("folder:Deep learning", roots)).toMatch(/^lightkone\/branches\/folder-deep-learning-\w+\.json$/);
+    expect(resultPath("pick", roots)).toBe(resultPath("pick", [...roots].reverse()));
+    await saveResult(s, resultPath("library", roots), "library", r);
+    const raw = JSON.parse(s.files.get("lightkone/branches/library.json")!);
+    expect(raw.roots[0].refs).toBeUndefined();
+    const back = (await loadResult(s, resultPath("library", roots), store))!;
+    expect(back.candidates.map((c) => c.oa)).toEqual(r.candidates.map((c) => c.oa));
+    expect(back.roots[0].refs).toEqual(["R1", "R2"]);
+    expect(back.at).toBe(r.at);
+    expect(await loadResult(s, "lightkone/branches/none.json", store)).toBeNull();
   });
 
   it("places dots by year and citations without overlap", () => {
