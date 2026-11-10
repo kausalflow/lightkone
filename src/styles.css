@@ -1094,3 +1094,16 @@ details.guide ul { margin-top: 8px; }
   background: var(--panel); color: var(--text); font-size: 13px; white-space: nowrap;
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.18); cursor: pointer;
 }
+
+/* Settings: check the storage before saving. */
+.storage-check { margin: 4px 0 12px; }
+.storage-check .row { align-items: center; }
+.message.check { margin-top: 10px; overflow-wrap: anywhere; }
+.message.check .link + .link { margin-left: 14px; }
+.message.check.good { border-left: 3px solid var(--good, #2f8a4e); }
+.message.check.bad { border-left: 3px solid var(--danger, #c0392b); }
+.check-steps { list-style: none; margin: 0 0 8px; padding: 0; }
+.check-steps li { margin: 2px 0; }
+.check-steps li.failed { font-weight: 560; }
+.check-steps li.skipped { color: var(--muted); }
+pre.cors { font: 12px/1.45 var(--mono, monospace); background: var(--panel); padding: 10px 12px; border-radius: var(--r-sm); overflow-x: auto; margin: 8px 0; }

@@ -10,7 +10,7 @@ import type { Plugin } from "vite";
 
 /** The pages in the order the side bar lists them, by section. */
 export const NAV: [string, string[]][] = [
-  ["Start here", ["README", "GETTING-STARTED", "PAPERPILE", "STORAGE"]],
+  ["Start here", ["README", "GETTING-STARTED", "SETUP-WITH-AI", "PAPERPILE", "STORAGE"]],
   ["Using Lightkone", ["READING", "FINDING", "WRITING", "SHARING", "MCP", "CLI", "PRIVACY", "FAQ"]],
   ["Running your own", ["HOSTING", "RELEASING", "PLUGINS", "ARCHITECTURE"]],
 ];
@@ -85,6 +85,7 @@ export function buildPage(dir: string, name: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)} · Lightkone documentation</title>
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="alternate" type="text/markdown" href="${name}.md">
 <script>try{var t=localStorage.getItem("lightkone.theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 <style>${CSS}</style>
 </head>
@@ -96,12 +97,62 @@ export function buildPage(dir: string, name: string): string {
 </header>
 <div class="wrap">
   <nav class="side" aria-label="Documentation">${nav}</nav>
-  <main>${html}<p class="edit"><a href="https://github.com/kausalflow/lightkone/blob/main/docs/${name}.md" rel="noopener" target="_blank">This page on GitHub</a></p></main>
+  <main>${html}<p class="edit"><button type="button" class="copy-md" data-md="${name}.md">Copy page for AI</button> <a href="${name}.md">Markdown</a> · <a href="../llms-full.txt">All docs as one text file</a> · <a href="https://github.com/kausalflow/lightkone/blob/main/docs/${name}.md" rel="noopener" target="_blank">This page on GitHub</a></p></main>
   ${onThisPage}
 </div>
+<script>${COPY_SCRIPT}</script>
 </body>
 </html>
 `;
+}
+
+// "Copy page for AI": the page's Markdown, with where it came from, ready to paste.
+const COPY_SCRIPT = `document.querySelectorAll(".copy-md").forEach(function(b){b.addEventListener("click",function(){var u=new URL(b.dataset.md,location.href);fetch(u).then(function(r){if(!r.ok)throw 0;return r.text()}).then(function(t){return navigator.clipboard.writeText("Source: "+u.href+"\\n\\n"+t)}).then(function(){b.textContent="Copied"},function(){location.href=u.href})})})`;
+
+/** One line per page from the overview's lists: "- [Title](FILE.md): what it covers." */
+function descriptions(dir: string): Map<string, string> {
+  const md = readFileSync(join(dir, "README.md"), "utf8");
+  return new Map([...md.matchAll(/^- \[[^\]]+\]\(([A-Z][A-Z0-9-]*)\.md\):\s*(.+)$/gm)].map((m) => [m[1], m[2].trim()]));
+}
+
+/**
+ * /llms.txt (llmstxt.org): a map of the docs for AI assistants, linking each
+ * page's Markdown. Links are relative to the site, so it works wherever it is hosted.
+ */
+export function llmsTxt(dir: string): string {
+  const desc = descriptions(dir);
+  const sections = NAV.map(
+    ([section, names]) =>
+      `## ${section}\n\n${names
+        .filter((n) => n !== "README")
+        .map((n) => `- [${titleOf(dir, n)}](docs/${n}.md)${desc.get(n) ? `: ${desc.get(n)}` : ""}`)
+        .join("\n")}`,
+  ).join("\n\n");
+  return `# Lightkone
+
+> Lightkone is a reference manager for research papers that runs in the browser. The library (papers, PDFs, highlights, notes) is plain files in storage the user owns: this browser, an S3-compatible bucket (Cloudflare R2, AWS S3, MinIO) or a private GitHub repository. Claude features use the user's own key. A Python command line (\`pip install lightkone\`) reads and writes the same files.
+
+To help someone set Lightkone up, start with docs/SETUP-WITH-AI.md and docs/STORAGE.md. Every page is also in one file: llms-full.txt. The app is at app/; Settings → Check these settings tests a storage setup and explains what is wrong.
+
+${sections}
+`;
+}
+
+/** Every page in one Markdown file, in the side bar's order. */
+export function llmsFull(dir: string): string {
+  return NAV.flatMap(([, names]) => names)
+    .map((n) => `<!-- docs/${n}.md -->\n\n${readFileSync(join(dir, `${n}.md`), "utf8").trim()}\n`)
+    .join("\n---\n\n");
+}
+
+/** The plain-text files that sit next to the pages: each page's Markdown, and the two llms files. */
+export function textFiles(dir: string): Map<string, string> {
+  const names = NAV.flatMap(([, n]) => n);
+  return new Map<string, string>([
+    ["llms.txt", llmsTxt(dir)],
+    ["llms-full.txt", llmsFull(dir)],
+    ...names.map((n) => [`docs/${n}.md`, readFileSync(join(dir, `${n}.md`), "utf8")] as [string, string]),
+  ]);
 }
 
 /** Every page in docs/, named by its built file. */
@@ -119,9 +170,16 @@ export function docsSite(dir = "docs"): Plugin {
     name: "lightkone-docs",
     generateBundle() {
       for (const [file, html] of buildAll(dir)) this.emitFile({ type: "asset", fileName: `docs/${file}`, source: html });
+      for (const [file, text] of textFiles(dir)) this.emitFile({ type: "asset", fileName: file, source: text });
     },
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
+        const path = (req.url ?? "").replace(/[?#].*$/, "").replace(/^\//, "");
+        const text = /^(llms(-full)?\.txt|docs\/[A-Z][A-Z0-9-]*\.md)$/.test(path) ? textFiles(dir).get(path) : undefined;
+        if (text !== undefined) {
+          res.setHeader("Content-Type", `${path.endsWith(".md") ? "text/markdown" : "text/plain"}; charset=utf-8`);
+          return res.end(text);
+        }
         const m = /^\/docs\/(?:([a-z0-9-]+\.html))?(?:[?#].*)?$/.exec(req.url ?? "");
         if (!m) return next();
         const page = buildAll(dir).get(m[1] ?? "index.html");
@@ -170,6 +228,7 @@ th,td{text-align:left;vertical-align:top;padding:8px 12px;border-bottom:1px soli
 th{font-weight:600;background:var(--sunken)}
 .edit{margin-top:48px;font-size:14px}
 .edit a{color:var(--muted)}
+.copy-md{font:inherit;font-size:14px;color:var(--accent);background:none;border:1px solid var(--line);border-radius:6px;padding:2px 8px;cursor:pointer}
 @media (max-width:1100px){.wrap{grid-template-columns:220px minmax(0,1fr)}.toc{display:none}}
 @media (max-width:760px){
   .wrap{display:block;padding:0 16px}
