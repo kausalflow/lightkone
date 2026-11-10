@@ -23,6 +23,10 @@ plain files in storage you choose.
 - **Your library in Claude (MCP).** Connect Claude, Claude Code or any MCP app
   to search your library, read papers and your highlights, and add or tag
   papers. See [docs/MCP.md](docs/MCP.md).
+- **A command line and Python package.** `pipx install lightkone`, then
+  `lightkone ls`, `add`, `tag`, `export`, `map` and more on the same files, or
+  load the library into pandas and networkx. The code is in `cli/`; see
+  [docs/CLI.md](docs/CLI.md).
 - **Plugins.** Storage, lookups, importers and paper actions are all plugins,
   including the built-in ones. Load your own from a URL.
 - **Cheap to run.** A static site with no server. One person or a small team can
