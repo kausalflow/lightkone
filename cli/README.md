@@ -20,8 +20,8 @@ Extras: `lightkone[data]` (pandas DataFrames), `lightkone[graph]` (networkx,
 GraphML and GEXF), `lightkone[crypto]` (encrypted settings backups), or
 `lightkone[all]`.
 
-The full guide is [docs/CLI.md](../docs/CLI.md), also at
-<https://lightkone.lab.kausalflow.com/docs/cli.html>.
+The full guide is at <https://lightkone.lab.kausalflow.com/docs/cli.html>
+(`docs/CLI.md` in the repository).
 
 ## Working on it
 
@@ -41,5 +41,5 @@ and make the Python side pass `pytest` again.
 
 ## License
 
-Apache-2.0 (see [LICENSE](LICENSE) and [NOTICE](NOTICE)). The Lightkone web
+Apache-2.0 (see the `LICENSE` and `NOTICE` files that come with it). The Lightkone web
 app in the rest of this repository is under AGPL-3.0.

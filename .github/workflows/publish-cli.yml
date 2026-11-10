@@ -1,0 +1,56 @@
+name: Publish CLI
+
+# Publishes the command line (cli/) to PyPI as `lightkone` when a tag like
+# cli-v0.1.0 is pushed, or a GitHub release is made with such a tag. The tag
+# must match __version__ in cli/lightkone/__init__.py. Uses PyPI trusted
+# publishing (no token): see "Releasing the command line" in docs/RELEASING.md.
+# App releases (v0.2.0 tags) are separate and handled by deploy.yml.
+
+on:
+  push:
+    tags: ['cli-v*']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Tag matches the package version
+        run: |
+          want="${GITHUB_REF_NAME#cli-v}"
+          have=$(python -c "import re;print(re.search(r'__version__ = \"(.+?)\"', open('cli/lightkone/__init__.py').read()).group(1))")
+          if [ "$want" != "$have" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match cli/lightkone/__init__.py ($have)."
+            exit 1
+          fi
+      - name: Test
+        run: |
+          pip install -e "cli[dev]"
+          pytest cli
+      - name: Build
+        run: |
+          pip install build twine
+          python -m build -o dist cli
+          twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/lightkone/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

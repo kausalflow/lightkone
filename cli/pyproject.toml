@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lightkone"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Lightkone from the command line and from Python: your papers, tags, folders, notes, BibTeX and citation map, in the same files as the web app."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,7 +16,6 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
@@ -38,6 +37,9 @@ Documentation = "https://lightkone.lab.kausalflow.com/docs/cli.html"
 
 [project.scripts]
 lightkone = "lightkone.cli:run"
+
+[tool.hatch.version]
+path = "lightkone/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["lightkone"]

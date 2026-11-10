@@ -101,3 +101,32 @@ npm run verify -- https://staging.lightkone.pages.dev/  # same files as this bui
 ```
 
 The browser check needs Chromium: `npx playwright install chromium`.
+
+## Releasing the command line
+
+The command line in `cli/` is published to PyPI as
+[`lightkone`](https://pypi.org/project/lightkone/) on its own schedule, with
+tags of the form `cli-v0.1.0`. It does not touch the site.
+
+1. Change `__version__` in `cli/lightkone/__init__.py` in a pull request and
+   merge it. The same 0.x rule applies: the middle number for new features,
+   the last for fixes.
+2. Tag that commit on `main`: `git tag cli-v0.1.0 && git push origin cli-v0.1.0`,
+   or on GitHub, **Releases → Draft a new release** with the tag `cli-v0.1.0`.
+3. The **Publish CLI** workflow tests and builds the package, then uploads it.
+   A tag that does not match `__version__` stops before uploading.
+
+### One-time setup on PyPI
+
+The workflow uses PyPI's trusted publishing, so no token is stored anywhere.
+Before the first release, a maintainer signs in to PyPI and adds a
+*pending publisher* (Account → Publishing → Add a new pending publisher):
+
+- PyPI project name: `lightkone`
+- Owner: `kausalflow`, repository: `lightkone`
+- Workflow name: `publish-cli.yml`
+- Environment name: `pypi`
+
+The first upload creates the project and binds it to this workflow. On
+GitHub, the `pypi` environment (Settings → Environments) can require an
+approval before each upload.
