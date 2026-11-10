@@ -9,6 +9,7 @@ import { useMath } from "./core/math";
 import { chatAboutPaperCited } from "./plugins/claude";
 import { citedAnswer, citedNumbers, withoutSources } from "./core/wholepdf";
 import { SavedNote } from "./SavedNote";
+import { JumpLatest, useFollow } from "./follow";
 
 /**
  * A conversation about one paper: Claude reads the whole PDF (or the
@@ -67,7 +68,7 @@ export function PaperChat(props: {
       box?.setSelectionRange(box.value.length, box.value.length);
     });
   }, [props.seed?.n]);
-  useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [turns.length, streaming]);
+  const follow = useFollow(bottom, streaming, [turns.length, error, saved]);
 
   async function ask(e: Event) {
     e.preventDefault();
@@ -196,6 +197,7 @@ export function PaperChat(props: {
         <div ref={bottom} />
       </div>
       <form class="ask-form" onSubmit={ask}>
+        <JumpLatest show={follow.away} writing={streaming !== null} onJump={follow.toBottom} />
         {props.notice}
         <MentionBox
           value={question}

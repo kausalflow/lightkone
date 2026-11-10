@@ -13,6 +13,7 @@ import { askLibrary, askWholePdfs, type LibraryTurn, type WholeMaterial } from "
 import { citedAnswer, wholeSet, WHOLE_BYTES, WHOLE_MAX, type Doc } from "./core/wholepdf";
 import { Icon } from "./icons";
 import { SavedNote } from "./SavedNote";
+import { JumpLatest, useFollow } from "./follow";
 
 /**
  * Ask a question across the library, or a folder, tag or papers picked from
@@ -165,7 +166,7 @@ export function AskPanel(props: {
   }
 
   useEffect(() => () => abort.current?.abort(), []);
-  useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [turns.length, streaming]);
+  const follow = useFollow(bottom, streaming, [turns.length, error, saved]);
 
   async function ask(e: Event) {
     e.preventDefault();
@@ -389,6 +390,7 @@ export function AskPanel(props: {
           <div ref={bottom} />
         </div>
         <form class="ask-form" onSubmit={ask}>
+          <JumpLatest show={follow.away} writing={streaming !== null} onJump={follow.toBottom} />
           <MentionBox
             value={question}
             papers={props.papers}
