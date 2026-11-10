@@ -35,6 +35,7 @@ PAPERS = "Papers"
 FILES = "Files"
 MAP = "Citation map"
 WEB = "In the browser"
+AI = "In AI apps"
 
 app = typer.Typer(
     name="lightkone",
@@ -1182,6 +1183,22 @@ def missing(
         added, _u = lib.merge(drafts)
         st.save()
         typer.echo(f"Added {_plural(len(added))}.", err=True)
+
+
+@app.command(rich_help_panel=AI)
+def mcp(ctx: typer.Context):
+    """Serve the library to Claude and other AI apps (MCP over standard input and output).
+
+    The AI app starts this itself. Claude Code: `claude mcp add lightkone -- lightkone mcp`
+    (add `-L <library>` or `--dir <folder>` after `lightkone` for another library).
+    Claude desktop: add it under "mcpServers" in claude_desktop_config.json.
+    """
+    from lightkone.mcp import Server
+
+    st = state(ctx)
+    lib = st.lib()
+    typer.echo(f"Lightkone MCP server on {lib.storage.describe()} ({_plural(len(lib.live))}).", err=True)
+    Server(lib).serve()
 
 
 def run() -> None:

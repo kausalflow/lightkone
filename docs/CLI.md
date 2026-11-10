@@ -109,6 +109,29 @@ budget is per network; for a budget of your own pass `--openalex-key` or set
 are cited, in bands by folder; tap a paper to see its links.
 The JSON has `nodes` and `edges` for networkx, Gephi or D3.
 
+## In Claude and other AI apps
+
+`lightkone mcp` serves the library to Claude Code, Claude desktop or any
+[MCP](https://modelcontextprotocol.io) app over standard input and output. The
+app starts it itself, so there is nothing to keep running, and it works with
+any storage the CLI can reach, a plain folder included.
+
+```bash
+claude mcp add lightkone -- lightkone mcp                 # Claude Code, default library
+claude mcp add thesis -- lightkone -L thesis mcp          # another library
+claude mcp add lab -- lightkone --dir ~/lab-library mcp   # a folder
+```
+
+For Claude desktop, add it to `claude_desktop_config.json` (Settings →
+Developer → Edit Config):
+
+```json
+{ "mcpServers": { "lightkone": { "command": "lightkone", "args": ["mcp"] } } }
+```
+
+It has the same tools and prompts as the site's address (see
+[MCP](MCP.md)), with no limit on how many texts a full-text search reads.
+
 ## In Python
 
 ```python
