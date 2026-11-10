@@ -92,6 +92,8 @@ export interface Neighbourhood {
   candidates: Candidate[];
   /** Grown from the library itself (all of it, or a folder). */
   library?: boolean;
+  /** ISO; when it was read from OpenAlex. */
+  at?: string;
 }
 
 async function getJson(url: string, o: FetchOptions): Promise<any> {
@@ -229,6 +231,7 @@ export async function explore(roots: Root[], store: CitationStore | null, o: Fet
     }),
     candidates,
     library: Boolean(opts.library),
+    at: new Date().toISOString(),
   };
 }
 
@@ -316,4 +319,67 @@ export function nameFor(roots: Root[]): string {
   if (!roots.length) return "Exploration";
   const first = roots[0].title.length > 48 ? `${roots[0].title.slice(0, 46).trim()}…` : roots[0].title;
   return roots.length > 1 ? `${first} + ${roots.length - 1}` : first;
+}
+
+// A branch's last result is kept in storage, so opening it again shows it at
+// once instead of asking OpenAlex again: lightkone/branches/<key>.json.
+// Library roots keep no references there; they come back from citations.json.
+
+export const RESULTS_DIR = "lightkone/branches/";
+/** A kept result older than this is refreshed when the branch is opened. */
+export const RESULT_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+
+interface ResultFile {
+  format: "lightkone-branch-result";
+  version: 1;
+  at: string;
+  scope: string;
+  roots: (Root & { year: number; cited: number; refs?: string[] })[];
+  candidates: Candidate[];
+  library: boolean;
+}
+
+/** A short stable hash, for naming a picked set of roots. */
+function hash(s: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(36);
+}
+
+/** Where a branch's result is kept: by its scope, or by its roots when they were picked. */
+export function resultPath(scope: string, roots: Root[]): string {
+  if (scope === "library") return `${RESULTS_DIR}library.json`;
+  if (scope.startsWith("folder:")) return `${RESULTS_DIR}folder-${scope.slice(7).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${hash(scope)}.json`;
+  return `${RESULTS_DIR}roots-${hash(roots.map((r) => r.oa).sort().join("|"))}.json`;
+}
+
+export async function saveResult(storage: StorageAdapter, path: string, scope: string, r: Neighbourhood): Promise<void> {
+  const file: ResultFile = {
+    format: "lightkone-branch-result",
+    version: 1,
+    at: r.at ?? new Date().toISOString(),
+    scope,
+    // Your own papers' references are in citations.json already.
+    roots: r.roots.map(({ refs, ...rest }) => (rest.paperId ? rest : { ...rest, refs })),
+    candidates: r.candidates,
+    library: Boolean(r.library),
+  };
+  await storage.write(path, JSON.stringify(file), "application/json");
+}
+
+export async function loadResult(storage: StorageAdapter, path: string, store: CitationStore | null): Promise<Neighbourhood | null> {
+  const raw = await storage.read(path).catch(() => null);
+  if (!raw) return null;
+  try {
+    const f = JSON.parse(decoder.decode(raw)) as ResultFile;
+    if (f.format !== "lightkone-branch-result" || !Array.isArray(f.candidates)) return null;
+    return {
+      at: f.at,
+      library: f.library,
+      candidates: f.candidates,
+      roots: f.roots.map((r) => ({ ...r, refs: r.refs ?? (r.paperId ? store?.works[r.paperId]?.refs ?? [] : []) })),
+    };
+  } catch {
+    return null;
+  }
 }

@@ -9,6 +9,10 @@ import {
   reasons,
   saveExplorations,
   scatter,
+  loadResult,
+  saveResult,
+  resultPath,
+  RESULT_MAX_AGE_MS,
   type Candidate,
   type ExploreFilter,
   type ExploreStore,
@@ -30,6 +34,14 @@ import { downloadSvg } from "./svgfile";
 const SHOWN = 60;
 const PAGE = 30;
 const draftName = (d: PaperDraft) => `${shortAuthors(d.authors ?? []).replace(/ et al\.$/, "") || d.title.slice(0, 18)}${d.year ? ` ${d.year}` : ""}`;
+/** "today at 07:25", "yesterday", "3 days ago". */
+function when(iso: string): string {
+  const d = new Date(iso);
+  const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+  if (days < 1 && new Date().getDate() === d.getDate()) return `today at ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  if (days < 2) return "yesterday";
+  return `${days} days ago`;
+}
 const newId = () => `x${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export function ExploreView(props: {
@@ -133,7 +145,7 @@ export function ExploreView(props: {
     if (!props.readOnly) await saveExplorations(props.storage, next).catch(() => {});
   }
 
-  async function run(ss: Root[], ex: Exploration | null, sc = scope) {
+  async function run(ss: Root[], ex: Exploration | null, sc = scope, force = false) {
     if (!ss.length) {
       if (sc !== "pick") setError(sc === "library" ? "None of your papers has references from OpenAlex yet." : "None of this folder's papers has references from OpenAlex yet.");
       return;
@@ -143,6 +155,15 @@ export function ExploreView(props: {
     setError(null);
     setPicked(null);
     setMore(PAGE);
+    // The last result, kept in storage, comes back at once unless it is a week old or a refresh was asked for.
+    const path = resultPath(sc, ss);
+    if (!force) {
+      const kept = await loadResult(props.storage, path, props.store);
+      if (kept && Date.now() - Date.parse(kept.at ?? "") < RESULT_MAX_AGE_MS) {
+        show(kept, ex);
+        return;
+      }
+    }
     const what = sc === "library" ? `your ${ss.length} papers` : sc.startsWith("folder:") ? `the ${ss.length} papers in ${sc.slice(7)}` : ss.length > 1 ? `${ss.length} roots` : "the root";
     setBusy(`Growing from ${what}…`);
     try {
@@ -150,11 +171,9 @@ export function ExploreView(props: {
         library: sc !== "pick",
         onProgress: (done, total) => total > 2 && setBusy(`Growing from ${what}: ${done} of ${total} steps`),
       });
-      const seen = new Set(ex?.seen ?? []);
-      // The first time, nothing is “new”; after that, whatever wasn't shown before.
-      // Papers already in the library are never “new”.
-      setFresh(ex?.looked ? new Set(r.candidates.filter((c) => !c.paperId && !seen.has(c.oa)).map((c) => c.oa)) : new Set());
-      setResult(r);
+      if (abort.current.signal.aborted) throw new Error("stopped");
+      show(r, ex);
+      if (!props.readOnly) await saveResult(props.storage, path, sc, r).catch(() => {});
       if (ex && saved) {
         const updated = { ...ex, roots: ex.scope ? [] : ss, seen: [...new Set([...ex.seen, ...r.candidates.map((c) => c.oa)])], looked: new Date().toISOString() };
         setCurrent(updated);
@@ -164,6 +183,19 @@ export function ExploreView(props: {
       if (!abort.current.signal.aborted) setError((e as Error).message);
     }
     setBusy(null);
+  }
+
+  function show(r: Neighbourhood, ex: Exploration | null) {
+    const seen = new Set(ex?.seen ?? []);
+    // The first time, nothing is “fresh”; after that, whatever wasn't shown before.
+    // Papers already in the library are never “fresh”.
+    setFresh(ex?.looked ? new Set(r.candidates.filter((c) => !c.paperId && !seen.has(c.oa)).map((c) => c.oa)) : new Set());
+    setResult(r);
+  }
+
+  function refresh() {
+    const rs = scope === "pick" ? roots : scopeRoots(scope);
+    run(rs, current, scope, true);
   }
 
   function open(ex: Exploration) {
@@ -346,6 +378,11 @@ export function ExploreView(props: {
 
       {result && (scope !== "pick" || roots.length > 0) && (
         <>
+          {result.at && (
+            <p class="small muted branch-when">
+              Found {when(result.at)}{busy ? "" : <>. <button class="link" onClick={refresh}>Refresh</button></>}
+            </p>
+          )}
           <div class="explore-filters">
             <input type="search" placeholder="Filter by words" value={filter.text ?? ""} onInput={(e) => setFilter({ ...filter, text: e.currentTarget.value })} aria-label="Filter by words" />
             <span class="years">

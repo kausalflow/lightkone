@@ -14,6 +14,7 @@ Whatever the storage, the files are the same:
 | `lightkone/library.bib` | The whole library as BibTeX, rewritten on every save, for LaTeX. |
 | `lightkone/annotations/<id>.json` | Highlights and their notes, one file per paper. |
 | `lightkone/text/`, `citations.json`, `equations.json`, `new-on-arxiv.json` | Work done once and kept (PDF text for search, the citation map, equations) so it isn't done again. Safe to delete; it is rebuilt. |
+| `lightkone/branches/` | The last result of each branch (your whole library, a folder, or a set of roots), so opening it again shows it at once. Safe to delete; it is fetched again. |
 | `lightkone/branches.json` | Branches you kept in the citation map: their root papers and the works already shown, so the next visit can mark what is fresh. |
 | `papers/All Papers/...` | The PDFs, filed by first author like Paperpile (`papers/All Papers/HINTON/Hinton et al. 2012 - ....pdf`). |
 
