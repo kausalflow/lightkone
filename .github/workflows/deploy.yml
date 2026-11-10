@@ -29,7 +29,9 @@ env:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, which Playwright 1.56 cannot install Chromium on,
+    # so the browser check after each deploy failed (the deploys themselves went through).
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
