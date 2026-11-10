@@ -27,7 +27,7 @@ from lightkone.bibtex import (
     parse_bibtex_to_drafts,
 )
 from lightkone.library import Library, clean_folder, now_iso
-from lightkone.storage import StorageError
+from lightkone.storage import S3Storage, StorageError
 from lightkone import __version__
 
 LIBRARY = "Library"
@@ -285,6 +285,56 @@ Words = Annotated[
 # ---------------------------------------------------------------- library
 
 
+STORAGE_FIELDS = {
+    "folder": [("path", "Folder", False)],
+    "s3": [
+        (
+            "endpoint",
+            "Endpoint (https://<account>.r2.cloudflarestorage.com, or the R2 account id)",
+            False,
+        ),
+        ("bucket", "Bucket", False),
+        ("region", "Region", False),
+        ("prefix", "Folder in the bucket (blank for none)", False),
+        ("accessKeyId", "Access key id", False),
+        ("secretAccessKey", "Secret access key", True),
+    ],
+    "github": [
+        ("repo", "Repository (owner/name)", False),
+        ("token", "Token (fine-grained, Contents read and write)", True),
+        ("branch", "Branch (blank for the default)", False),
+    ],
+}
+
+
+def _ask_storage(provider: Optional[Provider], pairs: Optional[List[str]]) -> dict:
+    """Storage settings from --provider/--set, asking for whatever is missing."""
+    from lightkone.setup import endpoint_from
+
+    prov = (provider.value if provider else None) or typer.prompt(
+        "Where does the library live (folder, s3, github)", default="s3"
+    )
+    if prov not in cfg.PROVIDERS:
+        fail(f"Unknown storage {prov!r}: choose folder, s3 or github.")
+    given = dict(p.split("=", 1) for p in pairs or [] if "=" in p)
+    s = {"storage.provider": prov}
+    for field, label, secret in STORAGE_FIELDS[prov]:
+        if field in given:
+            v = given[field]
+        else:
+            default = {"region": "auto"}.get(field, "")
+            v = typer.prompt(
+                label, default=default, hide_input=secret, show_default=bool(default)
+            )
+        if field == "path":
+            v = str(Path(v).expanduser().resolve())
+        if field == "endpoint":
+            v = endpoint_from(v)
+        if v:
+            s[f"storage.{prov}.{field}"] = v
+    return s
+
+
 @app.command(rich_help_panel=LIBRARY)
 def login(
     name: Annotated[str, typer.Argument(help="A name for this library.")] = "main",
@@ -339,48 +389,7 @@ def login(
                 fail(str(e))
         s = cfg.keep(s)
     else:
-        prov = (provider.value if provider else None) or typer.prompt(
-            "Where does the library live (folder, s3, github)", default="s3"
-        )
-        if prov not in cfg.PROVIDERS:
-            fail(f"Unknown storage {prov!r}: choose folder, s3 or github.")
-        given = dict(p.split("=", 1) for p in pairs or [] if "=" in p)
-        fields = {
-            "folder": [("path", "Folder", False)],
-            "s3": [
-                (
-                    "endpoint",
-                    "Endpoint (https://<account>.r2.cloudflarestorage.com)",
-                    False,
-                ),
-                ("bucket", "Bucket", False),
-                ("region", "Region", False),
-                ("prefix", "Folder in the bucket (blank for none)", False),
-                ("accessKeyId", "Access key id", False),
-                ("secretAccessKey", "Secret access key", True),
-            ],
-            "github": [
-                ("repo", "Repository (owner/name)", False),
-                ("token", "Token (fine-grained, Contents read and write)", True),
-                ("branch", "Branch (blank for the default)", False),
-            ],
-        }[prov]
-        s = {"storage.provider": prov}
-        for field, label, secret in fields:
-            if field in given:
-                v = given[field]
-            else:
-                default = {"region": "auto"}.get(field, "")
-                v = typer.prompt(
-                    label,
-                    default=default,
-                    hide_input=secret,
-                    show_default=bool(default),
-                )
-            if field == "path":
-                v = str(Path(v).expanduser().resolve())
-            if v:
-                s[f"storage.{prov}.{field}"] = v
+        s = _ask_storage(provider, pairs)
     try:
         lib = Library(cfg.storage_from(s)).load()
     except (StorageError, ValueError) as e:
@@ -392,6 +401,173 @@ def login(
     typer.echo(
         f"Library {name!r}: {lib.storage.describe()}, {_plural(len(lib.live))}. Saved to {path} (readable by you only)."
     )
+
+
+@app.command(rich_help_panel=LIBRARY)
+def setup(
+    name: Annotated[str, typer.Argument(help="A name for this library.")] = "main",
+    provider: Annotated[
+        Optional[Provider], typer.Option(help="Where the library lives.")
+    ] = None,
+    pairs: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            "--set",
+            metavar="FIELD=VALUE",
+            help="Storage fields, e.g. bucket=papers (asked for when missing).",
+        ),
+    ] = None,
+    url: Annotated[
+        Optional[str],
+        typer.Option(
+            "--url",
+            envvar="LIGHTKONE_URL",
+            help="The Lightkone app the bucket should let in (default the public site).",
+        ),
+    ] = None,
+    origins: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            "--origin",
+            help="Another address to let in, e.g. http://localhost:5173 (repeatable).",
+        ),
+    ] = None,
+    cors: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--cors/--no-cors",
+            help="Add the CORS rule the app needs to the bucket (asked when not given).",
+        ),
+    ] = None,
+    settings_file: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--settings-file",
+            dir_okay=False,
+            help="Where to write a settings file for the web app (default ./lightkone-settings-<name>.json).",
+        ),
+    ] = None,
+    no_settings_file: Annotated[
+        bool,
+        typer.Option("--no-settings-file", help="Don't write a settings file."),
+    ] = False,
+    passphrase: Annotated[
+        Optional[str],
+        typer.Option(help="Encrypt the settings file with this passphrase (needs lightkone[crypto])."),
+    ] = None,
+    open_app: Annotated[
+        bool, typer.Option("--open", help="Open the web app when done.")
+    ] = False,
+):
+    """Set up a library step by step: storage, a check, CORS, and the web app.
+
+    Asks for the bucket or repository, checks it by saving and reading a small
+    test file, adds the CORS rule the web app needs to a bucket (the terminal
+    can, the browser can't), saves it as a CLI library, and writes a settings
+    file to import in the web app (Settings → Backup → Import settings).
+    """
+    from lightkone import setup as su
+
+    s = _ask_storage(provider, pairs)
+    prov = s["storage.provider"]
+    problem = su.lint(prov, s)
+    if problem:
+        fail(problem)
+    try:
+        storage = cfg.storage_from(s)
+    except StorageError as e:
+        fail(str(e))
+
+    typer.echo(f"Checking {storage.describe()} …")
+    result = su.check(storage, prov)
+    for label, ok, detail in result.steps:
+        typer.echo(f"  {'✓' if ok else '✗'} {label}" + (f": {detail}" if detail else ""))
+    if not result.ok:
+        fail(result.problem)
+
+    app_origin = su.origin_of(url or DEFAULT_URL)
+    if prov == "s3":
+        assert isinstance(storage, S3Storage)
+        wanted = [app_origin] + [su.origin_of(o) for o in origins or []]
+        missing = [o for o in wanted if not su.preflight(storage, o)]
+        if not missing:
+            typer.echo(f"  ✓ The bucket lets {', '.join(wanted)} in (CORS)")
+        elif cors is False or (
+            cors is None
+            and not typer.confirm(
+                f"The web app at {', '.join(missing)} can't reach this bucket yet. Add a CORS rule for it to the bucket?",
+                default=True,
+            )
+        ):
+            typer.echo(_cors_by_hand(storage, missing))
+        else:
+            try:
+                current = su.get_cors(storage)
+                su.put_cors(storage, su.with_rule(current, missing))
+            except (StorageError, OSError) as e:
+                typer.echo(f"  ✗ Could not set the CORS rule: {e}")
+                typer.echo(_cors_by_hand(storage, missing, refused=True))
+            else:
+                still = [o for o in missing if not su.preflight(storage, o)]
+                if still:
+                    typer.echo(
+                        f"  ! The rule is saved, but the bucket doesn't answer for {', '.join(still)} yet. "
+                        "It can take a minute; run `lightkone setup` again to check."
+                    )
+                else:
+                    typer.echo(f"  ✓ Added a CORS rule for {', '.join(missing)}")
+
+    c = cfg.load_config()
+    c["libraries"][name] = s
+    c["default"] = name
+    path = cfg.save_config(c)
+    typer.echo(f"Saved as library {name!r} in {path} (readable by you only).")
+
+    if prov == "folder":
+        no_settings_file = True  # the web app can't open a folder on disk
+    if not no_settings_file:
+        target = settings_file or Path(f"lightkone-settings-{name}.json")
+        try:
+            su.write_private(target, su.backup_text(s, passphrase or ""))
+        except ValueError as e:
+            fail(str(e))
+        typer.echo(
+            f"\nFor the web app: open {app_url(url)} → Settings → Backup → Import settings, pick {target}"
+            + (", enter the passphrase" if passphrase else "")
+            + ", then Save."
+        )
+        if not passphrase:
+            typer.echo(
+                f"{target} holds your keys in plain text (readable by you only): delete it once imported."
+            )
+    if open_app:
+        typer.launch(app_url(url))
+
+
+def _cors_by_hand(storage: S3Storage, origins: List[str], refused: bool = False) -> str:
+    from lightkone import setup as su
+
+    lines = []
+    if refused:
+        lines.append(
+            "  This key may only read and write files, not change the bucket's settings "
+            "(on R2, that needs an Admin Read & Write token). Add the rule yourself:"
+        )
+    else:
+        lines.append("  Add this CORS rule to the bucket yourself:")
+    if storage.endpoint.endswith(su.R2_HOST):
+        lines += [
+            "  Cloudflare dashboard: R2 → "
+            + storage.bucket
+            + " → Settings → CORS Policy → Add CORS policy, and paste:",
+            su.cors_json(origins),
+            "  Or with wrangler: save this as cors.json and run "
+            f"`npx wrangler r2 bucket cors set {storage.bucket} --file cors.json`:",
+            su.wrangler_json(origins),
+        ]
+    else:
+        lines += ["  In the bucket's CORS settings:", su.cors_json(origins)]
+    return "\n".join(lines)
 
 
 @app.command(rich_help_panel=LIBRARY)
