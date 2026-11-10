@@ -2,8 +2,8 @@ import type { PaperDraft, StorageAdapter } from "./types";
 import { type CitationStore, type FetchOptions } from "./citations";
 import { workToDraft } from "./literature";
 
-// Explore: start from one or more root papers and walk one step through the
-// citation network around them. Candidates are the works that cite a root,
+// Branches: grow the library through its citation network. Start from the
+// whole library, a folder, or a few root papers, and walk one step out. Candidates are the works that cite a root,
 // that a root cites, or that share many references with the roots; they are
 // ranked by how tightly they tie to the roots (and to the rest of the
 // library), not by popularity alone. Explorations are kept in
@@ -29,6 +29,12 @@ export interface Root {
 export interface Exploration {
   id: string;
   name: string;
+  /**
+   * What it grows from: "library" (all your papers), "folder:<name>", or
+   * absent for the roots listed. A library or folder branch takes its roots
+   * from the library each time, so papers added since count too.
+   */
+  scope?: string;
   roots: Root[];
   /** OpenAlex ids of candidates already shown. */
   seen: string[];
@@ -84,6 +90,8 @@ export interface Candidate {
 export interface Neighbourhood {
   roots: (Root & { year: number; cited: number; refs: string[] })[];
   candidates: Candidate[];
+  /** Grown from the library itself (all of it, or a folder). */
+  library?: boolean;
 }
 
 async function getJson(url: string, o: FetchOptions): Promise<any> {
@@ -116,39 +124,79 @@ export function libraryIndex(store: CitationStore | null): { byOa: Map<string, s
   return { byOa, refs };
 }
 
+export interface ExploreOptions {
+  /**
+   * Growing the library itself (all of it, or a folder): roots are your own
+   * papers, and only works tied to at least two of them are kept.
+   */
+  library?: boolean;
+  onProgress?(done: number, total: number): void;
+}
+
+/** At most this many roots are asked about what cites them, 50 per request. */
+const MAX_CITING_ROOTS = 1000;
+
 /**
  * Walk one step out from the roots: the works that cite them (the most cited
- * first), the works they cite, and score each by its ties.
+ * first), the works they cite, and score each by its ties. Roots from the
+ * library use the references already in citations.json; only the others are
+ * fetched.
  */
-export async function explore(roots: Root[], store: CitationStore | null, o: FetchOptions = {}): Promise<Neighbourhood> {
+export async function explore(roots: Root[], store: CitationStore | null, o: FetchOptions = {}, opts: ExploreOptions = {}): Promise<Neighbourhood> {
   const rootIds = roots.map((s) => s.oa);
   const rootSet = new Set(rootIds);
-  const rootRows = await byIds(rootIds, o);
-  const rootInfo = new Map(rootRows.map((x) => [shortId(x.id), x]));
-  const rootRefs = new Map(rootIds.map((id) => [id, new Set<string>((rootInfo.get(id)?.referenced_works ?? []).map(shortId))]));
+  const known = new Map<string, { year?: number; cited?: number; refs: string[] }>();
+  for (const r of roots) {
+    const w = r.paperId ? store?.works[r.paperId] : undefined;
+    if (w?.oa === r.oa && w.year) known.set(r.oa, w);
+  }
+  const rootRows = await byIds(rootIds.filter((id) => !known.has(id)), o);
+  const rootInfo = new Map<string, { title?: string; year?: number; cited?: number; refs: string[] }>(known);
+  for (const x of rootRows) rootInfo.set(shortId(x.id), { title: x.title, year: x.publication_year ?? undefined, cited: x.cited_by_count ?? 0, refs: (x.referenced_works ?? []).map(shortId) });
+  const rootRefs = new Map(rootIds.map((id) => [id, new Set<string>(rootInfo.get(id)?.refs ?? [])]));
   const allRootRefs = new Map<string, number>();
   for (const refs of rootRefs.values()) for (const r of refs) allRootRefs.set(r, (allRootRefs.get(r) ?? 0) + 1);
 
-  const citing = (await getJson(`${API}?filter=cites:${rootIds.join("|")}&sort=cited_by_count:desc&per-page=${CITING}&select=${SELECT}`, o)).results ?? [];
-  const citingIds = new Set(citing.map((x: any) => shortId(x.id)));
+  // What cites the roots: one request for a few roots, 50 roots a request for many.
+  const asking = [...rootIds].sort((a, b) => (rootInfo.get(b)?.cited ?? 0) - (rootInfo.get(a)?.cited ?? 0)).slice(0, MAX_CITING_ROOTS);
+  const batches: string[][] = [];
+  for (let i = 0; i < asking.length; i += 50) batches.push(asking.slice(i, i + 50));
+  const perPage = batches.length > 1 ? 100 : CITING;
+  const citing: any[] = [];
+  const citingIds = new Set<string>();
+  for (const [i, batch] of batches.entries()) {
+    if (o.signal?.aborted) break;
+    const rows = (await getJson(`${API}?filter=cites:${batch.join("|")}&sort=cited_by_count:desc&per-page=${perPage}&select=${SELECT}`, o)).results ?? [];
+    for (const x of rows) {
+      const id = shortId(x.id);
+      if (citingIds.has(id)) continue;
+      citingIds.add(id);
+      citing.push(x);
+    }
+    opts.onProgress?.(i + 1, batches.length + 1);
+  }
   // The references most of the roots share first, then the rest, as many as are read.
   const cited = [...allRootRefs]
-    .filter(([id]) => !rootSet.has(id) && !citingIds.has(id))
+    .filter(([id, n]) => !rootSet.has(id) && !citingIds.has(id) && (!opts.library || n >= 2))
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, CITED)
+    .slice(0, opts.library ? CITED * 2 : CITED)
     .map(([id]) => id);
   const citedRows = await byIds(cited, o);
+  opts.onProgress?.(batches.length + 1, batches.length + 1);
 
   const lib = libraryIndex(store);
   const rootPapers = roots.map((s) => s.paperId).filter(Boolean) as string[];
   const candidates: Candidate[] = [];
+  const done = new Set<string>();
   for (const x of [...citing, ...citedRows]) {
     const oa = shortId(x.id);
-    if (rootSet.has(oa) || !x.title || candidates.some((c) => c.oa === oa)) continue;
+    if (rootSet.has(oa) || !x.title || done.has(oa)) continue;
+    done.add(oa);
     const refs: string[] = (x.referenced_works ?? []).map(shortId);
     const refSet = new Set(refs);
     const citesRoots = rootIds.filter((s) => refSet.has(s));
     const citedByRoots = rootIds.filter((s) => rootRefs.get(s)!.has(oa));
+    if (opts.library && citesRoots.length + citedByRoots.length < 2) continue;
     let shared = 0;
     for (const r of refs) if (allRootRefs.has(r)) shared++;
     const libraryLinks = new Set<string>();
@@ -177,20 +225,21 @@ export async function explore(roots: Root[], store: CitationStore | null, o: Fet
   return {
     roots: roots.map((s) => {
       const x = rootInfo.get(s.oa);
-      return { ...s, title: x?.title ?? s.title, year: x?.publication_year ?? 0, cited: x?.cited_by_count ?? 0, refs: [...(rootRefs.get(s.oa) ?? [])] };
+      return { ...s, title: x?.title ?? s.title, year: x?.year ?? 0, cited: x?.cited ?? 0, refs: [...(rootRefs.get(s.oa) ?? [])] };
     }),
     candidates,
+    library: Boolean(opts.library),
   };
 }
 
 /** Why a candidate is here, in words. */
-export function reasons(c: Candidate, rootCount: number): string[] {
+export function reasons(c: Candidate, rootCount: number, library = false): string[] {
   const out: string[] = [];
-  const of = (n: number) => (rootCount > 1 ? `${n} of the ${rootCount} roots` : "the root");
+  const of = (n: number) => (library ? `${n} of your papers` : rootCount > 1 ? `${n} of the ${rootCount} roots` : "the root");
   if (c.citesRoots.length) out.push(`cites ${of(c.citesRoots.length)}`);
   if (c.citedByRoots.length) out.push(`cited by ${of(c.citedByRoots.length)}`);
   if (c.shared >= 2) out.push(`shares ${c.shared} references`);
-  if (c.libraryLinks.length) out.push(`linked to ${c.libraryLinks.length} of your papers`);
+  if (c.libraryLinks.length) out.push(`linked to ${c.libraryLinks.length} ${library ? "more" : "of your papers"}`);
   return out;
 }
 

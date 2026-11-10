@@ -640,7 +640,9 @@ svg.map .node-label { font-size: 10px; fill: var(--text, currentColor); paint-or
 .missing-item { grid-template-columns: 1fr auto !important; align-items: start; }
 .cited-by { margin: 4px 0 0; padding-left: 18px; }
 .overlay.full-page { padding: 0; place-items: stretch; }
-.panel.map-panel.full { width: 100%; max-width: none; min-height: 100dvh; max-height: none; border-radius: 0; padding: 18px max(20px, env(safe-area-inset-left)) calc(20px + env(safe-area-inset-bottom)); animation: none; }
+.overlay.full-page > .panel.full { width: 100%; max-width: none; min-height: 100dvh; max-height: none; border-radius: 0; padding: 18px max(20px, env(safe-area-inset-left)) calc(20px + env(safe-area-inset-bottom)); animation: none; }
+.overlay.full-page > .panel.chats-panel.full { height: 100dvh; min-height: 0; }
+.panel.map-panel.docked .tabs { margin-top: 4px; }
 .panel.map-panel.full svg.map { max-height: calc(100dvh - 230px); }
 .panel.map-panel.full .explore-graph svg.map { max-height: calc(100dvh - 380px); }
 .missing-actions { display: flex; flex-direction: column; gap: 6px; }

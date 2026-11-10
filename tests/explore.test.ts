@@ -93,6 +93,21 @@ describe("explore", () => {
     expect(filterCandidates(r.candidates, { text: "work c1" }, new Set()).map((c) => c.oa)).toEqual(["C1"]);
   });
 
+  it("grows the whole library: only works tied to two or more of your papers, from stored references", async () => {
+    const store = emptyStore();
+    const at = "2026-01-01T00:00:00Z";
+    store.works.s1 = { oa: "S1", year: 2015, cited: 900, refs: ["R1", "R2"], at };
+    store.works.s2 = { oa: "S2", year: 2017, cited: 400, refs: ["R1", "R3"], at };
+    const calls: string[] = [];
+    const r = await explore([{ oa: "S1", title: "S1", paperId: "s1" }, { oa: "S2", title: "S2", paperId: "s2" }], store, { fetch: fake(calls) }, { library: true });
+    // The roots' references come from the store: no lookup of the roots themselves.
+    expect(calls.some((c) => /openalex%3AS1|openalex:S1/.test(c))).toBe(false);
+    expect(r.library).toBe(true);
+    // C1 cites both, R1 is cited by both; C2, C3, R2, R3 tie to one paper only.
+    expect(r.candidates.map((c) => c.oa).sort()).toEqual(["C1", "R1"]);
+    expect(reasons(r.candidates.find((c) => c.oa === "C1")!, 2, true)[0]).toBe("cites 2 of your papers");
+  });
+
   it("keeps explorations in their own file", async () => {
     const s = memory();
     expect((await loadExplorations(s)).items).toEqual([]);

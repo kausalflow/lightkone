@@ -180,39 +180,56 @@ one tap.
 
 ## The citation map
 
-**Citation map** shows which of your papers cite which, from OpenAlex. Tap a
-paper to see what it cites and what cites it. Two layouts:
+**Citation map** grows your library through its citation network, and shows
+which of your papers cite which. Like Chats, it opens as a window and can be
+snapped to the right or bottom edge to stay beside your papers and the reader,
+or fill the whole window; the buttons by the close button move it, and it
+comes back where you left it.
+
+### Branches
+
+**Branches** (the first tab) grows your library, the way Kirsche connected
+references. It starts from **your whole library**: the works that cite two or
+more of your papers, and the works two or more of your papers cite, ranked by
+how many of your papers each ties to and how many references it shares with
+them. Pick a **folder** instead to grow one topic, or **papers I pick** to
+start from a few *roots*: from a paper's details or a paper on the map
+(**Branch out from this**), from a work on the *Missing* tab (**Branch out**),
+or by typing a paper's name.
+
+For each work it reads
+
+- the works that cite the roots (the most cited first),
+- the works the roots cite, and
+- how many references it shares with the roots and how many of your own
+  papers it cites or is cited by,
+
+and says why it is there ("cites 4 of your papers · shares 14 references").
+Your library's references come from what the citation map already looked up,
+so growing the whole library asks OpenAlex only for what cites your papers
+(50 papers a request) and for the works found. The picture places roots,
+papers you have (filled) and papers you don't (hollow) by year and citations,
+linked where one cites another. Filter by words or years, order by ties,
+citations or date, hide the ones you have, **Add** one to your library, or
+**+ Root** to start a branch from it.
+
+**Keep this branch** saves it, with every work shown so far. Opening it again
+reads the network afresh (a library or folder branch includes papers added
+since) and marks what is **fresh**, so a kept branch doubles as a watch on
+your field.
+
+### Map
+
+The *Map* tab draws your papers, linked where one cites another. Tap a paper
+to see what it cites and what cites it. Two layouts:
 
 - **By folder**: one band per folder (or tag), across by year, higher the more
   a paper is cited.
 - **Year × citations**: every paper on one plane, across by year and up by
   citations on a log scale; bigger dots have more links inside your library.
 
-The download button saves the map as an SVG picture, styled as you see it, for
-slides, a thesis or a web page.
-
-### Branches
-
-**Branches** grow out from one or more *root* papers through the citation
-network, the way Kirsche connected references. Start one from a paper's details
-or a paper on the map (**Branch out from this**), from a work on the *Missing*
-tab (**Branch out**), or by typing a paper's name into the roots box. It reads
-
-- the works that cite the roots (the 200 most cited),
-- the works the roots cite, and
-- for each, how many references it shares with the roots and how many of your
-  own papers it cites or is cited by,
-
-and ranks them by how closely they tie to the roots, not by fame alone. Each
-says why it is there ("cites 2 of the 3 roots · shares 14 references · linked
-to 4 of your papers"). The picture places roots, papers you have (filled) and
-papers you don't (hollow) by year and citations, linked where one cites another.
-Filter by words or years, order by ties, citations or date, hide the ones you
-have, **Add** one to your library, or **+ Root** to grow the branch from it too.
-
-**Keep this branch** saves it, with every work shown so far. Opening it again
-reads the network afresh and marks what is **fresh** since last time, so a kept
-branch doubles as a watch on a topic.
+The download button saves the map, or a branch's picture, as an SVG, styled as
+you see it, for slides, a thesis or a web page.
 
 ### Missing from your library
 

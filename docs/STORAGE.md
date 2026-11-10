@@ -35,11 +35,12 @@ Other tools may read and write these too, so their shapes stay stable.
 `oa` is `null` when OpenAlex didn't know the paper at `at`; it is asked again
 after a month.
 
-`lightkone/branches.json` holds kept branches:
+`lightkone/branches.json` holds kept branches. A branch with a `scope` takes its
+roots from the library (all of it, or one folder) each time, and stores none:
 
 ```json
 { "format": "lightkone-branches", "version": 1,
-  "items": [{ "id": "x…", "name": "Attention Is All You Need",
+  "items": [{ "id": "x…", "name": "Attention Is All You Need", "scope": "library | folder:<name>, or absent",
               "roots": [{ "oa": "W2626778328", "title": "…", "paperId": "<paper id, if in the library>" }],
               "seen": ["W…"], "made": "2026-11-10T02:00:00Z", "looked": "2026-11-10T02:00:00Z" }] }
 ```

@@ -128,6 +128,7 @@ export function ChatsPanel(props: {
       tabs={props.tabs}
       onPlace={props.onPlace}
       onClose={props.onClose}
+      full
     >
       <div ref={self} class={`chats ${wideBox ? "split" : ""}`}>
         {(wideBox || view.kind === "list") && <aside class="chats-nav">{list}</aside>}

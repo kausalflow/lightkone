@@ -21,10 +21,11 @@ import { Icon } from "./icons";
 import { citationTicks, labelAt, nameOf, usePanZoom } from "./CitationMap";
 import { downloadSvg } from "./svgfile";
 
-// Explore: pick root papers, from the library or outside it, and see the
-// works around them in the citation network, placed by year and citations
-// and ranked by how tightly they tie to the roots. Explorations are kept
-// with what was seen, so opening one again marks what is new.
+// Branches: grow the library through its citation network. By default the
+// roots are the whole library (or a folder): the works that cite or are
+// cited by several of your papers, ranked by how tightly they tie to them.
+// Or pick a few root papers, from the library or outside it. Kept branches
+// remember what was seen, so opening one again marks what is fresh.
 
 const SHOWN = 60;
 const PAGE = 30;
@@ -38,6 +39,8 @@ export function ExploreView(props: {
   fetchKey?: string;
   /** A library paper id or an outside work to start from. */
   root: Root | string | null;
+  /** Bumped when the citation store changes, as references arrive. */
+  version?: number;
   readOnly?: boolean;
   onRootTaken(): void;
   /** Look a library paper up in OpenAlex; its OpenAlex id, or null. */
@@ -48,6 +51,8 @@ export function ExploreView(props: {
   const [saved, setSaved] = useState<ExploreStore | null>(null);
   const [current, setCurrent] = useState<Exploration | null>(null);
   const [roots, setRoots] = useState<Root[]>([]);
+  // "library", "folder:<name>", or "pick" for roots chosen one by one.
+  const [scope, setScope] = useState(props.root ? "pick" : "library");
   const [result, setResult] = useState<Neighbourhood | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
@@ -59,11 +64,35 @@ export function ExploreView(props: {
   const [query, setQuery] = useState("");
   const abort = useRef<AbortController | null>(null);
   const byId = useMemo(() => new Map(props.papers.map((p) => [p.id, p])), [props.papers]);
+  const folders = useMemo(() => {
+    const count = new Map<string, number>();
+    for (const p of props.papers) for (const f of new Set((p.folders ?? []).map((f) => f.split("/")[0]))) if (!p.trashed && f) count.set(f, (count.get(f) ?? 0) + 1);
+    return [...count].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [props.papers]);
+  const known = Object.values(props.store.works).filter((w) => w.oa).length;
+
+  /** The library papers a library or folder branch grows from: those OpenAlex knows. */
+  function scopeRoots(sc: string): Root[] {
+    const folder = sc.startsWith("folder:") ? sc.slice(7) : null;
+    return props.papers
+      .filter((p) => !p.trashed && (!folder || (p.folders ?? []).some((f) => f === folder || f.startsWith(`${folder}/`))))
+      .flatMap((p) => {
+        const oa = props.store.works[p.id]?.oa;
+        return oa ? [{ oa, title: p.title, paperId: p.id }] : [];
+      });
+  }
+  const scopeName = (sc: string) => (sc === "library" ? "Whole library" : sc.startsWith("folder:") ? sc.slice(7) : nameFor(roots));
 
   useEffect(() => {
     loadExplorations(props.storage).then(setSaved);
     return () => abort.current?.abort();
   }, [props.storage]);
+
+  // Open on the library's own branch: what your papers keep pointing to, and what keeps citing them.
+  useEffect(() => {
+    if (props.root || !saved || scope === "pick" || result || busy || !known) return;
+    run(scopeRoots(scope), current, scope);
+  }, [saved, known > 0, props.version]);
 
   // A root handed over from the map, a paper's details or Missing: start a new exploration with it.
   useEffect(() => {
@@ -77,8 +106,9 @@ export function ExploreView(props: {
       if (found) open(found);
       else {
         setCurrent(null);
+        setScope("pick");
         setRoots([root]);
-        run([root], null);
+        run([root], null, "pick");
       }
     })();
   }, [props.root, saved]);
@@ -103,23 +133,30 @@ export function ExploreView(props: {
     if (!props.readOnly) await saveExplorations(props.storage, next).catch(() => {});
   }
 
-  async function run(ss: Root[], ex: Exploration | null) {
-    if (!ss.length) return;
+  async function run(ss: Root[], ex: Exploration | null, sc = scope) {
+    if (!ss.length) {
+      if (sc !== "pick") setError(sc === "library" ? "None of your papers has references from OpenAlex yet." : "None of this folder's papers has references from OpenAlex yet.");
+      return;
+    }
     abort.current?.abort();
     abort.current = new AbortController();
     setError(null);
     setPicked(null);
     setMore(PAGE);
-    setBusy(`Walking out from ${ss.length > 1 ? `${ss.length} roots` : "the root"}…`);
+    const what = sc === "library" ? `your ${ss.length} papers` : sc.startsWith("folder:") ? `the ${ss.length} papers in ${sc.slice(7)}` : ss.length > 1 ? `${ss.length} roots` : "the root";
+    setBusy(`Growing from ${what}…`);
     try {
-      const r = await explore(ss, props.store, { key: props.fetchKey, signal: abort.current.signal });
+      const r = await explore(ss, props.store, { key: props.fetchKey, signal: abort.current.signal }, {
+        library: sc !== "pick",
+        onProgress: (done, total) => total > 2 && setBusy(`Growing from ${what}: ${done} of ${total} steps`),
+      });
       const seen = new Set(ex?.seen ?? []);
       // The first time, nothing is “new”; after that, whatever wasn't shown before.
       // Papers already in the library are never “new”.
       setFresh(ex?.looked ? new Set(r.candidates.filter((c) => !c.paperId && !seen.has(c.oa)).map((c) => c.oa)) : new Set());
       setResult(r);
       if (ex && saved) {
-        const updated = { ...ex, roots: ss, seen: [...new Set([...ex.seen, ...r.candidates.map((c) => c.oa)])], looked: new Date().toISOString() };
+        const updated = { ...ex, roots: ex.scope ? [] : ss, seen: [...new Set([...ex.seen, ...r.candidates.map((c) => c.oa)])], looked: new Date().toISOString() };
         setCurrent(updated);
         await persist({ ...saved, items: saved.items.map((x) => (x.id === ex.id ? updated : x)) });
       }
@@ -130,15 +167,30 @@ export function ExploreView(props: {
   }
 
   function open(ex: Exploration) {
+    const sc = ex.scope ?? "pick";
+    const rs = ex.scope ? scopeRoots(ex.scope) : ex.roots;
     setCurrent(ex);
-    setRoots(ex.roots);
+    setScope(sc);
+    setRoots(sc === "pick" ? rs : []);
     setFilter({ sort: "ties", hideLibrary: true });
-    run(ex.roots, ex);
+    run(rs, ex, sc);
+  }
+
+  function choose(sc: string) {
+    abort.current?.abort();
+    setScope(sc);
+    setCurrent(null);
+    setResult(null);
+    setFresh(new Set());
+    setError(null);
+    setRoots([]);
+    if (sc !== "pick") run(scopeRoots(sc), null, sc);
   }
 
   async function keep() {
     if (!saved || !result) return;
-    const ex: Exploration = { id: newId(), name: nameFor(roots), roots, seen: result.candidates.map((c) => c.oa), made: new Date().toISOString(), looked: new Date().toISOString() };
+    const pick = scope === "pick";
+    const ex: Exploration = { id: newId(), name: scopeName(scope), ...(pick ? {} : { scope }), roots: pick ? roots : [], seen: result.candidates.map((c) => c.oa), made: new Date().toISOString(), looked: new Date().toISOString() };
     setCurrent(ex);
     await persist({ ...saved, items: [ex, ...saved.items] });
   }
@@ -150,6 +202,7 @@ export function ExploreView(props: {
       setCurrent(null);
       setResult(null);
       setRoots([]);
+      setScope("pick");
     }
   }
 
@@ -175,6 +228,14 @@ export function ExploreView(props: {
     const root = "oa" in s ? (s as Root) : await rootOf(s as Paper);
     setQuery("");
     if (!root || roots.some((x) => x.oa === root.oa)) return;
+    if (scope !== "pick") {
+      // Picking a root leaves the library branch for one of your own.
+      setScope("pick");
+      setCurrent(null);
+      setRoots([root]);
+      run([root], null, "pick");
+      return;
+    }
     setRootList([...roots, root]);
   }
 
@@ -206,7 +267,7 @@ export function ExploreView(props: {
         <div class="explore-saved" aria-label="Kept branches">
           {saved.items.map((ex) => (
             <span key={ex.id} class={`explore-chip ${current?.id === ex.id ? "on" : ""}`}>
-              <button class="explore-chip-name" onClick={() => open(ex)} title={ex.roots.map((s) => s.title).join("\n")}>
+              <button class="explore-chip-name" onClick={() => open(ex)} title={ex.scope ? scopeName(ex.scope) : ex.roots.map((s) => s.title).join("\n")}>
                 <span class="explore-chip-text">{ex.name}</span>
                 {current?.id === ex.id && fresh.size > 0 && <span class="new-badge">{fresh.size} fresh</span>}
               </button>
@@ -214,8 +275,8 @@ export function ExploreView(props: {
               <button class="explore-chip-x" onClick={() => forget(ex)} aria-label={`Forget ${ex.name}`}><Icon name="x" size={13} /></button>
             </span>
           ))}
-          {(current || roots.length > 0) && (
-            <button class="link small explore-new" onClick={() => { setCurrent(null); setRoots([]); setResult(null); }}>
+          {current && (
+            <button class="link small explore-new" onClick={() => choose(scope === "pick" ? "pick" : scope)}>
               + New branch
             </button>
           )}
@@ -223,14 +284,26 @@ export function ExploreView(props: {
       )}
 
       <div class="explore-roots">
-        <span class="small muted">Roots:</span>
-        {roots.map((s) => (
+        <label class="small muted grow-from">
+          Grow from{" "}
+          <select value={scope} onChange={(e) => choose(e.currentTarget.value)} aria-label="Grow from">
+            <option value="library">your whole library</option>
+            {folders.map(([f, n]) => <option key={f} value={`folder:${f}`}>{f} ({n})</option>)}
+            <option value="pick">papers I pick</option>
+          </select>
+        </label>
+        {scope !== "pick" && (
+          <span class="small muted">
+            {known ? `${scopeRoots(scope).length} papers with references as roots; works tied to two or more of them are shown.` : "Looking up your papers' references first…"}
+          </span>
+        )}
+        {scope === "pick" && roots.map((s) => (
           <span key={s.oa} class="chip root-chip" title={s.title}>
             {s.paperId && byId.get(s.paperId) ? nameOf(byId.get(s.paperId)!) : s.title.length > 40 ? `${s.title.slice(0, 38)}…` : s.title}
             <button onClick={() => setRootList(roots.filter((x) => x.oa !== s.oa))} aria-label={`Remove ${s.title}`}><Icon name="x" size={12} /></button>
           </span>
         ))}
-        <span class="root-add">
+        {scope === "pick" && <span class="root-add">
           <input
             type="search"
             value={query}
@@ -251,8 +324,8 @@ export function ExploreView(props: {
               ))}
             </ul>
           )}
-        </span>
-        {result && !current && roots.length > 0 && !props.readOnly && (
+        </span>}
+        {result && !current && (scope !== "pick" || roots.length > 0) && !props.readOnly && (
           <button class="primary small-btn" onClick={keep} title="Keep it; opening it later marks what is fresh since">Keep this branch</button>
         )}
       </div>
@@ -264,14 +337,14 @@ export function ExploreView(props: {
       )}
       {error && <p class="error">{error}</p>}
 
-      {!roots.length && !busy && (
+      {scope === "pick" && !roots.length && !busy && (
         <div class="explore-empty muted">
-          <p>Start from one paper or several: its roots. Branching out reads what cites them, what they cite, and what shares their references, and ranks each by how closely it ties to the roots and the rest of your library.</p>
+          <p>Pick one paper or several as roots. Branching out reads what cites them, what they cite, and what shares their references, and ranks each by how closely it ties to the roots and the rest of your library.</p>
           <p class="small">Tip: on the Map, tap a paper and choose <em>Branch out from this</em>. Kept branches mark what is fresh each time you open them.</p>
         </div>
       )}
 
-      {result && roots.length > 0 && (
+      {result && (scope !== "pick" || roots.length > 0) && (
         <>
           <div class="explore-filters">
             <input type="search" placeholder="Filter by words" value={filter.text ?? ""} onInput={(e) => setFilter({ ...filter, text: e.currentTarget.value })} aria-label="Filter by words" />
@@ -294,7 +367,7 @@ export function ExploreView(props: {
           {(sel || selRoot) && (
             <div class="map-card">
               {sel ? (
-                <CandidateCard c={sel} roots={result.roots.length} isNew={fresh.has(sel.oa)} added={added.has(sel.oa)} readOnly={props.readOnly} onAdd={() => add(sel)} onRoot={() => addRoot({ oa: sel.oa, title: sel.draft.title, paperId: sel.paperId })} onOpen={sel.paperId ? () => props.onOpen(sel.paperId!, 0) : undefined} />
+                <CandidateCard c={sel} roots={result.roots.length} library={result.library} isNew={fresh.has(sel.oa)} added={added.has(sel.oa)} readOnly={props.readOnly} onAdd={() => add(sel)} onRoot={() => addRoot({ oa: sel.oa, title: sel.draft.title, paperId: sel.paperId })} onOpen={sel.paperId ? () => props.onOpen(sel.paperId!, 0) : undefined} />
               ) : (
                 <>
                   <div class="cand-title">{selRoot!.title}</div>
@@ -304,12 +377,12 @@ export function ExploreView(props: {
             </div>
           )}
           <p class="muted small">
-            {shownAll.length} of {result.candidates.length} works around {result.roots.length > 1 ? `${result.roots.length} roots` : "the root"}{filter.hideLibrary ? ", leaving out the ones you have" : ""}. The picture shows the closest {drawn.length}, yours filled and the rest hollow.
+            {shownAll.length} of {result.candidates.length} works {result.library ? "tied to two or more of your papers" : `around ${result.roots.length > 1 ? `${result.roots.length} roots` : "the root"}`}{filter.hideLibrary && !result.library ? ", leaving out the ones you have" : ""}. The picture shows the closest {drawn.length}{result.roots.length > 25 ? " and the papers of yours they tie to most" : ""}.
           </p>
           <ul class="candidates explore-list">
             {shownAll.slice(0, more).map((c) => (
               <li key={c.oa} class={`explore-item ${picked === c.oa ? "picked" : ""}`}>
-                <CandidateCard c={c} roots={result.roots.length} isNew={fresh.has(c.oa)} added={added.has(c.oa)} readOnly={props.readOnly} compact onPick={() => setPicked(c.oa)} onAdd={() => add(c)} onRoot={() => addRoot({ oa: c.oa, title: c.draft.title, paperId: c.paperId })} onOpen={c.paperId ? () => props.onOpen(c.paperId!, 0) : undefined} />
+                <CandidateCard c={c} roots={result.roots.length} library={result.library} isNew={fresh.has(c.oa)} added={added.has(c.oa)} readOnly={props.readOnly} compact onPick={() => setPicked(c.oa)} onAdd={() => add(c)} onRoot={() => addRoot({ oa: c.oa, title: c.draft.title, paperId: c.paperId })} onOpen={c.paperId ? () => props.onOpen(c.paperId!, 0) : undefined} />
               </li>
             ))}
           </ul>
@@ -320,9 +393,9 @@ export function ExploreView(props: {
   );
 }
 
-function CandidateCard(props: { c: Candidate; roots: number; isNew: boolean; added: boolean; readOnly?: boolean; compact?: boolean; onPick?(): void; onAdd(): void; onRoot(): void; onOpen?(): void }) {
+function CandidateCard(props: { c: Candidate; roots: number; library?: boolean; isNew: boolean; added: boolean; readOnly?: boolean; compact?: boolean; onPick?(): void; onAdd(): void; onRoot(): void; onOpen?(): void }) {
   const { c } = props;
-  const why = reasons(c, props.roots);
+  const why = reasons(c, props.roots, props.library);
   return (
     <div class="cand">
       <div class="cand-main">
@@ -349,18 +422,36 @@ function CandidateCard(props: { c: Candidate; roots: number; isNew: boolean; add
 }
 
 function ExploreGraph(props: { result: Neighbourhood; shown: Candidate[]; fresh: Set<string>; picked: string | null; setPicked(id: string | null): void }) {
-  const narrow = typeof window !== "undefined" && window.innerWidth < 640;
+  // Narrow by the room the panel has (a phone, or snapped to the side), not the window.
+  const box = useRef<HTMLDivElement>(null);
+  const [narrow, setNarrow] = useState(typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => {
+    if (!box.current || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([e]) => setNarrow(e.contentRect.width < 640));
+    ro.observe(box.current);
+    return () => ro.disconnect();
+  }, []);
   const width = narrow ? 520 : 1000;
   const height = narrow ? 460 : 480;
   const { result, shown, picked } = props;
   const rootIds = new Set(result.roots.map((s) => s.oa));
+  // A library branch's roots are your own papers: drawn, but only the picked one named.
+  const rootLabel = new Set(result.library || result.roots.length > 25 ? [] : result.roots.map((s) => s.oa));
+  // With many roots (a library branch), draw only the roots the shown works tie to most.
+  const drawnRoots = useMemo(() => {
+    if (result.roots.length <= 25) return result.roots;
+    const ties = new Map<string, number>();
+    for (const c of shown) for (const id of [...c.citesRoots, ...c.citedByRoots]) ties.set(id, (ties.get(id) ?? 0) + 1);
+    return result.roots.filter((r) => ties.has(r.oa)).sort((a, b) => ties.get(b.oa)! - ties.get(a.oa)!).slice(0, 25);
+  }, [result, shown]);
+  const many = result.roots.length > 25;
   const items = useMemo(() => {
     const rows = [
-      ...result.roots.map((s) => ({ id: s.oa, year: s.year, cited: s.cited, r: 9, refs: s.refs, label: s.title })),
+      ...drawnRoots.map((s) => ({ id: s.oa, year: s.year, cited: s.cited, r: many ? 5 : 9, refs: s.refs, label: s.paperId ? s.title : s.title })),
       ...shown.map((c) => ({ id: c.oa, year: c.year, cited: c.cited, r: 3 + Math.min(7, 1.6 * (c.citesRoots.length + c.citedByRoots.length) + c.shared / 6 + c.libraryLinks.length * 0.6), refs: c.refs, label: draftName(c.draft) })),
     ].filter((x) => x.year);
     return rows;
-  }, [result, shown]);
+  }, [drawnRoots, shown]);
   const years = useMemo((): [number, number] => {
     const ys = items.map((i) => i.year);
     return ys.length ? [Math.min(...ys) - 1, Math.max(...ys) + 1] : [2000, 2026];
@@ -376,14 +467,14 @@ function ExploreGraph(props: { result: Neighbourhood; shown: Candidate[]; fresh:
   const { view, svg, moved, zoom, handlers } = usePanZoom(width, height);
   const near = picked ? new Set([picked, ...edges.filter(([a, b]) => a === picked || b === picked).flat()]) : null;
   const byOa = new Map(shown.map((c) => [c.oa, c]));
-  const labelled = new Set([...rootIds, ...shown.slice(0, narrow ? 5 : 10).map((c) => c.oa), ...(near ?? [])]);
+  const labelled = new Set([...rootLabel, ...shown.slice(0, narrow ? 5 : 10).map((c) => c.oa), ...(near ?? [])]);
   const span = Math.max(1, years[1] - years[0]);
   const step = span > 40 ? 10 : span > 16 ? 5 : span > 6 ? 2 : 1;
   const ticks: number[] = [];
   for (let y = Math.ceil(years[0] / step) * step; y <= years[1]; y += step) ticks.push(y);
 
   return (
-    <div class="explore-graph">
+    <div class="explore-graph" ref={box}>
       <div class="map-tools">
         <span class="muted small">Across by year, up by citations. Bigger means closer ties.</span>
         <span class="legend-key small"><i class="k root" /> root <i class="k have" /> in your library <i class="k out" /> not yet <i class="k fresh" /> fresh</span>
