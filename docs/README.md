@@ -18,6 +18,7 @@ your own key.
 - [Writing with your library](WRITING.md): citations in any journal style, LaTeX and Overleaf, citations for a whole draft, a .bib for a manuscript.
 - [Sharing and devices](SHARING.md): several devices, shared libraries, the phone app.
 - [Claude and other AI apps (MCP)](MCP.md): use your library from Claude, Claude Code or any MCP app.
+- [The command line](CLI.md): the `lightkone` command and Python package, on the same files as the app.
 - [Your data](PRIVACY.md): what is processed where, and what leaves your browser.
 - [Questions and fixes](FAQ.md): common questions, and what to do when something goes wrong.
 

@@ -11,7 +11,7 @@ import type { Plugin } from "vite";
 /** The pages in the order the side bar lists them, by section. */
 export const NAV: [string, string[]][] = [
   ["Start here", ["README", "GETTING-STARTED", "PAPERPILE", "STORAGE"]],
-  ["Using Lightkone", ["READING", "FINDING", "WRITING", "SHARING", "MCP", "PRIVACY", "FAQ"]],
+  ["Using Lightkone", ["READING", "FINDING", "WRITING", "SHARING", "MCP", "CLI", "PRIVACY", "FAQ"]],
   ["Running your own", ["HOSTING", "RELEASING", "PLUGINS", "ARCHITECTURE"]],
 ];
 

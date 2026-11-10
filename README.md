@@ -23,6 +23,10 @@ plain files in storage you choose.
 - **Your library in Claude (MCP).** Connect Claude, Claude Code or any MCP app
   to search your library, read papers and your highlights, and add or tag
   papers. See [docs/MCP.md](docs/MCP.md).
+- **A command line and Python package.** `pipx install lightkone`, then
+  `lightkone ls`, `add`, `tag`, `export`, `map` and more on the same files, or
+  load the library into pandas and networkx. The code is in `cli/`; see
+  [docs/CLI.md](docs/CLI.md).
 - **Plugins.** Storage, lookups, importers and paper actions are all plugins,
   including the built-in ones. Load your own from a URL.
 - **Cheap to run.** A static site with no server. One person or a small team can
@@ -113,3 +117,11 @@ The documentation is also served with the app, at `/docs/` (built from `docs/*.m
 - [docs/STORAGE.md](docs/STORAGE.md): setting up each storage backend
 - [docs/HOSTING.md](docs/HOSTING.md): deploying to Cloudflare Pages or any static host
 - [docs/RELEASING.md](docs/RELEASING.md): staging on every merge, the live site on a version tag, and how to release
+
+## License
+
+The web app is under the [GNU Affero General Public License v3.0](LICENSE):
+you may use, change and host it, and if you offer a changed copy to others
+over a network, you share your changes under the same license. The command
+line and Python package in `cli/` are under [Apache-2.0](cli/LICENSE), so
+they can go into any script or project.
