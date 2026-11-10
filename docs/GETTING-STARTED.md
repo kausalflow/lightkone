@@ -23,7 +23,8 @@ At first the library is kept in this browser only. That is fine for a look
 around. For a library you mean to keep, open **Settings** and choose a
 bucket (Cloudflare R2, AWS S3, MinIO) or a private GitHub repository, so it
 is safe and on every device. [Where your library lives](STORAGE.md) walks
-through each one. Do this before adding much: Lightkone can't yet move a
+through each one; **Check these settings** tests yours before you save, and
+[Set up with AI](SETUP-WITH-AI.md) lets an assistant do most of it. Do this before adding much: Lightkone can't yet move a
 whole library from the browser to other storage.
 
 ## 3. Add papers

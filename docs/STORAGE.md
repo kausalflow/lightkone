@@ -213,6 +213,10 @@ choose them under **Offline papers** (see [Reading offline](READING.md#reading-o
 
 ## Troubleshooting
 
+First press **Check these settings** under the storage settings: it tries
+the storage and says what is wrong. [Set up with AI](SETUP-WITH-AI.md) has
+more.
+
 - **"Could not open … Failed to fetch"** with a bucket almost always means
   CORS: the bucket's rule doesn't list the site's exact address (scheme and
   host, no trailing slash).
