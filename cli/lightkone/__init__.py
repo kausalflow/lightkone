@@ -1,6 +1,6 @@
 """Read and write a Lightkone library from Python: the same files the web app keeps in your storage."""
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 from lightkone.library import BIB_PATH, LIBRARY_PATH, Library
 from lightkone.storage import (
