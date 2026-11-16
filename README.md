@@ -49,8 +49,9 @@ Settings stay in this browser; **Settings → Backup** saves them to a file
 ## Adding papers from anywhere
 
 - **On Android**, open Lightkone in Chrome and choose **Install app**. It then
-  appears in the share menu: share a paper's page (or an arXiv or DOI link) to
-  Lightkone and it is added.
+  appears in the share menu: share a paper's page (or an arXiv or DOI link, or
+  a link to a PDF) to Lightkone and it is added, with its PDF when one can be
+  had.
 - **On a computer**, drag the **+ Lightkone** link from the Add panel to the
   bookmarks bar. On a paper's page it reads the citation tags most publishers
   and arXiv provide and adds the paper.

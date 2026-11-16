@@ -12,8 +12,10 @@ export function capturedInput(search: string): string | null {
   if (q.get("add")?.trim()) return q.get("add")!.trim();
   const shared = ["url", "text", "title"].map((k) => q.get(k) ?? "").join("\n").trim();
   if (!shared) return null;
-  // Prefer an identifier anywhere in what was shared, then the first link.
-  return shared.match(ARXIV)?.[0] ?? shared.match(DOI)?.[0].replace(/[.,;)]+$/, "") ?? shared.match(LINK)?.[0] ?? shared.split("\n")[0];
+  // Prefer an arXiv id anywhere in what was shared, then the first link (a link with
+  // a DOI in it still finds the paper by its DOI, and its page or PDF can bring the PDF), then a DOI.
+  const link = shared.match(LINK)?.[0].replace(/[.,;)]+$/, "");
+  return shared.match(ARXIV)?.[0] ?? link ?? shared.match(DOI)?.[0].replace(/[.,;)]+$/, "") ?? shared.split("\n")[0];
 }
 
 /** The query keys capture uses, to clear them from the address bar afterwards. */

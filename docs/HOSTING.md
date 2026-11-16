@@ -65,12 +65,23 @@ answers 429: add a `JINA_API_KEY` secret to the Pages project, in both the
 Production and the Preview environment (the staging site is a Preview
 deployment), then deploy again so the Functions see it.
 
+## The file service
+
+`functions/api/file.ts` (at `/api/file?url=<link>`) downloads a file for the
+app: a PDF linked or shared to Lightkone, or a file added to a paper with
+**Add from link**. Like the page service it fetches only public http(s)
+addresses on the usual ports and checks each redirect. It waits at most 30 s
+and takes files up to 80 MB. It always answers `application/octet-stream` as
+an attachment, so nothing it fetches can run as part of the site; the file's
+own type, name and final address go back in `x-file-type`, `x-file-name` and
+`x-file-url` headers.
+
 ## Limits on the services
 
-The services under `/api/` (PDF, web pages, published versions, arXiv, equations, MCP
+The services under `/api/` (PDF, files, web pages, published versions, arXiv, equations, MCP
 address) are for the site's own app. `functions/api/_middleware.ts` refuses
 calls that a browser says come from another website, and limits each address
-to a number of calls a minute per service (30 for PDFs, 120 for equations; see
+to a number of calls a minute per service (30 for PDFs and files, 120 for equations; see
 `LIMITS`), answering `429` with `Retry-After` beyond that. Normal use stays far
 below these.
 

@@ -51,7 +51,7 @@ if you set one), then reload. Search `no:pdf` for the ones still missing. See
 
 **"No free PDF found"**: the paper has no legal open-access copy, or no
 contact email is set under **Settings → PDFs** (needed for non-arXiv papers).
-Use **Attach PDF**.
+Use **Attach PDF or files** in the paper's Files, or **Add from link** with a link to the PDF or to the paper's page.
 
 **"Not saved" at the top**: the last save didn't reach your storage, and a
 message says why. Your changes are still in the open page, and the next change

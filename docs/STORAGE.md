@@ -75,7 +75,7 @@ Keep in mind:
 - Clearing the site's data in the browser deletes the library. Lightkone asks
   the browser to keep its data (Settings says whether it agreed), but don't
   keep your only copy here.
-- PDFs come in one at a time: downloaded free copies, or **Attach PDF**.
+- PDFs and other files come in one at a time: downloaded free copies, files from links, or **Attach PDF or files**.
 
 Lightkone can't yet move a whole library out of this browser into a bucket or
 repository. **Export .bib** (the download button at the top) takes the papers,

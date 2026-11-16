@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { ActionResult, BibTarget, Paper, PaperDraft, StorageAdapter } from "./core/types";
+import type { ActionResult, Attachment, BibTarget, Paper, PaperDraft, StorageAdapter } from "./core/types";
 import { Library } from "./core/library";
 import { moveOldPdfs, pdfLocation } from "./core/filing";
 import { parseQuery, search, type SortBy } from "./core/search";
@@ -46,12 +46,13 @@ import { renderMarkdown } from "./core/markdown";
 import { useMath } from "./core/math";
 import { defaultBibPath, folderTargets, papersInFolder, runBibSync } from "./core/bibsync";
 import { githubStorage } from "./plugins/storage-github";
-import { crossref } from "./plugins/lookup";
+import { crossref, doiOf as doiIn } from "./plugins/lookup";
 import { findDuplicates, findPublished, mergeInto, pickKeeper, type Published } from "./core/tidy";
 import { HEALTH_LABEL, SEVERITY, checkHealth, checkable, due, worst, type Health, type Notice } from "./core/health";
 import { annotationsPath } from "./core/annotations";
 import { Icon, type IconName } from "./icons";
 import { site } from "./core/site";
+import { attachment, attachmentPath, fetchFile, fetchPdf, isPdfLink, pdfLinkFor, rememberPdfLink, sizeLabel, typeOf } from "./core/remotefile";
 import { fetchPage, hasPage, htmlPath, isPageFile, isWebLink, linkDraft, linkOnlyReason, markdownFile, markdownPath, pageDraft, pageFromFile, pageMarkdown, takePage, type FetchedPage } from "./core/webpage";
 import { joinPages, textPath } from "./core/fulltext";
 import { VersionLine } from "./Version";
@@ -618,25 +619,68 @@ export function App() {
   }
 
   /** Add a paper with its PDF file; a paper already in the library gets the PDF if it has none. */
-  async function addWithPdf(draft: PaperDraft, bytes: Uint8Array): Promise<"added" | "attached" | "had"> {
+  async function addWithPdf(draft: PaperDraft, bytes: Uint8Array): Promise<{ outcome: "added" | "attached" | "had"; paper: Paper }> {
     const added = addDrafts([draft], false);
     const p = added[0] ?? library.findDuplicate(draft);
     if (!storage || !p) throw new Error("Could not add it to the library.");
-    if (p.pdf) return "had";
+    if (p.pdf) return { outcome: "had", paper: p };
     const where = pdfLocation(p, library.papers);
     await storage.write(where.pdf, bytes, "application/pdf");
     library.update(p.id, where);
     scheduleSave();
     if (added.length) setSelected(p.id);
-    return added.length ? "added" : "attached";
+    return { outcome: added.length ? "added" : "attached", paper: p };
+  }
+
+  /**
+   * Keep files with a paper. The first PDF of a paper with none becomes its PDF,
+   * the one Read opens; everything else (further PDFs, supplements, data, slides)
+   * is kept beside it as an attachment.
+   */
+  async function attachFiles(id: string, files: { bytes: Uint8Array; name: string; type?: string; from?: string }[]): Promise<void> {
+    if (!storage) throw new Error("Choose where your library lives first.");
+    for (const f of files) {
+      const p = library.papers.find((q) => q.id === id);
+      if (!p) return;
+      const type = typeOf(f.name, f.type);
+      if (!p.pdf && type === "application/pdf") {
+        const where = pdfLocation(p, library.papers);
+        await storage.write(where.pdf, f.bytes, "application/pdf");
+        library.update(p.id, where);
+      } else {
+        const path = attachmentPath(p, f.name, library.papers);
+        await storage.write(path, f.bytes, type);
+        library.update(p.id, { attachments: [...(p.attachments ?? []), attachment(path, f.name, f.bytes, type, f.from)] });
+      }
+      scheduleSave();
+    }
+  }
+
+  /** Take a file off a paper; its copy in storage goes too, where storage allows. */
+  async function removeAttachment(id: string, a: Attachment) {
+    const p = library.papers.find((q) => q.id === id);
+    if (!p) return;
+    library.update(id, { attachments: (p.attachments ?? []).filter((x) => x.path !== a.path) });
+    scheduleSave();
+    await storage?.remove?.(a.path).catch(() => undefined);
+  }
+
+  /** Make an attached PDF the paper's PDF (the one Read opens); the old one becomes an attachment. */
+  function makeMainPdf(id: string, a: Attachment) {
+    const p = library.papers.find((q) => q.id === id);
+    if (!p) return;
+    const rest = (p.attachments ?? []).filter((x) => x.path !== a.path);
+    const old = p.pdf ? [{ path: p.pdf, name: p.pdf.split("/").pop()!, type: "application/pdf", added: p.added }] : [];
+    library.update(id, { pdf: a.path, file: a.path.startsWith(PDF_DIR) ? a.path.slice(PDF_DIR.length) : p.file, attachments: [...old, ...rest] });
+    scheduleSave();
   }
 
   /** Add a page saved from the browser; a page already in the library (kept as a link, say) gets the copy if it has none. */
-  async function addSavedPage(page: FetchedPage): Promise<"added" | "attached" | "had"> {
+  async function addSavedPage(page: FetchedPage): Promise<{ outcome: "added" | "attached" | "had"; paper: Paper }> {
     const draft = pageDraft(new DOMParser().parseFromString(page.html, "text/html"), page.url);
     const plain = (u?: string) => u?.replace(/^https?:\/\/(www\.)?/i, "").replace(/[/#?]+$/, "");
     const existing = library.papers.find((q) => q.url && (plain(q.url) === plain(page.url) || plain(q.url) === plain(draft.url))) ?? library.findDuplicate(draft);
-    if (existing?.html) return "had";
+    if (existing?.html) return { outcome: "had", paper: existing };
     // A page kept as a link has a title made from its address; the page itself says better.
     if (existing?.url && existing.title === linkDraft(existing.url).title) {
       const { title, authors, year, venue, abstract } = draft;
@@ -646,15 +690,20 @@ export function App() {
     if (!storage || !p) throw new Error("Could not add it to the library.");
     if (!(await savePage(p.url ? p : { ...p, url: draft.url }, true, page))) throw new Error("Could not save the page.");
     setSelected(p.id);
-    return existing ? "attached" : "added";
+    return { outcome: existing ? "attached" : "added", paper: p };
   }
 
   /** Download a free PDF into storage. Quiet when it runs on its own. */
   async function getPdf(p: Paper, quiet = false): Promise<boolean> {
-    if (!storage || p.pdf || !canFindOpenPdf(p, pdfOptions(settings))) return false;
+    const pageLink = pdfLinkFor(p);
+    if (!storage || p.pdf || !(canFindOpenPdf(p, pdfOptions(settings)) || pageLink)) return false;
     if (!quiet) setBusy("Looking for a free PDF");
     try {
-      const bytes = await findOpenPdf(p, pdfOptions(settings));
+      let bytes = canFindOpenPdf(p, pdfOptions(settings)) ? await findOpenPdf(p, pdfOptions(settings)) : null;
+      // No open copy: the PDF the paper's own page links, when it was added from that page.
+      if (!bytes && pageLink) bytes = (await fetchPdf(pageLink).catch(() => null))?.bytes ?? null;
+      // It may have got a PDF another way while this looked.
+      if (library.papers.find((q) => q.id === p.id)?.pdf) return true;
       if (!bytes) {
         if (!quiet) setError(`No free PDF found for "${p.title}".`);
         return false;
@@ -1304,6 +1353,9 @@ export function App() {
             setReadingWeb(paper.id);
           }}
           onAdd={(d) => addDrafts([d]).length > 0}
+          onAttach={(files) => attachFiles(paper.id, files)}
+          onRemoveAttachment={(a) => removeAttachment(paper.id, a)}
+          onMakeMain={(a) => makeMainPdf(paper.id, a)}
           onCitedBy={s2Id(paper) ? () => setCitedBy(paper.id) : undefined}
           onExplore={storage && doiOf(paper) ? () => openTool("map", { paperId: paper.id }) : undefined}
           onError={setError}
@@ -1474,8 +1526,11 @@ export function App() {
           onAdd={(drafts) => {
             const added = addDrafts(drafts);
             if (added.length === 1) setSelected(added[0].id);
-            return added.length;
+            return added;
           }}
+          onFind={(d) => library.findDuplicate(d) ?? null}
+          library={library.papers}
+          onOpen={(id) => { setSelected(id); setPanel(null); setCaptured(null); setSharedFiles([]); }}
           canAdd={Boolean(storage)}
         />
       )}
@@ -1762,6 +1817,9 @@ function Detail(props: {
   onAction(id: string, fresh?: boolean): void;
   onRead(): void;
   onGetPdf?(): void;
+  onAttach(files: { bytes: Uint8Array; name: string; type?: string; from?: string }[]): Promise<void>;
+  onRemoveAttachment(a: Attachment): void;
+  onMakeMain(a: Attachment): void;
   /** Save a copy of the paper's web page; undefined when it has none to save. */
   onSavePage?(): void;
   onReadPage(): void;
@@ -1803,14 +1861,6 @@ function Detail(props: {
     } catch (e) {
       props.onError(`Could not store the PDF: ${(e as Error).message}`);
     }
-  }
-  async function openPdf() {
-    if (!storage || !p.pdf) return;
-    const tab = window.open("", "_blank");
-    const bytes = await storage.read(p.pdf);
-    if (!bytes) return props.onError("The PDF is missing from storage.");
-    const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" }));
-    if (tab) tab.location.href = url;
   }
 
   const links: [string, string][] = [];
@@ -1929,21 +1979,20 @@ function Detail(props: {
               <Icon name="link" size={14} /> {label}
             </a>
           ))}
-          {p.pdf && (
-            <button class="pill" onClick={openPdf}>
-              <Icon name="file" size={14} /> PDF file
-            </button>
-          )}
           {p.pdf && props.offline !== undefined && (
             <button class={`pill ${props.offline ? "on" : ""}`} aria-pressed={props.offline} onClick={props.onOffline} title={props.offline ? "Kept on this device; press to remove it from here" : "Keep this PDF on this device, to read with no network"}>
               <Icon name={props.offline ? "check" : "download"} size={14} /> {props.offline ? "Kept offline" : "Keep offline"}
             </button>
           )}
-          <label class="pill file">
-            <Icon name="upload" size={14} /> {p.pdf ? "Replace PDF" : "Attach PDF"}
-            <input type="file" accept="application/pdf" onChange={(e) => e.currentTarget.files?.[0] && attachPdf(e.currentTarget.files[0])} />
-          </label>
+          {p.pdf && (
+            <label class="pill file">
+              <Icon name="upload" size={14} /> Replace PDF
+              <input type="file" accept="application/pdf" onChange={(e) => e.currentTarget.files?.[0] && attachPdf(e.currentTarget.files[0])} />
+            </label>
+          )}
         </div>
+
+        {storage && <PaperFiles paper={p} storage={storage} onAttach={props.onAttach} onRemove={props.onRemoveAttachment} onMakeMain={props.onMakeMain} onError={props.onError} />}
 
         {props.result && props.result.kind === "text" && (
           <div class="result">
@@ -2328,18 +2377,164 @@ function BibSyncPanel(props: {
   );
 }
 
+/** Open a stored file: a PDF or image in a new tab, anything else saved to the device under its own name. */
+async function openStored(storage: StorageAdapter, path: string, name: string, type: string, onError: (m: string) => void) {
+  const viewable = /^(application\/pdf|image\/|text\/plain|video\/|audio\/)/.test(type);
+  const tab = viewable ? window.open("", "_blank") : null;
+  const bytes = await storage.read(path).catch(() => null);
+  if (!bytes) {
+    tab?.close();
+    return onError(`${name} is missing from storage.`);
+  }
+  const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type }));
+  if (tab) tab.location.href = url;
+  else {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/**
+ * The files kept with a paper: its PDF and anything else (more PDFs, a supplement,
+ * data, slides), from the device or from a link.
+ */
+function PaperFiles(props: {
+  paper: Paper;
+  storage: StorageAdapter;
+  onAttach(files: { bytes: Uint8Array; name: string; type?: string; from?: string }[]): Promise<void>;
+  onRemove(a: Attachment): void;
+  onMakeMain(a: Attachment): void;
+  onError(m: string): void;
+}) {
+  const { paper: p, storage } = props;
+  const [linking, setLinking] = useState(false);
+  const [link, setLink] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const files = p.attachments ?? [];
+
+  async function fromDevice(list: File[]) {
+    setBusy(list.length > 1 ? `Adding ${list.length} files…` : `Adding ${list[0].name}…`);
+    setNote(null);
+    try {
+      await props.onAttach(await Promise.all(list.map(async (f) => ({ bytes: new Uint8Array(await f.arrayBuffer()), name: f.name, type: f.type }))));
+      setNote(list.length > 1 ? `Added ${list.length} files.` : `Added ${list[0].name}.`);
+    } catch (e) {
+      props.onError(`Could not store the file: ${(e as Error).message}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function fromLink(e: Event) {
+    e.preventDefault();
+    const url = link.trim();
+    if (!/^https?:\/\//i.test(url)) return setNote("Paste a link that starts with https://");
+    setBusy(`Downloading from ${new URL(url).hostname}…`);
+    setNote(null);
+    try {
+      // A page that names its PDF (a publisher's article page, say) brings that PDF; any other file comes as it is.
+      let f = await fetchFile(url);
+      if (/html|xml/.test(f.type)) f = await fetchPdf(url);
+      await props.onAttach([{ bytes: f.bytes, name: f.name, type: f.type, from: url }]);
+      setNote(`Added ${f.name} (${sizeLabel(f.bytes.length)}).`);
+      setLink("");
+      setLinking(false);
+    } catch (err) {
+      setNote((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div class="paper-files">
+      <h3 class="eyebrow-h">Files{files.length + (p.pdf ? 1 : 0) > 0 ? ` · ${files.length + (p.pdf ? 1 : 0)}` : ""}</h3>
+      {(p.pdf || files.length > 0) && (
+        <ul class="file-list">
+          {p.pdf && (
+            <li>
+              <button class="file-name" onClick={() => openStored(storage, p.pdf!, p.pdf!.split("/").pop()!, "application/pdf", props.onError)}>
+                <Icon name="file" size={16} /> <span>{p.pdf.split("/").pop()}</span>
+              </button>
+              <span class="file-meta">PDF · opens in Read</span>
+            </li>
+          )}
+          {files.map((a) => (
+            <li key={a.path}>
+              <button class="file-name" title={a.from ? `From ${a.from}` : undefined} onClick={() => openStored(storage, a.path, a.name, a.type ?? typeOf(a.name), props.onError)}>
+                <Icon name="file" size={16} /> <span>{a.name}</span>
+              </button>
+              <span class="file-meta">
+                {[(a.type ?? typeOf(a.name)) === "application/pdf" ? "PDF" : a.name.includes(".") ? a.name.split(".").pop()!.toUpperCase() : "File", sizeLabel(a.size)].filter(Boolean).join(" · ")}
+                {(a.type ?? typeOf(a.name)) === "application/pdf" && (
+                  <button class="link" onClick={() => props.onMakeMain(a)} title="Make this the PDF that Read opens">Read this one</button>
+                )}
+                <button class="link danger" onClick={() => confirmRemove(a)}>Remove</button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div class="links">
+        <label class="pill file">
+          <Icon name="upload" size={14} /> {p.pdf || files.length ? "Add files" : "Attach PDF or files"}
+          <input type="file" multiple onChange={(e) => { const fs = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ""; fs.length && fromDevice(fs); }} />
+        </label>
+        <button class={`pill ${linking ? "on" : ""}`} aria-expanded={linking} onClick={() => setLinking(!linking)}>
+          <Icon name="link" size={14} /> Add from link
+        </button>
+      </div>
+      {linking && (
+        <form class="file-link" onSubmit={fromLink}>
+          <input type="url" inputMode="url" value={link} autoFocus placeholder="https://… a PDF, a supplement, or the paper's page" onInput={(e) => setLink(e.currentTarget.value)} />
+          <button class="primary" type="submit" disabled={Boolean(busy)}>Add</button>
+        </form>
+      )}
+      {busy && <p class="muted small file-note"><span class="spinner" aria-hidden="true" /> {busy}</p>}
+      {note && !busy && <p class="muted small file-note">{note}</p>}
+    </div>
+  );
+
+  function confirmRemove(a: Attachment) {
+    if (window.confirm(`Remove ${a.name} from this paper?`)) props.onRemove(a);
+  }
+}
+
+type Outcome = "added" | "attached" | "had";
+
+/** What adding came to: a sentence or two, the papers it touched (to open), and whether anything went wrong. */
+interface AddResult {
+  text: string;
+  papers: Paper[];
+  tone: "good" | "warn" | "bad";
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
 function AddPanel(props: {
   initial?: string;
   files?: File[];
   onClose(): void;
-  onAdd(d: PaperDraft[]): number;
-  onAddPdf(d: PaperDraft, bytes: Uint8Array): Promise<"added" | "attached" | "had">;
-  onAddPage(page: FetchedPage): Promise<"added" | "attached" | "had">;
+  onAdd(d: PaperDraft[]): Paper[];
+  onAddPdf(d: PaperDraft, bytes: Uint8Array): Promise<{ outcome: Outcome; paper: Paper }>;
+  onAddPage(page: FetchedPage): Promise<{ outcome: Outcome; paper: Paper }>;
+  /** The paper already in the library that this draft is. */
+  onFind(d: PaperDraft): Paper | null;
+  onOpen(id: string): void;
+  /** The library as it is now, so a paper shows the PDF that arrived after it was added. */
+  library: Paper[];
   canAdd: boolean;
 }) {
   const [text, setText] = useState(props.initial ?? "");
-  const [message, setMessage] = useState<string | null>(null);
+  const [result, setResult] = useState<AddResult | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
+  const top = useRef<HTMLDivElement>(null);
+  const shared = Boolean(props.initial || props.files?.length);
 
   // Something shared to Lightkone is looked up straight away.
   useEffect(() => {
@@ -2349,24 +2544,34 @@ function AddPanel(props: {
   useEffect(() => {
     if (props.files?.length && props.canAdd) addPdfs(props.files);
   }, [props.files, props.canAdd]);
+  // The outcome is at the top of the sheet; bring it into view on a small screen.
+  useEffect(() => {
+    if (result || progress) top.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [result, progress]);
+
+  function finish(lines: (string | false | 0 | undefined)[], papers: Paper[], problems: boolean) {
+    const said = lines.filter(Boolean).join(" ");
+    const unique = [...new Map(papers.map((p) => [p.id, p])).values()];
+    setResult({ text: said || "Nothing new to add.", papers: unique, tone: problems ? (unique.length ? "warn" : "bad") : "good" });
+  }
 
   /**
    * Each PDF becomes a paper: found from the DOI or arXiv id it prints, else by Claude, else under its own title.
    * A page saved from the browser (.html or .mhtml) is added as a saved web page.
    */
-  async function addPdfs(files: File[]) {
-    setWorking(true);
-    setMessage(null);
+  async function readFiles(files: File[], papers: Paper[]) {
     const { pdfFirstPages } = await import("./reader/view");
     const counts = { added: 0, attached: 0, had: 0 };
     const saved = { added: 0, attached: 0, had: 0 };
     const failed: string[] = [];
     for (const [i, file] of files.entries()) {
-      if (files.length > 1) setMessage(`Reading ${i + 1} of ${files.length}: ${file.name}`);
+      if (files.length > 1) setProgress(`Reading ${i + 1} of ${files.length}: ${file.name}`);
       try {
         // Shared files can come with a wrong type, so the first bytes decide.
         if (isPageFile(file) && (await file.slice(0, 5).text()) !== "%PDF-") {
-          saved[await props.onAddPage(await pageFromFile(file))]++;
+          const r = await props.onAddPage(await pageFromFile(file));
+          saved[r.outcome]++;
+          papers.push(r.paper);
           continue;
         }
         const bytes = new Uint8Array(await file.arrayBuffer());
@@ -2381,24 +2586,35 @@ function AddPanel(props: {
           draft = await lookups().find((l) => l.id === "claude-find")!.resolve(`The first page of a paper's PDF:\n${firstPage}`).catch(() => null);
         }
         draft ??= { type: "article", title: fallbackTitle(title, file.name), authors: [], fields: {} };
-        counts[await props.onAddPdf(draft, bytes)]++;
+        const r = await props.onAddPdf(draft, bytes);
+        counts[r.outcome]++;
+        papers.push(r.paper);
       } catch (err) {
         failed.push(`${file.name} (${(err as Error).message})`);
       }
     }
-    setMessage(
-      [
-        counts.added && `Added ${counts.added} paper${counts.added > 1 ? "s" : ""} with ${counts.added > 1 ? "their PDFs" : "its PDF"}.`,
-        counts.attached && `Attached ${counts.attached} PDF${counts.attached > 1 ? "s" : ""} to papers already in your library.`,
-        counts.had && `${counts.had} already in your library with a PDF, left unchanged.`,
-        saved.added && `Added ${saved.added} saved page${saved.added > 1 ? "s" : ""}.`,
-        saved.attached && `Kept a copy of ${saved.attached} page${saved.attached > 1 ? "s" : ""} already in your library.`,
-        saved.had && `${saved.had} page${saved.had > 1 ? "s" : ""} already saved, left unchanged.`,
-        failed.length && `Couldn't read: ${failed.join(", ")}`,
-      ]
-        .filter(Boolean)
-        .join(" "),
-    );
+    return {
+      lines: [
+        counts.added && `Added ${plural(counts.added, "paper")} with ${counts.added > 1 ? "their PDFs" : "its PDF"}.`,
+        counts.attached && `Attached ${plural(counts.attached, "PDF")} to ${counts.attached > 1 ? "papers" : "a paper"} already in your library.`,
+        counts.had && `${counts.had > 1 ? `${counts.had} were` : "It was"} already in your library with a PDF, left unchanged.`,
+        saved.added && `Added ${plural(saved.added, "saved page")}.`,
+        saved.attached && `Kept a copy of ${plural(saved.attached, "page")} already in your library.`,
+        saved.had && `${plural(saved.had, "page")} already saved, left unchanged.`,
+        failed.length > 0 && `Couldn't read: ${failed.join(", ")}`,
+      ],
+      failed: failed.length > 0,
+    };
+  }
+
+  async function addPdfs(files: File[]) {
+    setWorking(true);
+    setResult(null);
+    setProgress(files.length > 1 ? `Reading ${files.length} files…` : `Reading ${files[0].name}…`);
+    const papers: Paper[] = [];
+    const r = await readFiles(files, papers);
+    finish(r.lines, papers, r.failed);
+    setProgress(null);
     setWorking(false);
   }
 
@@ -2411,41 +2627,81 @@ function AddPanel(props: {
     const input = raw.trim();
     if (!input) return;
     setWorking(true);
-    setMessage(null);
+    setResult(null);
+    setProgress(shared ? "Adding what you shared…" : "Looking up…");
     try {
       if (input.includes("@") && /@\w+\s*[{(]/.test(input)) {
         const drafts = importers().flatMap((i) => i.parse(input));
-        const n = props.onAdd(drafts);
-        setMessage(`Added ${n} of ${drafts.length} entries${drafts.length > n ? " (the rest were already in your library)" : ""}.`);
+        const added = props.onAdd(drafts);
+        finish([`Added ${added.length} of ${plural(drafts.length, "entry", "entries")}${drafts.length > added.length ? " (the rest were already in your library)" : ""}.`], added, false);
       } else {
         const lines = input.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+        const papers: Paper[] = [];
         let added = 0;
+        let had = 0;
         const missed: string[] = [];
         const linksOnly: string[] = [];
+        const pdfs: File[] = [];
+        const pdfFailed: string[] = [];
         for (const line of lines) {
+          // A link to a PDF (or to a page that only holds one) brings the file itself.
+          const exact = lookups().find((l) => l.id === "arxiv" && l.matches(line));
+          if (!exact && isPdfLink(line)) {
+            try {
+              setProgress(`Downloading ${new URL(line).hostname}…`);
+              const f = await fetchPdf(line);
+              pdfs.push(new File([f.bytes as Uint8Array<ArrayBuffer>], f.name, { type: f.type }));
+              continue;
+            } catch (e) {
+              pdfFailed.push((e as Error).message);
+              // Fall through: a DOI in the link can still find the paper.
+            }
+          }
           const lookup = lookups().find((l) => l.matches(line));
-          const draft = lookup ? await lookup.resolve(line) : null;
-          if (draft) added += props.onAdd([draft]);
-          else missed.push(line);
+          // A publisher's page found by the DOI in its link: the PDF that page names is the fallback when no open copy turns up.
+          if (lookup?.id === "doi" && /^https?:\/\//i.test(line)) rememberPdfLink([doiIn(line) ?? undefined, line], line);
+          let draft: PaperDraft | null = null;
+          try {
+            draft = lookup ? await lookup.resolve(line) : null;
+          } catch (e) {
+            // The page service says the link is a PDF after all.
+            if ((e as { status?: number }).status === 415 && /pdf/i.test((e as Error).message)) {
+              const f = await fetchPdf(line);
+              pdfs.push(new File([f.bytes as Uint8Array<ArrayBuffer>], f.name, { type: f.type }));
+              continue;
+            }
+            throw e;
+          }
+          if (draft) {
+            const fresh = props.onAdd([draft]);
+            added += fresh.length;
+            const p = fresh[0] ?? props.onFind(draft);
+            if (p) papers.push(p);
+            if (!fresh.length) had++;
+          } else missed.push(line);
           const why = linkOnlyReason(draft?.url);
           if (why) linksOnly.push(why);
         }
-        setMessage(
+        const files = pdfs.length ? await readFiles(pdfs, papers) : { lines: [], failed: false };
+        finish(
           [
-            added ? `Added ${added} paper${added > 1 ? "s" : ""}.` : "",
-            missed.length ? `Couldn't find: ${missed.join(", ")}` : "",
-            linksOnly.length
-              ? `${linksOnly.join(" ")} ${linksOnly.length > 1 ? "Those were" : "It was"} kept as a link, without a copy of the page. To keep a copy, open the page in your browser and use the Lightkone bookmark (below), or save the page there and add the file with Add files.`
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" ") || "Already in your library.",
+            added > 0 && `Added ${plural(added, "paper")}.`,
+            had > 0 && !added && !pdfs.length && (lines.length > 1 ? `${had} already in your library.` : "Already in your library."),
+            ...files.lines,
+            pdfFailed.length > 0 && `Couldn't download the PDF: ${pdfFailed.join(" ")}`,
+            missed.length > 0 && `Couldn't find: ${missed.join(", ")}`,
+            linksOnly.length > 0 &&
+              `${linksOnly.join(" ")} ${linksOnly.length > 1 ? "Those were" : "It was"} kept as a link, without a copy of the page. To keep a copy, open the page in your browser and use the Lightkone bookmark (below), or save the page there and add the file with Add files.`,
+          ],
+          papers,
+          files.failed || pdfFailed.length > 0 || missed.length > 0 || linksOnly.length > 0,
         );
       }
       setText("");
     } catch (err) {
-      setMessage((err as Error).message);
+      setResult({ text: (err as Error).message, papers: [], tone: "bad" });
     } finally {
+      setProgress(null);
       setWorking(false);
     }
   }
@@ -2453,21 +2709,47 @@ function AddPanel(props: {
   async function onFile(file: File) {
     const text = await file.text();
     const drafts = importers().flatMap((i) => i.parse(text));
-    const n = props.onAdd(drafts);
-    setMessage(`Imported ${n} new papers from ${file.name} (${drafts.length} entries).`);
+    const added = props.onAdd(drafts);
+    finish([`Imported ${plural(added.length, "new paper")} from ${file.name} (${plural(drafts.length, "entry", "entries")}).`], added, false);
   }
 
+  const shown = (result?.papers.slice(0, 5) ?? []).map((p) => props.library.find((q) => q.id === p.id) ?? p);
   return (
     <div class="overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
       <form class="panel" onSubmit={submit}>
-        <h2>Add papers</h2>
+        <div ref={top} class="add-head">
+          <h2>Add papers</h2>
+          <button type="button" class="icon-btn" aria-label="Close" title="Close (Esc)" onClick={props.onClose}>
+            <Icon name="x" />
+          </button>
+        </div>
+        {progress && (
+          <div class="add-result busy" role="status">
+            <span class="spinner" aria-hidden="true" /> {progress}
+          </div>
+        )}
+        {result && (
+          <div class={`add-result ${result.tone}`} role="status">
+            <p>
+              <Icon name={result.tone === "good" ? "check" : "info"} size={18} /> <span>{result.text}</span>
+            </p>
+            {shown.map((p) => (
+              <button key={p.id} type="button" class="add-result-paper" onClick={() => props.onOpen(p.id)}>
+                <span class="t">{p.title}</span>
+                <span class="m">{[shortAuthors(p), p.year].filter(Boolean).join(" · ")}{p.pdf ? " · PDF" : ""}</span>
+                <span class="go">Open <Icon name="chevron" size={14} /></span>
+              </button>
+            ))}
+            {result.papers.length > shown.length && <p class="muted small">and {result.papers.length - shown.length} more, newest at the top of your library.</p>}
+          </div>
+        )}
         <p class="muted">
-          Paste DOIs, arXiv ids or links (one per line), or BibTeX entries. Add files takes PDFs and pages saved from your browser.
+          Paste DOIs, arXiv ids or links (one per line), links to PDFs, or BibTeX entries. Add files takes PDFs and pages saved from your browser.
           {lookups().some((l) => l.id === "claude-find")
             ? " With a Claude key you can also paste any paper's page, or describe it: \"the 2017 transformer paper by Vaswani\"."
             : ""}
         </p>
-        <textarea rows={6} value={text} autoFocus placeholder={"2106.09685\n10.1103/PhysRevLett.116.061102\n@article{...}"} onInput={(e) => setText(e.currentTarget.value)} />
+        <textarea rows={shared && result ? 3 : 6} value={text} autoFocus={!shared} placeholder={"2106.09685\n10.1103/PhysRevLett.116.061102\nhttps://example.org/paper.pdf\n@article{...}"} onInput={(e) => setText(e.currentTarget.value)} />
         <div class="row">
           <button class="primary" type="submit" disabled={working || !props.canAdd}>{working ? "Looking up…" : "Add"}</button>
           <label class="button">
@@ -2478,11 +2760,9 @@ function AddPanel(props: {
             Import a .bib file
             <input type="file" accept={importers().map((i) => i.accepts).join(",")} onChange={(e) => e.currentTarget.files?.[0] && onFile(e.currentTarget.files[0])} />
           </label>
-          <button type="button" class="ghost" onClick={props.onClose}>Close</button>
         </div>
-        {message && <p class="message">{message}</p>}
         <p class="muted small">
-          On your phone, install Lightkone (browser menu → Install app), then share a paper's page or a PDF file to it. On a computer, drop PDF files or saved pages anywhere on Lightkone, or drag this button to
+          On your phone, install Lightkone (browser menu → Install app), then share a paper's page, a link to a PDF, or a PDF file to it. On a computer, drop PDF files or saved pages anywhere on Lightkone, or drag this button to
           your bookmarks bar and click it on any page:{" "}
           <a class="bookmarklet" href={bookmarklet(location.origin + location.pathname)} onClick={(e) => e.preventDefault()}>
             + Lightkone
@@ -2493,7 +2773,7 @@ function AddPanel(props: {
           <summary>The same bookmark in Chrome on a phone</summary>
           <p>
             Once: bookmark any page (menu → ☆), then edit that bookmark: name it <b>Lightkone</b> and paste this as its address.{" "}
-            <button type="button" class="link" onClick={() => navigator.clipboard?.writeText(bookmarklet(location.origin + location.pathname)).then(() => setMessage("Copied. Paste it as the bookmark's address."))}>
+            <button type="button" class="link" onClick={() => navigator.clipboard?.writeText(bookmarklet(location.origin + location.pathname)).then(() => setResult({ text: "Copied. Paste it as the bookmark's address.", papers: [], tone: "good" }))}>
               Copy the bookmark's address
             </button>
           </p>

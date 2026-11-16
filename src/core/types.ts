@@ -21,6 +21,8 @@ export interface Paper {
   file?: string;
   /** Storage key of a PDF kept in this library's own storage. */
   pdf?: string;
+  /** More files kept with the paper: further PDFs, supplements, data, slides. */
+  attachments?: Attachment[];
   /** Storage key of a saved web page's raw HTML, as it was fetched. */
   html?: string;
   /** Storage key of the saved web page's main text as Markdown, for reading. */
@@ -41,6 +43,21 @@ export interface Paper {
   health?: Health;
   /** Remaining BibTeX fields, lower-cased names, raw values. */
   fields: Record<string, string>;
+}
+
+/** A file kept with a paper besides its main PDF. */
+export interface Attachment {
+  /** Storage key, under papers/. */
+  path: string;
+  /** The file's name as it came, e.g. "supplement.pdf". */
+  name: string;
+  /** Its media type, e.g. "application/pdf". */
+  type?: string;
+  size?: number;
+  /** Where it was downloaded from, when it came from a link. */
+  from?: string;
+  /** ISO timestamp. */
+  added: string;
 }
 
 export type HealthKind = "retracted" | "withdrawn" | "concern" | "corrected" | "addendum";

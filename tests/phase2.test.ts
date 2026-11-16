@@ -13,7 +13,9 @@ describe("capture", () => {
 
   it("finds the identifier in what Android shares", () => {
     expect(capturedInput("?title=Attention&text=" + encodeURIComponent("Look at this https://arxiv.org/abs/1706.03762v7"))).toBe("arxiv.org/abs/1706.03762v7");
-    expect(capturedInput("?url=" + encodeURIComponent("https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.116.061102"))).toBe("10.1103/PhysRevLett.116.061102");
+    // A link with a DOI in it is kept whole: the DOI finds the paper, the page (or PDF) can bring the PDF.
+    expect(capturedInput("?url=" + encodeURIComponent("https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.116.061102"))).toBe("https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.116.061102");
+    expect(capturedInput("?url=" + encodeURIComponent("https://journals.aps.org/prl/pdf/10.1103/PhysRevLett.116.061102"))).toBe("https://journals.aps.org/prl/pdf/10.1103/PhysRevLett.116.061102");
     expect(capturedInput("?text=" + encodeURIComponent("See doi 10.1038/nature14539)."))).toBe("10.1038/nature14539");
     expect(capturedInput("?text=" + encodeURIComponent("Great read https://www.sciencedirect.com/science/article/pii/S0370269312008581"))).toBe(
       "https://www.sciencedirect.com/science/article/pii/S0370269312008581",
