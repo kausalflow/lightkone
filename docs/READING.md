@@ -8,8 +8,30 @@ for reading at night. **Esc** or the close button returns to the list, where
 Lightkone remembers the paper in **Recently read**.
 
 No PDF yet? **Get free PDF** looks for an open copy (arXiv, or Unpaywall with
-a contact email set under **Settings → PDFs**). **Attach PDF** adds a file
-of your own, and **Replace PDF** swaps it.
+a contact email set under **Settings → PDFs**). **Replace PDF** swaps the one
+you have.
+
+## Files
+
+A paper keeps any number of files, listed under **Files** in its details: its
+PDF, and anything else that belongs with it, such as a second version, the
+supplement, data, code or slides.
+
+- **Attach PDF or files** (or **Add files** once it has some) adds files from
+  the device. The first PDF a paper gets becomes the one **Read** opens.
+- **Add from link** downloads a file from a link: a PDF, a zip of data, any
+  file. A link to the paper's own page brings the PDF that page names, the
+  way publishers tell Google Scholar where it is.
+- Tap a file to open it (PDFs and pictures open in a new tab; other files are
+  saved to the device). **Read this one** makes another PDF the one Read
+  opens, and **Remove** takes a file off the paper.
+
+Files sit next to the paper's PDF in storage, named after it:
+`papers/All Papers/HINTON/Hinton et al. 2012 - Improving ... - supplement.pdf`.
+Downloads go through the site's file service (see
+[Hosting](HOSTING.md#the-file-service)), up to 80 MB a file. A file behind a
+sign-in can't be downloaded this way: download it in your browser and use
+**Add files**.
 
 ## Highlights and notes
 

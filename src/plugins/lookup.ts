@@ -1,5 +1,6 @@
 import type { LightkonePlugin, Lookup, PaperDraft } from "../core/types";
 import { parseBibtexToDrafts } from "../core/bibtex";
+import { pdfLinkIn, rememberPdfLink } from "../core/remotefile";
 import { fetchPage, isWebLink, linkDraft, PageError, pageDraft, paperIdentifier, rememberPage } from "../core/webpage";
 
 // Adding a paper by what people actually have at hand: a DOI, an arXiv id or
@@ -154,11 +155,17 @@ async function webPage(input: string): Promise<PaperDraft | null> {
   }
   const doc = new DOMParser().parseFromString(page.html, "text/html");
   const id = paperIdentifier(doc);
+  // The PDF the page links is fetched once the paper is added, when no open copy turns up.
+  const pdf = pdfLinkIn(doc, page.url);
   if (id) {
     const paper = await (arxivId(id) && id.startsWith("arXiv:") ? arxiv(arxivId(id)!) : crossref(doiOf(id)!)).catch(() => null);
-    if (paper) return paper;
+    if (paper) {
+      if (pdf) rememberPdfLink([input.trim(), page.url, paper.url, paper.doi, paper.arxiv], pdf);
+      return paper;
+    }
   }
   const draft = pageDraft(doc, page.url);
+  if (pdf) rememberPdfLink([input.trim(), page.url, draft.url], pdf);
   rememberPage(draft.url!, page);
   rememberPage(input.trim(), page);
   return draft;
