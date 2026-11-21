@@ -53,6 +53,11 @@ The catalog needs your library in an S3/R2 bucket or a GitHub repository (see
 [Storage](STORAGE.md)): a library kept only in a browser can't be reached from
 the reader. **Download for e-reader** works with any library.
 
+The address is kept in your library (`lightkone/links.json`), so Settings →
+E-reader shows the same one again later and on your other devices. **Make a
+new address** replaces it; the old one keeps working until you replace the
+storage key inside it.
+
 **Remove** a paper from the catalog under Settings → E-reader.
 
 ### What the address can do

@@ -55,6 +55,9 @@ has the address can read and change your library, so keep it private. To cut
 an address off, replace the access key or token in your storage settings and
 make a new address.
 
+The address is kept in your library (`lightkone/links.json`), so Settings shows
+the same one again after a reload and on your other devices.
+
 A library kept only in the browser can't be reached this way.
 
 ## On your own computer, with the CLI
