@@ -54,6 +54,7 @@ import { Icon, type IconName } from "./icons";
 import { site } from "./core/site";
 import { attachment, attachmentPath, fetchFile, fetchPdf, isPdfLink, pdfLinkFor, rememberPdfLink, sizeLabel, typeOf } from "./core/remotefile";
 import { readSent, unsend, type Sent } from "./core/ereader";
+import { keepLink, keptLink } from "./core/links";
 import { fetchPage, hasPage, htmlPath, isPageFile, isWebLink, linkDraft, linkOnlyReason, markdownFile, markdownPath, pageDraft, pageFromFile, pageMarkdown, takePage, type FetchedPage } from "./core/webpage";
 import { joinPages, textPath } from "./core/fulltext";
 import { VersionLine } from "./Version";
@@ -2914,13 +2915,18 @@ function JournalStyles(props: { paper: Paper; onCopied(): void }) {
 }
 
 /** A personal MCP address for the library in this person's own bucket or repository. */
-function McpLink(props: { provider: string; config: Record<string, string> }) {
+function McpLink(props: { provider: string; config: Record<string, string>; storage: StorageAdapter | null }) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const linkable = props.provider === "s3" || props.provider === "github";
-  const where = JSON.stringify(props);
-  useEffect(() => { setUrl(""); setNote(""); }, [where]);
+  const where = JSON.stringify({ provider: props.provider, config: props.config });
+  // The address made before for this storage, kept in the library (core/links.ts).
+  useEffect(() => {
+    setUrl("");
+    setNote("");
+    if (linkable && props.storage) keptLink(props.storage, "mcp", where).then((k) => k && setUrl(k.url), () => undefined);
+  }, [where, props.storage]);
 
   async function make() {
     setBusy(true);
@@ -2930,6 +2936,7 @@ function McpLink(props: { provider: string; config: Record<string, string> }) {
       const body = await r.json().catch(() => ({ error: `The site answered ${r.status}.` }));
       if (!r.ok || !body.url) throw new Error(body.error ?? `The site answered ${r.status}.`);
       setUrl(body.url);
+      if (props.storage) await keepLink(props.storage, "mcp", where, { url: body.url }).catch(() => setNote("Made, but it couldn't be kept in the library: copy it now."));
     } catch (e) {
       setNote((e as Error).message);
     } finally {
@@ -2956,6 +2963,7 @@ function McpLink(props: { provider: string; config: Record<string, string> }) {
           <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
           <div class="row">
             <button type="button" onClick={() => navigator.clipboard.writeText(url).then(() => setNote("Copied."))}>Copy address</button>
+            <button type="button" class="link" disabled={busy} onClick={make}>{busy ? "Making…" : "Make a new address"}</button>
           </div>
           <p class="muted small">
             Treat it like a password: anyone with it can read and change your library. Your keys inside it are encrypted, and this site keeps no
@@ -2980,7 +2988,11 @@ function EreaderLink(props: { provider: string; config: Record<string, string>; 
   const [sent, setSent] = useState<Sent[] | null>(null);
   const linkable = props.provider === "s3" || props.provider === "github";
   const where = JSON.stringify({ provider: props.provider, config: props.config });
-  useEffect(() => { setUrls(null); setNote(""); }, [where]);
+  useEffect(() => {
+    setUrls(null);
+    setNote("");
+    if (linkable && props.storage) keptLink(props.storage, "opds", where).then((k) => k && setUrls({ url: k.url, short: k.short }), () => undefined);
+  }, [where, props.storage]);
   useEffect(() => {
     if (props.storage) readSent(props.storage).then(setSent, () => setSent([]));
   }, [props.storage]);
@@ -2993,6 +3005,7 @@ function EreaderLink(props: { provider: string; config: Record<string, string>; 
       const body = await r.json().catch(() => ({ error: `The site answered ${r.status}.` }));
       if (!r.ok || !body.url) throw new Error(body.error ?? `The site answered ${r.status}.`);
       setUrls(body);
+      if (props.storage) await keepLink(props.storage, "opds", where, { url: body.url, short: body.short }).catch(() => setNote("Made, but it couldn't be kept in the library: copy it now."));
     } catch (e) {
       setNote((e as Error).message);
     } finally {
@@ -3026,6 +3039,7 @@ function EreaderLink(props: { provider: string; config: Record<string, string>; 
           <input readOnly value={address} onFocus={(e) => e.currentTarget.select()} />
           <div class="row">
             <button type="button" onClick={() => navigator.clipboard.writeText(address).then(() => setNote("Copied."))}>Copy address</button>
+            <button type="button" class="link" disabled={busy} onClick={make}>{busy ? "Making…" : "Make a new address"}</button>
           </div>
           <ol class="muted small">
             <li>On the reader, open the OPDS catalogs screen (on the Xteink X4: Settings, then OPDS; update its system first if it isn't there).</li>
@@ -3133,7 +3147,7 @@ function SettingsPanel(props: { settings: Settings; storage?: StorageAdapter | n
         <textarea rows={2} value={draft["plugins.urls"] ?? ""} placeholder="https://example.com/my-plugin.js" onInput={(e) => set("plugins.urls", e.currentTarget.value)} />
 
         <h3>Claude and other AI apps (MCP)</h3>
-        <McpLink provider={providerId} config={storageConfig(draft, providerId)} />
+        <McpLink provider={providerId} config={storageConfig(draft, providerId)} storage={props.storage ?? null} />
 
         <h3>E-reader</h3>
         <EreaderLink provider={providerId} config={storageConfig(draft, providerId)} storage={props.storage ?? null} />

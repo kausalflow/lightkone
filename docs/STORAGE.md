@@ -16,6 +16,8 @@ Whatever the storage, the files are the same:
 | `lightkone/text/`, `citations.json`, `equations.json`, `new-on-arxiv.json` | Work done once and kept (PDF text for search, the citation map, equations) so it isn't done again. Safe to delete; it is rebuilt. |
 | `lightkone/branches/` | The last result of each branch (your whole library, a folder, or a set of roots), so opening it again shows it at once. Safe to delete; it is fetched again. |
 | `lightkone/branches.json` | Branches you kept in the citation map: their root papers and the works already shown, so the next visit can mark what is fresh. |
+| `lightkone/ereader/`, `ereader.json` | Papers sent to your e-reader as EPUBs, and their list, which your e-reader catalog serves ([Papers on an e-reader](EREADER.md)). |
+| `lightkone/links.json` | The AI app and e-reader catalog addresses you made in Settings, so they show again on every device. Each is filed under a hash of the storage settings it was made for. |
 | `papers/All Papers/...` | The PDFs, filed by first author like Paperpile (`papers/All Papers/HINTON/Hinton et al. 2012 - ....pdf`). |
 
 These are open formats (JSON, BibTeX, PDF), so you can back them up, read them
