@@ -49,6 +49,8 @@ export interface EreaderDeps {
   parse(html: string): Document;
   /** Called with a short line as the work goes on. */
   progress?(line: string): void;
+  /** Write inline math as text this way when it can be; absent, only the simplest is text and the rest are pictures. */
+  textMath?: TextMath;
 }
 
 export class EreaderError extends Error {}
@@ -146,6 +148,158 @@ export function mathAsText(math: Element): string | null {
   return out.replace(/\s+/g, " ").trim();
 }
 
+// ---------------------------------------------------------------- inline math as linear text
+
+/**
+ * How inline math is written as text. Small readers put every picture on a
+ * line of its own, so a picture inside a sentence breaks it apart; written out
+ * as text, s_t or (X_t, S_t) stays in the sentence.
+ * - scripts: "tags" uses <sub>/<sup>; "plain" writes s_t and x^2, as in TeX.
+ * - unicode: Greek letters and symbols as themselves (θ, ∈); off, as words (theta, in).
+ */
+export interface TextMath {
+  scripts: "tags" | "plain";
+  unicode: boolean;
+}
+
+const GREEK: Record<string, string> = {
+  α: "alpha", β: "beta", γ: "gamma", δ: "delta", ε: "epsilon", ϵ: "epsilon", ζ: "zeta", η: "eta", θ: "theta", ϑ: "theta", ι: "iota", κ: "kappa",
+  λ: "lambda", μ: "mu", ν: "nu", ξ: "xi", π: "pi", ρ: "rho", ϱ: "rho", σ: "sigma", τ: "tau", υ: "upsilon", φ: "phi", ϕ: "phi", χ: "chi", ψ: "psi", ω: "omega",
+  Γ: "Gamma", Δ: "Delta", Θ: "Theta", Λ: "Lambda", Ξ: "Xi", Π: "Pi", Σ: "Sigma", Υ: "Upsilon", Φ: "Phi", Ψ: "Psi", Ω: "Omega",
+};
+const SYMBOLS: Record<string, string> = {
+  "\u2212": "-", "\u2208": " in ", "\u2209": " not in ", "\u2264": " <= ", "\u2265": " >= ", "\u2260": " != ", "\u2248": " ~ ", "\u223c": " ~ ", "\u221d": " ~ ",
+  "\u2192": " -> ", "\u21a6": " -> ", "\u2190": " <- ", "\u00d7": " x ", "\u22c5": "·", "\u00b7": "·", "\u2026": "...", "\u22ef": "...", "\u221e": "inf",
+  "\u2211": "sum ", "\u220f": "prod ", "\u222b": "int ", "\u2202": "d", "\u2207": "grad ", "\u00b1": "+-", "\u2032": "'", "\u2033": "''", "\u2223": "|", "\u2225": "||",
+  "\u2016": "||", "\u211d": "R", "\u2115": "N", "\u2124": "Z", "\u211a": "Q", "\u2102": "C", "\u2113": "l", "\u2205": "{}", "\u27e8": "<", "\u27e9": ">", "\u2329": "<", "\u232a": ">", "\u2282": " subset ", "\u2286": " subseteq ", "\u222a": " u ", "\u2229": " n ",
+  "\u2200": "for all ", "\u2203": "exists ", "\u2218": " o ", "\u2297": " (x) ", "\u2295": " (+) ", "\u2061": "", "\u2062": "", "\u2063": "", "\u2064": "", "\u200b": "",
+};
+const ACCENTS: Record<string, [string, string]> = {
+  "\u00af": ["\u0304", "bar"], "\u203e": ["\u0304", "bar"], "\u0304": ["\u0304", "bar"], "^": ["\u0302", "hat"], "\u02c6": ["\u0302", "hat"], "\u0302": ["\u0302", "hat"],
+  "~": ["\u0303", "tilde"], "\u02dc": ["\u0303", "tilde"], "\u0303": ["\u0303", "tilde"], "\u02d9": ["\u0307", "dot"], "\u0307": ["\u0307", "dot"], "\u2192": ["\u20d7", "vec"],
+};
+const RELATIONS = new Set(["=", "<", ">", "+", "-", "\u2212"]);
+
+/** Visible length of XHTML text, without tags. */
+const visibleLength = (s: string) => s.replace(/<[^>]+>/g, "").replace(/&[a-z]+;/g, "x").length;
+
+/**
+ * Inline math written out as XHTML text, e.g. "<i>s</i><sub><i>t</i></sub>" or "<i>s</i>_<i>t</i>",
+ * "(<i>X</i>_<i>t</i>, θ)". Null for what text can't carry well (matrices, long formulas).
+ */
+export function mathAsLinear(math: Element, how: TextMath): string | null {
+  const sym = (ch: string): string | null => {
+    if (GREEK[ch]) return how.unicode ? ch : GREEK[ch];
+    if (ch in SYMBOLS) {
+      const word = SYMBOLS[ch];
+      return how.unicode && word.trim() ? word.replace(word.trim(), ch) : word;
+    }
+    if (/^[\x20-\x7e]$/.test(ch)) return ch;
+    const plain = plainLetter(ch);
+    if (plain) return plain.letter;
+    return how.unicode ? ch : null;
+  };
+  const text = (s: string): string | null => {
+    let out = "";
+    for (const ch of Array.from(s.replace(/\s+/g, " "))) {
+      const t = sym(ch);
+      if (t === null) return null;
+      out += t;
+    }
+    return xml(out);
+  };
+  const group = (inner: string) => (visibleLength(inner) > 1 ? `{${inner}}` : inner);
+  const script = (base: string, sub: string | null, sup: string | null): string => {
+    if (how.scripts === "tags") return `${base}${sub ? `<sub>${sub}</sub>` : ""}${sup ? `<sup>${sup}</sup>` : ""}`;
+    return `${base}${sub ? `_${group(sub)}` : ""}${sup ? `^${group(sup)}` : ""}`;
+  };
+  const walk = (el: Element): string | null => {
+    const tag = el.localName;
+    const kids = Array.from(el.children).filter((c) => c.localName !== "annotation" && c.localName !== "annotation-xml");
+    const all = () => {
+      let out = "";
+      for (const c of kids) {
+        const t = walk(c);
+        if (t === null) return null;
+        out += t;
+      }
+      return out;
+    };
+    switch (tag) {
+      case "math":
+      case "semantics":
+      case "mrow":
+      case "mstyle":
+      case "mpadded":
+        return all();
+      case "mphantom":
+        return "";
+      case "mspace":
+        return " ";
+      case "mi": {
+        const raw = (el.textContent ?? "").trim();
+        if (!raw) return "";
+        const letters = Array.from(raw);
+        if (letters.length === 1) {
+          const l = plainLetter(raw);
+          if (l && el.getAttribute("mathvariant") !== "normal") return l.bold ? `<b><i>${l.letter}</i></b>` : `<i>${l.letter}</i>`;
+          if (GREEK[raw] && !how.unicode) return GREEK[raw];
+        }
+        return text(raw);
+      }
+      case "mn":
+        return text((el.textContent ?? "").trim());
+      case "mtext":
+        return text(el.textContent ?? "");
+      case "mo": {
+        const raw = (el.textContent ?? "").trim();
+        const t = text(raw);
+        if (t === null) return null;
+        if (raw === ",") return ", ";
+        return RELATIONS.has(raw) && el.getAttribute("form") !== "prefix" ? ` ${t.trim()} ` : t;
+      }
+      case "msub":
+      case "msup":
+      case "msubsup":
+      case "munder":
+      case "mover":
+      case "munderover": {
+        if (kids.length < 2) return null;
+        const accent = tag === "mover" ? ACCENTS[(kids[1].textContent ?? "").trim()] : undefined;
+        if (accent) {
+          const b = walk(kids[0]);
+          if (b === null) return null;
+          if (how.unicode && visibleLength(b) === 1) return b.replace(/^((?:<[^>]+>)*)([^<]+)/, `$1$2${accent[0]}`);
+          return `${accent[1]}(${b})`;
+        }
+        const [b, x, y] = kids.map(walk);
+        if (b === null || x === null || y === null) return null;
+        if (tag === "mover" || tag === "munder") return tag === "munder" ? script(b, x, null) : script(b, null, x);
+        if (tag === "msub") return script(b, x, null);
+        if (tag === "msup") return script(b, null, x);
+        return script(b, x, y || null);
+      }
+      case "mfrac": {
+        const [n, d] = kids.map(walk);
+        if (n == null || d == null) return null;
+        const wrapIf = (s: string) => (visibleLength(s) > 1 && /[ +\-]/.test(s.replace(/<[^>]+>/g, "")) ? `(${s.trim()})` : s.trim());
+        return `${wrapIf(n)}/${wrapIf(d)}`;
+      }
+      case "msqrt": {
+        const inner = all();
+        return inner === null ? null : `${how.unicode ? "\u221a" : "sqrt"}(${inner.trim()})`;
+      }
+      default:
+        return null;
+    }
+  };
+  const out = walk(math);
+  if (out === null) return null;
+  const tidy = out.replace(/ {2,}/g, " ").replace(/\( /g, "(").replace(/ \)/g, ")").replace(/ ,/g, ",").trim();
+  if (!tidy || visibleLength(tidy) > 48) return null;
+  return tidy;
+}
+
 // ---------------------------------------------------------------- HTML to book chapters
 
 const SKIP = new Set(["script", "style", "noscript", "button", "nav", "header", "footer", "form", "input", "svg", "iframe", "annotation", "annotation-xml"]);
@@ -225,7 +379,7 @@ class Converter {
     const display = el.getAttribute("display") === "block";
     const alt = el.getAttribute("alttext") ?? textOf(el.querySelector('annotation[encoding="application/x-tex"]'));
     if (!display) {
-      const text = mathAsText(el);
+      const text = mathAsText(el) ?? (this.deps.textMath ? mathAsLinear(el, this.deps.textMath) : null);
       if (text !== null) {
         this.maths++;
         return text;

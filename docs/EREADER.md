@@ -6,10 +6,13 @@ Kobo, a Kindle, anything running KOReader) in a form that reads well on a
 the paper becomes an **EPUB**:
 
 - The text reflows to the screen, at whatever font size you pick on the reader.
-- Each equation is a sharp black-and-white picture, drawn for a 480-pixel-wide
-  screen. Small readers can't typeset math themselves. Simple inline math such
-  as *x*, *y*(*t*) or *N* = 3 stays plain text, so a paper doesn't turn into
-  hundreds of pictures.
+- Math in sentences is written out as text, so it stays in the sentence:
+  *s*<sub>*t*</sub>, (*X*<sub>*t*</sub>, *S*<sub>*t*</sub>), θ ∈ ℝ, *a*/(*b* + 1).
+  Small readers can't typeset math, and many put every picture on a line of its
+  own, which would break the sentence apart. Only formulas too complex for text
+  (matrices, long expressions) become pictures.
+- Each displayed equation is a sharp black picture, sized to the reader's text
+  and with its strokes thickened so they survive the e-ink screen.
 - Numbered equations keep their numbers. Figures are fetched and scaled down to
   the screen's width, footnotes appear in brackets where they are, and each
   section is a chapter in the reader's table of contents.
@@ -68,6 +71,19 @@ copy. Unlike it, the catalog address can only list the papers you sent to the
 reader and download them: it can't read the rest of your library or change
 anything. Anyone who has it can download those papers. To cut it off, replace
 the storage access key or token.
+
+## Adjusting the math
+
+Under Settings → Plugins → Send to e-reader:
+
+- **Math in sentences**: `text` (the default) as above; `plain` writes s_t,
+  x^2 and theta in R, for readers whose font shows boxes for Greek letters or
+  that ignore raised and lowered letters; `pictures` makes a picture of each
+  formula, as before.
+- **Equation size**: `small`, `medium` (the default, matching the Xteink X4's
+  normal font) or `large` for a big reading font.
+
+Send the paper again after changing these.
 
 ## If equations don't show
 

@@ -1,5 +1,6 @@
 import type { LightkonePlugin, Paper, StorageAdapter } from "../core/types";
-import { epubName, EreaderError, paperEpub, readSent, sendToEreader, type EreaderDeps, type MadeBook } from "../core/ereader";
+import { epubName, EreaderError, paperEpub, readSent, sendToEreader, type EreaderDeps, type MadeBook, type TextMath } from "../core/ereader";
+import type { MathLook } from "../core/pictures";
 import { fetchPage } from "../core/webpage";
 import { fetchFile } from "../core/remotefile";
 
@@ -9,6 +10,29 @@ import { fetchFile } from "../core/remotefile";
 
 type ImageType = "image/png" | "image/jpeg";
 const imageType = (settings: Record<string, string>): ImageType => (/^jpe?g$/i.test((settings["ereader.pictures"] ?? "").trim()) ? "image/jpeg" : "image/png");
+
+/**
+ * Inline math: "text" (default) writes it into the sentence with small raised and
+ * lowered letters (s<sub>t</sub>, θ ∈ ℝ); "plain" as in TeX with words (s_t, theta in R)
+ * for readers whose font lacks Greek or that ignore sub/sup; "pictures" makes every
+ * formula that isn't plain letters a picture, as before.
+ */
+export function textMath(settings: Record<string, string>): TextMath | undefined {
+  const v = (settings["ereader.inline"] ?? "").trim().toLowerCase();
+  if (v === "pictures" || v === "picture" || v === "images") return undefined;
+  if (v === "plain") return { scripts: "plain", unicode: false };
+  return { scripts: "tags", unicode: true };
+}
+
+const MATH_EX: Record<string, number> = { small: 10, medium: 13, large: 16 };
+
+/** How large and how bold equation pictures are drawn: sized to the reader's text ("medium" fits the X4's default font). */
+export function mathLook(settings: Record<string, string>): MathLook {
+  const v = (settings["ereader.mathsize"] ?? "").trim().toLowerCase();
+  const n = Number(v);
+  const ex = MATH_EX[v] ?? (n >= 6 && n <= 30 ? n : MATH_EX.medium);
+  return { ex, weight: 30 };
+}
 
 const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
@@ -30,13 +54,15 @@ async function fileWithRetry(url: string): Promise<{ bytes: Uint8Array; type: st
 }
 
 /** What making a book needs, in the browser. */
-export function browserDeps(storage: StorageAdapter | null, type: ImageType): EreaderDeps {
+export function browserDeps(storage: StorageAdapter | null, type: ImageType, settings: Record<string, string> = {}): EreaderDeps {
+  const look = mathLook(settings);
   return {
+    textMath: textMath(settings),
     page: (url) => fetchPage(url),
     file: fileWithRetry,
     async math(mathml, display) {
       const { mathPicture } = await import("../core/pictures");
-      return mathPicture(mathml, display, type);
+      return mathPicture(mathml, display, type, look);
     },
     async picture(bytes, t) {
       const { figurePicture } = await import("../core/pictures");
@@ -89,6 +115,18 @@ const plugin: LightkonePlugin = {
       placeholder: "png",
       help: "png (default) keeps equations sharpest. Write jpeg if your reader shows the text but no equations.",
     },
+    {
+      name: "inline",
+      label: "Math in sentences",
+      placeholder: "text",
+      help: "text (default): s with a lowered t, θ ∈ ℝ, kept in the sentence. plain: s_t, theta in R, for readers that show boxes for Greek letters. pictures: a picture for each formula (some readers put every picture on its own line).",
+    },
+    {
+      name: "mathsize",
+      label: "Equation size",
+      placeholder: "medium",
+      help: "small, medium (default, fits the Xteink X4's normal font) or large. Use large if you read with a big font.",
+    },
   ],
   actions: [
     {
@@ -98,7 +136,7 @@ const plugin: LightkonePlugin = {
       async run(p, ctx) {
         if (!ctx.storage) throw new Error("Open a library first.");
         try {
-          const { made } = await sendToEreader(p, ctx.storage, browserDeps(ctx.storage, imageType(ctx.settings)), imageType(ctx.settings));
+          const { made } = await sendToEreader(p, ctx.storage, browserDeps(ctx.storage, imageType(ctx.settings), ctx.settings), imageType(ctx.settings));
           const provider = ctx.settings["storage.provider"] || "browser";
           const count = (await readSent(ctx.storage)).length;
           const where =
@@ -117,7 +155,7 @@ const plugin: LightkonePlugin = {
       label: "Download for e-reader",
       available: canMake,
       async run(p, ctx) {
-        const made = await paperEpub(p, browserDeps(ctx.storage, imageType(ctx.settings)), imageType(ctx.settings));
+        const made = await paperEpub(p, browserDeps(ctx.storage, imageType(ctx.settings), ctx.settings), imageType(ctx.settings));
         save(epubName(p), made.bytes);
         return {
           kind: "text",

@@ -5,8 +5,21 @@ import { PICTURE_WIDTH, type Picture } from "./ereader";
 // the size they will show on a 480-pixel-wide screen. MathJax loads only when
 // a paper is first sent, so it costs nothing otherwise.
 
-/** Pixels per ex (the height of an "x"): text on small readers is about 19 px, whose x is about 8.5 px high. */
-export const EX = 8.5;
+/**
+ * Pixels per ex (the height of an "x"). Small readers draw pictures at their
+ * own pixel size, next to text that is large on a 220 ppi screen: the Xteink
+ * X4's default text has an x about 13 px high.
+ */
+export const EX = 13;
+
+/** How equations are drawn: their size, and how much their strokes are thickened. */
+export interface MathLook {
+  /** Pixels per ex. */
+  ex?: number;
+  /** Extra stroke width, in thousandths of an em, so thin lines survive an e-ink screen. */
+  weight?: number;
+}
+
 /** The tallest a figure may be: a 800-pixel screen less margins and a caption line. */
 const PICTURE_HEIGHT = 640;
 /** Display equations wider than the screen are shrunk, but not below this, so they stay readable. */
@@ -66,6 +79,16 @@ export async function greyPng(width: number, height: number, grey: Uint8Array): 
   return out;
 }
 
+/**
+ * Pushes greys toward black, so antialiased edges of thin lines don't turn
+ * faint when an e-ink screen dithers them to its few levels. White stays white.
+ */
+export function darken(grey: Uint8Array): Uint8Array {
+  const out = new Uint8Array(grey.length);
+  for (let i = 0; i < grey.length; i++) out[i] = Math.round(255 * Math.pow(grey[i] / 255, 2.4));
+  return out;
+}
+
 /** Grey levels from canvas pixels, drawn over white. */
 export function toGrey(rgba: Uint8ClampedArray): Uint8Array {
   const out = new Uint8Array(rgba.length / 4);
@@ -121,11 +144,17 @@ export async function mathSvg(mathml: string, display: boolean): Promise<string>
   return svg;
 }
 
-async function drawSvg(svg: string, width: number, height: number): Promise<HTMLCanvasElement> {
-  const sized = svg
+/** The SVG at a pixel size, in black, with its strokes thickened by `weight` thousandths of an em. */
+export function sizedSvg(svg: string, width: number, height: number, weight = 0): string {
+  return svg
     .replace(/\swidth="[\d.]+ex"/, ` width="${width}"`)
     .replace(/\sheight="[\d.]+ex"/, ` height="${height}"`)
-    .replace(/currentColor/g, "#000");
+    .replace(/currentColor/g, "#000")
+    .replace(/stroke-width="0"/g, `stroke-width="${weight}" stroke-linejoin="round"`);
+}
+
+async function drawSvg(svg: string, width: number, height: number, weight = 0): Promise<HTMLCanvasElement> {
+  const sized = sizedSvg(svg, width, height, weight);
   const url = URL.createObjectURL(new Blob([sized], { type: "image/svg+xml" }));
   try {
     const img = new Image();
@@ -160,19 +189,20 @@ async function encode(canvas: HTMLCanvasElement, type: Picture["type"]): Promise
     return new Uint8Array(await blob.arrayBuffer());
   }
   const data = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height).data;
-  return greyPng(canvas.width, canvas.height, toGrey(data));
+  return greyPng(canvas.width, canvas.height, darken(toGrey(data)));
 }
 
 /** An equation as a picture for the screen, in the browser. */
-export async function mathPicture(mathml: string, display: boolean, type: Picture["type"] = "image/png"): Promise<Picture> {
+export async function mathPicture(mathml: string, display: boolean, type: Picture["type"] = "image/png", look: MathLook = {}): Promise<Picture> {
   const svg = await mathSvg(mathml, display);
   const size = svgSize(svg);
   if (!size) throw new Error("MathJax gave no size");
-  let scale = EX;
-  if (display && size.width * scale > PICTURE_WIDTH) scale = Math.max(EX * MIN_SCALE, PICTURE_WIDTH / size.width);
+  const ex = look.ex ?? EX;
+  let scale = ex;
+  if (display && size.width * scale > PICTURE_WIDTH) scale = Math.max(ex * MIN_SCALE, PICTURE_WIDTH / size.width);
   const width = Math.max(1, Math.ceil(size.width * scale));
   const height = Math.max(1, Math.ceil(size.height * scale));
-  const canvas = await drawSvg(svg, width, height);
+  const canvas = await drawSvg(svg, width, height, look.weight ?? 30);
   return { data: await encode(canvas, type), type, width, height, depth: Math.round(size.depth * scale) };
 }
 
