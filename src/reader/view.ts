@@ -68,6 +68,41 @@ export async function pdfFirstPages(bytes: Uint8Array, count = 2): Promise<{ pag
   }
 }
 
+/**
+ * Draws each page of a PDF as grey pixels (0 black to 255 white), one page at
+ * a time so a long paper doesn't fill memory, for re-flowing to an e-reader.
+ * About 300 dpi; very large pages are drawn smaller.
+ */
+export async function pdfGreyPages(bytes: Uint8Array, each: (img: { width: number; height: number; grey: Uint8Array }, n: number, total: number) => Promise<void>, dpi = 300): Promise<void> {
+  const lib = await loadPdfjs();
+  const task = lib.getDocument({ data: bytes.slice() });
+  const doc = await task.promise;
+  try {
+    for (let n = 1; n <= doc.numPages; n++) {
+      const page = await doc.getPage(n);
+      const base = page.getViewport({ scale: 1 });
+      const scale = Math.min(dpi / 72, 4400 / Math.max(base.width, base.height));
+      const vp = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(vp.width);
+      canvas.height = Math.ceil(vp.height);
+      const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvas, canvasContext: ctx, viewport: vp, background: "#fff" } as Parameters<typeof page.render>[0]).promise;
+      const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const grey = new Uint8Array(canvas.width * canvas.height);
+      for (let i = 0, j = 0; j < grey.length; i += 4, j++) grey[j] = (px[i] * 299 + px[i + 1] * 587 + px[i + 2] * 114) / 1000;
+      const size = { width: canvas.width, height: canvas.height };
+      canvas.width = canvas.height = 0;
+      page.cleanup();
+      await each({ ...size, grey }, n, doc.numPages);
+    }
+  } finally {
+    await task.destroy();
+  }
+}
+
 /** The text of every page of a PDF, without drawing it. */
 export async function extractText(bytes: Uint8Array): Promise<string[]> {
   const lib = await loadPdfjs();

@@ -19,8 +19,30 @@ the paper becomes an **EPUB**:
 
 The text comes from the paper's HTML version: arXiv's own, or for older
 preprints [ar5iv](https://ar5iv.labs.arxiv.org)'s, which has nearly every arXiv
-paper. Saved web pages work too. Papers that only exist as a PDF can't be sent
-yet.
+paper. Saved web pages work too.
+
+## Papers that only have a PDF
+
+Small readers such as the X4 can't open PDFs, and a whole page shrunk to a
+4-inch screen is unreadable. So when a paper has no HTML version, Lightkone
+takes its PDF (the copy in your library, or arXiv's) and **re-flows** it:
+
+- Each page is drawn, cut into its columns, lines and words, and the words are
+  laid out again in lines that fit the screen, at a readable size. Two-column
+  papers are read down the left column, then the right.
+- The paper keeps its own typesetting: fonts, symbols and inline math look as
+  they do in the PDF.
+- Figures, tables and displayed equations are kept whole, shrunk to the
+  screen's width when wider.
+- Words split by a hyphen at a line's end are joined again; page numbers and
+  arXiv's sideways stamp are left out.
+
+The book is one picture per screen, so the reader's font size setting doesn't
+change it: set **PDF text size** (`small`, `medium`, `large`) under Settings →
+Plugins → Send to e-reader instead. To use the PDF even when there is an HTML
+version, set **Make it from** to `pdf`.
+
+A 30-page paper takes about a minute to make and is around 6 MB.
 
 ## Sending a paper
 
