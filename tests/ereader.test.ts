@@ -189,7 +189,7 @@ describe("a paper as an EPUB", () => {
 
     const none = deps({ page: async (url) => ({ url, html: "<html><body><p>No HTML for this paper.</p></body></html>" }) });
     await expect(paperEpub(paper(), none)).rejects.toThrow(EreaderError);
-    await expect(paperEpub(paper({ arxiv: undefined }), none)).rejects.toThrow(/only arXiv papers and saved web pages/);
+    await expect(paperEpub(paper({ arxiv: undefined }), none)).rejects.toThrow(/no PDF, HTML version or saved web page/);
   });
 
   it("uses a saved web page for papers that aren't on arXiv", async () => {
