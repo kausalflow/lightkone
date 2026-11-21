@@ -54,6 +54,8 @@ img.d { max-width: 100%; }
 table { border-collapse: collapse; font-size: 0.85em; }
 td, th { padding: 0 0.3em; }
 .bib li { font-size: 0.85em; margin-bottom: 0.3em; }
+.screen { margin: 0; text-align: center; page-break-after: always; }
+.screen img { max-width: 100%; }
 `;
 
 function page(title: string, body: string): string {

@@ -1,10 +1,13 @@
 import type { Paper, StorageAdapter } from "./types";
 import { makeEpub, xml, type Book, type BookChapter, type BookImage } from "./epub";
+import { darken as darkenGrey, greyPng as greyPngBytes } from "./greypng";
+import { cutPage, Layout, REFLOW_LOOK, type Carry, type GreyImage, type ReflowLook } from "./pdfreflow";
 
 // Papers for small e-ink readers (the Xteink X4, Kobo, Kindle and others).
 //
 // A paper's HTML version (arXiv's, else ar5iv's for older preprints, else a
-// saved web page) becomes an EPUB: the text reflows, so it fits a 4-inch
+// saved web page; papers with only a PDF get their pages re-flowed as
+// pictures, see pdfreflow.ts) becomes an EPUB: the text reflows, so it fits a 4-inch
 // screen at any font size. Small readers can't typeset equations, so each one
 // arrives as a picture sized for the screen; simple inline math such as "x" or
 // "N = 3" stays text, which keeps a paper from turning into hundreds of
@@ -51,6 +54,14 @@ export interface EreaderDeps {
   progress?(line: string): void;
   /** Write inline math as text this way when it can be; absent, only the simplest is text and the rest are pictures. */
   textMath?: TextMath;
+  /** The paper's PDF: the library's copy, or arXiv's. Null when there is none. */
+  pdf?(p: Paper): Promise<Uint8Array | null>;
+  /** Draws each page of a PDF as grey pixels (about 300 dpi), one at a time. */
+  pdfPages?(bytes: Uint8Array, page: (img: GreyImage, n: number, total: number) => Promise<void>): Promise<void>;
+  /** Make the book from the PDF's pages even when there is an HTML version. */
+  preferPdf?: boolean;
+  /** How large re-flowed PDF text is. */
+  reflow?: Partial<ReflowLook>;
 }
 
 export class EreaderError extends Error {}
@@ -67,7 +78,7 @@ export interface Sent {
   /** ISO time it was made. */
   sent: string;
   /** Where the text came from. */
-  source: "arxiv" | "ar5iv" | "page";
+  source: "arxiv" | "ar5iv" | "page" | "pdf";
 }
 
 // ---------------------------------------------------------------- simple math as text
@@ -624,13 +635,71 @@ export const isPaperHtml = (doc: Document) => Boolean(doc.querySelector("article
 export interface MadeBook {
   bytes: Uint8Array;
   source: Sent["source"];
+  /** Screens of re-flowed PDF pages. */
+  screens?: number;
+  pages?: number;
   maths: number;
   mathPictures: number;
   figures: number;
 }
 
-/** The EPUB of a paper, from its HTML version. Throws an EreaderError saying why when there is none. */
+/**
+ * The EPUB of a paper made from its PDF: each page cut into words and laid out
+ * again on screen-sized pictures (core/pdfreflow.ts), one picture per screen.
+ */
+export async function pdfEpub(p: Paper, bytes: Uint8Array, deps: EreaderDeps): Promise<MadeBook> {
+  if (!deps.pdfPages) throw new EreaderError("PDF pages can't be drawn here.");
+  const look: ReflowLook = { ...REFLOW_LOOK, ...deps.reflow };
+  const images: BookImage[] = [];
+  const chapters: BookChapter[] = [titleChapter(p, p.abstract ? `<p>${xml(p.abstract)}</p>` : "", "the PDF, re-flowed to the screen")];
+  const encoded: Promise<void>[] = [];
+  const layout = new Layout(look, (screen, firstPage) => {
+    const n = images.length + 1;
+    const name = `s${String(n).padStart(3, "0")}.png`;
+    images.push({ name, data: new Uint8Array(), type: "image/png" });
+    const at = images.length - 1;
+    const grey = darkenGrey(screen.grey, 16);
+    encoded.push(
+      greyPngBytes(screen.width, screen.height, grey).then((data) => {
+        images[at].data = data;
+      }),
+    );
+    chapters.push({ title: `Page ${firstPage}`, body: `<div class="screen"><img src="images/${name}" alt="Page ${firstPage}" width="${screen.width}" height="${screen.height}"/></div>` });
+  });
+  let textLine = 0;
+  let pages = 0;
+  let carry: Carry | undefined;
+  await deps.pdfPages(bytes, async (img, n, total) => {
+    deps.progress?.(`Page ${n} of ${total}…`);
+    const cut = cutPage(img, n, textLine, carry);
+    carry = cut.carry;
+    if (!textLine && cut.pieces.length) {
+      textLine = cut.textLine;
+      layout.setTextLine(textLine);
+    }
+    for (const piece of cut.pieces) await layout.add(piece);
+    pages = total;
+  });
+  await layout.finish();
+  await Promise.all(encoded);
+  if (!images.length) throw new EreaderError("The PDF's pages came out blank, so there is nothing to send.");
+  deps.progress?.("Packing the book…");
+  const bookBytes = await makeEpub({ id: `urn:lightkone:${p.id}`, title: p.title, authors: p.authors.map(displayName), description: p.abstract, chapters, images });
+  return { bytes: bookBytes, source: "pdf", screens: images.length, pages, maths: 0, mathPictures: 0, figures: 0 };
+}
+
+/** The EPUB of a paper, from its HTML version, else its PDF. Throws an EreaderError saying why when there is neither. */
 export async function paperEpub(p: Paper, deps: EreaderDeps, imageType: "image/png" | "image/jpeg" = "image/png"): Promise<MadeBook> {
+  const fromPdf = async () => {
+    if (!deps.pdf || !deps.pdfPages) return null;
+    deps.progress?.("Opening the PDF…");
+    const bytes = await deps.pdf(p).catch(() => null);
+    return bytes ? pdfEpub(p, bytes, deps) : null;
+  };
+  if (deps.preferPdf) {
+    const made = await fromPdf();
+    if (made) return made;
+  }
   let doc: Document | null = null;
   let base = "";
   let source: Sent["source"] = "arxiv";
@@ -665,11 +734,15 @@ export async function paperEpub(p: Paper, deps: EreaderDeps, imageType: "image/p
       generic = true;
     }
   }
+  if (!doc && !deps.preferPdf) {
+    const made = await fromPdf();
+    if (made) return made;
+  }
   if (!doc) {
     throw new EreaderError(
       p.arxiv
-        ? "Neither arXiv nor ar5iv has an HTML version of this paper, which the e-reader file is made from. Papers that only have a PDF will get page pictures in a later version."
-        : "This paper has no HTML version to make an e-reader file from: only arXiv papers and saved web pages can be sent for now.",
+        ? "Neither arXiv nor ar5iv has an HTML version of this paper, and its PDF couldn't be opened."
+        : "This paper has no PDF, HTML version or saved web page to make an e-reader file from.",
     );
   }
   const c = new Converter(deps, base, imageType);

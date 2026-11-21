@@ -1,6 +1,7 @@
 import type { LightkonePlugin, Paper, StorageAdapter } from "../core/types";
 import { epubName, EreaderError, paperEpub, readSent, sendToEreader, type EreaderDeps, type MadeBook, type TextMath } from "../core/ereader";
 import type { MathLook } from "../core/pictures";
+import { REFLOW_LINES } from "../core/pdfreflow";
 import { fetchPage } from "../core/webpage";
 import { fetchFile } from "../core/remotefile";
 
@@ -78,6 +79,21 @@ export function browserDeps(storage: StorageAdapter | null, type: ImageType, set
       return new Readability(doc.cloneNode(true) as Document).parse()?.content ?? null;
     },
     parse: (html) => new DOMParser().parseFromString(html, "text/html"),
+    async pdf(p: Paper) {
+      const own = p.pdf ?? p.attachments?.find((a) => a.type === "application/pdf" || /\.pdf$/i.test(a.name))?.path;
+      if (storage && own) {
+        const bytes = await storage.read(own).catch(() => null);
+        if (bytes) return bytes;
+      }
+      if (p.arxiv) return (await fileWithRetry(`https://arxiv.org/pdf/${p.arxiv}`)).bytes;
+      return null;
+    },
+    async pdfPages(bytes, each) {
+      const { pdfGreyPages } = await import("../reader/view");
+      await pdfGreyPages(bytes, each);
+    },
+    preferPdf: /^pdf$/i.test((settings["ereader.from"] ?? "").trim()),
+    reflow: { line: REFLOW_LINES[(settings["ereader.pdfsize"] ?? "").trim().toLowerCase()] ?? REFLOW_LINES.medium },
   };
 }
 
@@ -85,6 +101,7 @@ const kb = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(
 
 /** One line on what went into the book. */
 export function madeLine(m: MadeBook): string {
+  if (m.source === "pdf") return `Made from the PDF: ${m.pages} page${m.pages === 1 ? "" : "s"} re-flowed onto ${m.screens} screen${m.screens === 1 ? "" : "s"}, ${kb(m.bytes.length)}.`;
   const from = m.source === "arxiv" ? "arXiv's HTML version" : m.source === "ar5iv" ? "ar5iv (arXiv's HTML for older papers)" : "the saved web page";
   const bits = [`${m.mathPictures} equation${m.mathPictures === 1 ? "" : "s"} as pictures`, `${m.figures} figure${m.figures === 1 ? "" : "s"}`, kb(m.bytes.length)];
   return `Made from ${from}: ${bits.join(", ")}.`;
@@ -101,19 +118,31 @@ function save(name: string, bytes: Uint8Array) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-const canMake = (p: Paper) => Boolean(p.arxiv || p.html);
+const canMake = (p: Paper) => Boolean(p.arxiv || p.html || p.pdf || p.attachments?.some((a) => a.type === "application/pdf" || /\.pdf$/i.test(a.name)));
 
 const plugin: LightkonePlugin = {
   id: "ereader",
   name: "Send to e-reader",
   description:
-    "Makes an EPUB of a paper for small e-ink readers such as the Xteink X4, Kobo or Kindle: the text reflows to the screen and each equation is a sharp picture. Sent papers are listed in your e-reader catalog (Settings → E-reader).",
+    "Makes an EPUB of a paper for small e-ink readers such as the Xteink X4, Kobo or Kindle: the text reflows to the screen and each equation is a sharp picture. Papers with only a PDF have their pages cut into words and laid out again at a readable size. Sent papers are listed in your e-reader catalog (Settings → E-reader).",
   settings: [
     {
       name: "pictures",
       label: "Picture format",
       placeholder: "png",
       help: "png (default) keeps equations sharpest. Write jpeg if your reader shows the text but no equations.",
+    },
+    {
+      name: "from",
+      label: "Make it from",
+      placeholder: "html",
+      help: "html (default): the paper's HTML version when it has one (arXiv, ar5iv, a saved page), else its PDF. pdf: always the PDF's pages, re-flowed to the screen as pictures, which keeps the paper's own typesetting.",
+    },
+    {
+      name: "pdfsize",
+      label: "PDF text size",
+      placeholder: "medium",
+      help: "How large re-flowed PDF text is: small, medium (default) or large.",
     },
     {
       name: "inline",
