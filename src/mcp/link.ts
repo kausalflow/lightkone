@@ -21,6 +21,8 @@ export const LINKABLE = Object.keys(FIELDS);
 export interface LinkedStorage {
   provider: string;
   config: Record<string, string>;
+  /** What the address may do. None means everything (the MCP address); "opds" only lists and downloads e-reader files. */
+  scope?: "opds";
 }
 
 const enc = new TextEncoder();
@@ -62,7 +64,7 @@ export function storageFor(l: LinkedStorage): StorageAdapter {
 
 export async function sealLink(l: LinkedStorage, secret: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = enc.encode(JSON.stringify({ p: l.provider, c: l.config }));
+  const data = enc.encode(JSON.stringify(l.scope ? { p: l.provider, c: l.config, s: l.scope } : { p: l.provider, c: l.config }));
   const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await keyFor(secret), data));
   const out = new Uint8Array(iv.length + sealed.length);
   out.set(iv);
@@ -76,8 +78,9 @@ export async function openLink(token: string, secret: string): Promise<LinkedSto
   try {
     const bytes = unb64url(token.slice(LINK_PREFIX.length));
     const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.subarray(0, 12) }, await keyFor(secret), bytes.subarray(12));
-    const { p, c } = JSON.parse(new TextDecoder().decode(plain));
-    return FIELDS[p] ? { provider: p, config: c } : null;
+    const { p, c, s } = JSON.parse(new TextDecoder().decode(plain));
+    if (!FIELDS[p]) return null;
+    return s === "opds" ? { provider: p, config: c, scope: "opds" } : { provider: p, config: c };
   } catch {
     return null;
   }

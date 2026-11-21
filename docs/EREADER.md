@@ -1,0 +1,87 @@
+# Papers on an e-reader
+
+Lightkone can put a paper on a small e-ink reader (the Xteink X4 and X4 Pro, a
+Kobo, a Kindle, anything running KOReader) in a form that reads well on a
+4-inch screen. A whole PDF page shrunk to that size is unreadable, so instead
+the paper becomes an **EPUB**:
+
+- The text reflows to the screen, at whatever font size you pick on the reader.
+- Each equation is a sharp black-and-white picture, drawn for a 480-pixel-wide
+  screen. Small readers can't typeset math themselves. Simple inline math such
+  as *x*, *y*(*t*) or *N* = 3 stays plain text, so a paper doesn't turn into
+  hundreds of pictures.
+- Numbered equations keep their numbers. Figures are fetched and scaled down to
+  the screen's width, footnotes appear in brackets where they are, and each
+  section is a chapter in the reader's table of contents.
+
+The text comes from the paper's HTML version: arXiv's own, or for older
+preprints [ar5iv](https://ar5iv.labs.arxiv.org)'s, which has nearly every arXiv
+paper. Saved web pages work too. Papers that only exist as a PDF can't be sent
+yet.
+
+## Sending a paper
+
+Open a paper and choose one of:
+
+- **Send to e-reader** makes the EPUB, keeps it in your library's storage under
+  `lightkone/ereader/`, and adds it to your **e-reader catalog**. The reader
+  downloads it from there over Wi-Fi.
+- **Download for e-reader** makes the same EPUB and saves it to your device.
+  Load it with the reader's own app (in the Xteink app: **Import**), over USB,
+  or from its SD card.
+
+Making the file happens in your browser and takes a few seconds; a paper with
+many figures takes longer.
+
+## The e-reader catalog
+
+The catalog is an [OPDS](https://opds.io) feed, the standard way e-readers
+browse and download books from a server. It lists the papers you sent, newest
+first.
+
+1. In Lightkone, open **Settings → E-reader** and press **Make my e-reader
+   catalog address**. Copy the address.
+2. On the reader, open the OPDS catalogs screen. On the Xteink X4 and X4 Pro
+   it is **Settings → Third-party services → OPDS catalogs** (update the
+   reader's system if it isn't there). In KOReader it is **Search → OPDS
+   catalog**.
+3. Add a catalog named Lightkone with that address. Leave the user name and
+   password empty.
+4. Open the catalog and download a paper.
+
+The catalog needs your library in an S3/R2 bucket or a GitHub repository (see
+[Storage](STORAGE.md)): a library kept only in a browser can't be reached from
+the reader. **Download for e-reader** works with any library.
+
+**Remove** a paper from the catalog under Settings → E-reader.
+
+### What the address can do
+
+Like the AI app address ([MCP](MCP.md)), the catalog address carries your
+storage settings, encrypted with a key only the site has, and the site keeps no
+copy. Unlike it, the catalog address can only list the papers you sent to the
+reader and download them: it can't read the rest of your library or change
+anything. Anyone who has it can download those papers. To cut it off, replace
+the storage access key or token.
+
+## If equations don't show
+
+Equations are PNG pictures in shades of grey. If your reader shows the text but
+no equations, open Settings → Plugins → Send to e-reader, set **Picture
+format** to `jpeg`, and send the paper again.
+
+## For hosts
+
+The catalog uses the same `MCP_SECRET` as personal AI app addresses (see
+[MCP](MCP.md#for-whoever-hosts-the-site)).
+
+The catalog address is long, which is awkward to type on a reader's on-screen
+keyboard. To give everyone short addresses such as
+`https://<site>/opds/k7fq3m9xra`, add a KV namespace to the Pages project:
+
+- In the Cloudflare dashboard, **Storage & Databases → KV → Create** a
+  namespace, named for example `lightkone-links`.
+- In the Pages project, **Settings → Bindings → Add → KV namespace**: variable
+  name `LINKS`, that namespace. Add it for Production and Preview.
+
+LINKS holds only random codes and the encrypted addresses they stand for.

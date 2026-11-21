@@ -53,6 +53,7 @@ import { annotationsPath } from "./core/annotations";
 import { Icon, type IconName } from "./icons";
 import { site } from "./core/site";
 import { attachment, attachmentPath, fetchFile, fetchPdf, isPdfLink, pdfLinkFor, rememberPdfLink, sizeLabel, typeOf } from "./core/remotefile";
+import { readSent, unsend, type Sent } from "./core/ereader";
 import { fetchPage, hasPage, htmlPath, isPageFile, isWebLink, linkDraft, linkOnlyReason, markdownFile, markdownPath, pageDraft, pageFromFile, pageMarkdown, takePage, type FetchedPage } from "./core/webpage";
 import { joinPages, textPath } from "./core/fulltext";
 import { VersionLine } from "./Version";
@@ -1629,7 +1630,7 @@ export function App() {
           onClose={closeWelcome}
         />
       )}
-      {panel === "settings" && <SettingsPanel settings={settings} onSave={updateSettings} onClose={() => setPanel(null)} />}
+      {panel === "settings" && <SettingsPanel settings={settings} storage={storage} onSave={updateSettings} onClose={() => setPanel(null)} />}
     </div>
   );
 }
@@ -1872,7 +1873,7 @@ function Detail(props: {
     links.push(["Find PDF in Google Drive", `https://drive.google.com/drive/search?q=${encodeURIComponent(name)}`]);
   }
   const available = actions().filter((a) => !a.available || a.available(p));
-  const actionIcon = (plugin: string): IconName | null => ({ claude: "sparkle", dullaby: "moon", related: "link" } as Record<string, IconName>)[plugin] ?? null;
+  const actionIcon = (plugin: string): IconName | null => ({ claude: "sparkle", dullaby: "moon", related: "link", ereader: "book" } as Record<string, IconName>)[plugin] ?? null;
   const [copied, setCopied] = useState<string | null>(null);
   function copy(what: string, text: string) {
     navigator.clipboard?.writeText(text).then(() => {
@@ -2971,7 +2972,98 @@ function McpLink(props: { provider: string; config: Record<string, string> }) {
   );
 }
 
-function SettingsPanel(props: { settings: Settings; onSave(s: Settings): void; onClose(): void }) {
+/** The e-reader catalog: its address for the reader, and the papers sent to it. */
+function EreaderLink(props: { provider: string; config: Record<string, string>; storage: StorageAdapter | null }) {
+  const [urls, setUrls] = useState<{ url: string; short?: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [sent, setSent] = useState<Sent[] | null>(null);
+  const linkable = props.provider === "s3" || props.provider === "github";
+  const where = JSON.stringify({ provider: props.provider, config: props.config });
+  useEffect(() => { setUrls(null); setNote(""); }, [where]);
+  useEffect(() => {
+    if (props.storage) readSent(props.storage).then(setSent, () => setSent([]));
+  }, [props.storage]);
+
+  async function make() {
+    setBusy(true);
+    setNote("");
+    try {
+      const r = await fetch(site("api/ereader-link"), { method: "POST", headers: { "Content-Type": "application/json" }, body: where });
+      const body = await r.json().catch(() => ({ error: `The site answered ${r.status}.` }));
+      if (!r.ok || !body.url) throw new Error(body.error ?? `The site answered ${r.status}.`);
+      setUrls(body);
+    } catch (e) {
+      setNote((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string) {
+    if (!props.storage) return;
+    try {
+      setSent(await unsend(id, props.storage));
+    } catch (e) {
+      setNote((e as Error).message);
+    }
+  }
+
+  const address = urls?.short ?? urls?.url ?? "";
+  return (
+    <div>
+      <p class="muted small">
+        On a paper, <b>Send to e-reader</b> makes an EPUB for small e-ink readers (the Xteink X4, Kobo, Kindle, KOReader): the text reflows to the
+        screen and each equation is a sharp picture. <b>Download for e-reader</b> saves the same file to load with the reader's app or over USB.
+      </p>
+      {!linkable ? (
+        <p class="muted small">
+          A catalog your reader downloads from over Wi-Fi needs the library in an S3/R2 bucket or a GitHub repository; a library kept only in this
+          browser can't be reached from the reader. Download for e-reader works either way.
+        </p>
+      ) : urls ? (
+        <div class="mcp-link">
+          <input readOnly value={address} onFocus={(e) => e.currentTarget.select()} />
+          <div class="row">
+            <button type="button" onClick={() => navigator.clipboard.writeText(address).then(() => setNote("Copied."))}>Copy address</button>
+          </div>
+          <ol class="muted small">
+            <li>On the reader, open the OPDS catalogs screen (on the Xteink X4: Settings, then OPDS; update its system first if it isn't there).</li>
+            <li>Add a catalog named Lightkone, with this address. Leave the user name and password empty.</li>
+            <li>Open it to see the papers you sent, and download one.</li>
+          </ol>
+          {!urls.short && (
+            <p class="muted small">This address is long to type on a reader. Your site's host can make short ones by adding a KV namespace named LINKS (see the E-reader guide in the docs).</p>
+          )}
+          <p class="muted small">
+            Anyone with it can download the papers you sent to the reader, and nothing else. Your keys inside it are encrypted, and this site keeps no
+            copy. To cut it off, replace the {props.provider === "github" ? "GitHub token" : "bucket's access key"} above.
+          </p>
+        </div>
+      ) : (
+        <div class="row">
+          <button type="button" disabled={busy} onClick={make}>{busy ? "Checking your storage…" : "Make my e-reader catalog address"}</button>
+        </div>
+      )}
+      {sent && sent.length > 0 && (
+        <details class="ereader-sent">
+          <summary class="small">{sent.length} paper{sent.length === 1 ? "" : "s"} sent to the e-reader</summary>
+          <ul>
+            {sent.map((s) => (
+              <li key={s.id} class="row small">
+                <span class="grow">{s.title}</span>
+                <button type="button" class="link" onClick={() => remove(s.id)}>Remove</button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {note && <p class="message">{note}</p>}
+    </div>
+  );
+}
+
+function SettingsPanel(props: { settings: Settings; storage?: StorageAdapter | null; onSave(s: Settings): void; onClose(): void }) {
   const [draft, setDraft] = useState<Settings>({ ...props.settings });
   const providerId = draft["storage.provider"] || "browser";
   const provider = storageProviders().find((p) => p.id === providerId) ?? storageProviders()[0];
@@ -3042,6 +3134,9 @@ function SettingsPanel(props: { settings: Settings; onSave(s: Settings): void; o
 
         <h3>Claude and other AI apps (MCP)</h3>
         <McpLink provider={providerId} config={storageConfig(draft, providerId)} />
+
+        <h3>E-reader</h3>
+        <EreaderLink provider={providerId} config={storageConfig(draft, providerId)} storage={props.storage ?? null} />
 
         <h3>Backup</h3>
         <p class="muted small">Save these settings to a file, or load them on another device. With a passphrase, the file is encrypted.</p>

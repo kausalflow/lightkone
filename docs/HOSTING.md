@@ -76,6 +76,15 @@ an attachment, so nothing it fetches can run as part of the site; the file's
 own type, name and final address go back in `x-file-type`, `x-file-name` and
 `x-file-url` headers.
 
+## The e-reader catalog
+
+`functions/opds/[[path]].ts` (at `/opds/<address>`) serves each person's
+e-reader catalog, an OPDS feed of the papers they sent to their reader, and
+the EPUB files themselves. `functions/api/ereader-link.ts` makes the
+addresses. Both use `MCP_SECRET`. A KV namespace bound as `LINKS` is optional
+and gives short addresses that are easier to type on a reader; see
+[Papers on an e-reader](EREADER.md#for-hosts).
+
 ## Limits on the services
 
 The services under `/api/` (PDF, files, web pages, published versions, arXiv, equations, MCP
