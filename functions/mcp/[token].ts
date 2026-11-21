@@ -56,7 +56,9 @@ function same(a: string, b: string): boolean {
 export const onRequest = async ({ request, env, params }: { request: Request; env: Env; params: { token: string } }) => {
   const secret = linkSecret(env);
   const linked = secret ? await openLink(String(params.token), secret) : null;
-  if (linked) return handleHttp(request, storageFor(linked));
+  // An e-reader catalog address only lists and downloads e-reader files; it can't be used here.
+  if (linked && !linked.scope) return handleHttp(request, storageFor(linked));
+  if (linked) return new Response("Not found", { status: 404 });
   if (!env.MCP_TOKEN || env.MCP_TOKEN.length < 24 || !same(String(params.token), env.MCP_TOKEN)) return new Response("Not found", { status: 404 });
   if (!env.LIBRARY) return new Response("Bind the library's R2 bucket to this Pages project as LIBRARY (see docs/MCP.md).", { status: 500 });
   return handleHttp(request, r2Storage(env.LIBRARY));

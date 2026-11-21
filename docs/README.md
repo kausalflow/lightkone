@@ -15,6 +15,7 @@ your own key.
 ## Using Lightkone
 
 - [Reading and highlighting](READING.md): the PDF reader, highlights, notes, Explain, and export to Obsidian.
+- [Papers on an e-reader](EREADER.md): send papers to a Kobo, Kindle or Xteink as EPUBs with sharp equations, through your own OPDS catalog.
 - [Finding papers](FINDING.md): search and its filters, full text, equations, chats with Claude (Ask, comparing papers, organizing chats), New on arXiv and the citation map.
 - [Writing with your library](WRITING.md): citations in any journal style, LaTeX and Overleaf, citations for a whole draft, a .bib for a manuscript.
 - [Sharing and devices](SHARING.md): several devices, shared libraries, the phone app.

@@ -543,6 +543,9 @@ label.file input, label.button input { display: none; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 .mcp-link input { margin-top: 6px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+.ereader-sent ul { list-style: none; padding: 0; margin: 6px 0 0; }
+.ereader-sent li { gap: 8px; align-items: baseline; padding: 3px 0; }
+.ereader-sent li .grow { flex: 1; min-width: 0; }
 
 .cite-menu { position: relative; }
 .cite-menu > button { display: inline-flex; align-items: center; gap: 6px; }
