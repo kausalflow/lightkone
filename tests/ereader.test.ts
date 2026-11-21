@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
-import { epubName, ereaderFile, EreaderError, mathAsText, paperEpub, plainLetter, readSent, sendToEreader, unsend, type EreaderDeps, type Picture } from "../src/core/ereader";
+import { epubName, ereaderFile, EreaderError, mathAsLinear, mathAsText, paperEpub, plainLetter, readSent, sendToEreader, unsend, type EreaderDeps, type Picture } from "../src/core/ereader";
 import { crc32, zip } from "../src/core/zip";
 import { fitSize, greyPng, mathSvg, svgSize, toGrey } from "../src/core/pictures";
 import type { Paper, StorageAdapter } from "../src/core/types";
@@ -104,6 +104,35 @@ describe("simple math stays text", () => {
     expect(plainLetter("𝐁")).toEqual({ letter: "B", bold: true, italic: false });
     expect(plainLetter("ℎ")).toEqual({ letter: "h", bold: false, italic: true });
     expect(plainLetter("𝔸")).toBeNull();
+  });
+});
+
+describe("inline math written out as text", () => {
+  const el = (inner: string) => new DOMParser().parseFromString(`<html><body>${mathml(inner)}</body></html>`, "text/html").querySelector("math")!;
+  const tags = { scripts: "tags", unicode: true } as const;
+  const plain = { scripts: "plain", unicode: false } as const;
+
+  it("keeps subscripts and superscripts in the sentence", () => {
+    expect(mathAsLinear(el("<msub><mi>s</mi><mi>t</mi></msub>"), tags)).toBe("<i>s</i><sub><i>t</i></sub>");
+    expect(mathAsLinear(el("<msub><mi>s</mi><mi>t</mi></msub>"), plain)).toBe("<i>s</i>_<i>t</i>");
+    expect(mathAsLinear(el("<msup><mi>x</mi><mrow><mn>2</mn><mi>k</mi></mrow></msup>"), plain)).toBe("<i>x</i>^{2<i>k</i>}");
+    expect(mathAsLinear(el("<mrow><mo>(</mo><msub><mi>X</mi><mi>t</mi></msub><mo>,</mo><msub><mi>S</mi><mi>t</mi></msub><mo>)</mo></mrow>"), tags)).toBe(
+      "(<i>X</i><sub><i>t</i></sub>, <i>S</i><sub><i>t</i></sub>)",
+    );
+  });
+
+  it("writes Greek and symbols as themselves, or as words", () => {
+    const m = el("<mrow><mi>θ</mi><mo>∈</mo><mi>ℝ</mi></mrow>");
+    expect(mathAsLinear(m, tags)).toBe("θ ∈ ℝ");
+    expect(mathAsLinear(m, plain)).toBe("theta in R");
+    expect(mathAsLinear(el("<mover><mi>x</mi><mo>¯</mo></mover>"), plain)).toBe("bar(<i>x</i>)");
+    expect(mathAsLinear(el("<mfrac><mi>a</mi><mrow><mi>b</mi><mo>+</mo><mn>1</mn></mrow></mfrac>"), tags)).toBe("<i>a</i>/(<i>b</i> + 1)");
+  });
+
+  it("leaves matrices and long formulas to pictures", () => {
+    expect(mathAsLinear(el("<mtable><mtr><mtd><mn>1</mn></mtd></mtr></mtable>"), tags)).toBeNull();
+    const long = "<mrow>" + Array.from({ length: 30 }, (_, i) => `<mi>x</mi><mo>+</mo>`).join("") + "<mn>1</mn></mrow>";
+    expect(mathAsLinear(el(long), tags)).toBeNull();
   });
 });
 
