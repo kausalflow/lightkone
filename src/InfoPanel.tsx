@@ -127,7 +127,7 @@ function Guide() {
       "Organizing",
       [
         "Folders and tags sit in the side bar; a paper can be in several folders. Star the ones you come back to.",
-        "Tidy up finds duplicates and preprints that have since been published.",
+        "Library health scans for duplicates (and merges them), papers with nothing to open, missing files and missing details, and finds preprints that have since been published.",
         "Deleted papers wait in the Trash until you empty it.",
       ],
     ],

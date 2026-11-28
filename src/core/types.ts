@@ -35,6 +35,10 @@ export interface Paper {
   starred?: boolean;
   /** When it was moved to the trash (ISO); trashed papers are hidden until restored. */
   trashed?: string;
+  /** Set on a copy merged into another paper (Library health): the id of the paper it went into. The copy stays in the trash. */
+  mergedInto?: string;
+  /** Papers marked as not the same as this one, by id, so Library health stops offering to merge them. */
+  distinct?: string[];
   /** When it was last opened in the reader (ISO). */
   opened?: string;
   /** Who added it, in a shared library: the name they gave in Settings. */

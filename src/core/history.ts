@@ -96,10 +96,11 @@ interface Index {
 
 const empty = (): Index => ({ format: "lightkone-history", version: 1, entries: [] });
 
-/** The chats about one paper, newest first: those started from it, and explanations of its passages. */
-export function chatsAbout(entries: Entry[], paperId: string): Entry[] {
+/** The chats about one paper, newest first: those started from it, and explanations of its passages. Several ids: the paper and copies merged into it. */
+export function chatsAbout(entries: Entry[], paperId: string | string[]): Entry[] {
+  const ids = typeof paperId === "string" ? [paperId] : paperId;
   return entries
-    .filter((e) => (e.kind === "paper" || e.kind === "explain") && e.papers[0] === paperId)
+    .filter((e) => (e.kind === "paper" || e.kind === "explain") && ids.includes(e.papers[0]))
     .sort((a, b) => b.updated.localeCompare(a.updated));
 }
 

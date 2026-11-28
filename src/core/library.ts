@@ -217,6 +217,17 @@ export class Library {
     this.emit();
   }
 
+  /** Put papers back exactly as they were, e.g. to undo a merge. Papers no longer in the library are added back. */
+  restore(papers: Paper[]): void {
+    for (const was of papers) {
+      const copy = structuredClone(was);
+      const i = this.papers.findIndex((x) => x.id === was.id);
+      if (i >= 0) this.papers[i] = copy;
+      else this.papers.push(copy);
+    }
+    this.emit();
+  }
+
   remove(id: string): void {
     this.papers = this.papers.filter((p) => p.id !== id);
     this.emit();

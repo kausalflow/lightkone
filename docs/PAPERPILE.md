@@ -202,9 +202,11 @@ any paper still missing one.
   **Attach PDF** or **Get free PDF** on them. Usually these are papers that
   never had a PDF in Paperpile, or whose file was renamed in Drive.
 - Open a few folders in the side bar and compare them with Paperpile.
-- Run **Tidy up** once. It finds the same paper entered twice and arXiv
-  preprints that have since been published, and fills in the journal, DOI and
-  pages, keeping your citation keys.
+- Open **Library health** and press **Scan library** once. It finds the same
+  paper entered twice (merge them, keeping every file, note and tag), papers
+  with no link and no PDF, and files missing from storage. **Published
+  versions** there fills in the journal, DOI and pages of arXiv preprints
+  that have since been published, keeping your citation keys.
 - When the list says some PDFs haven't been read for search yet, press
   **Read them now**, so full-text search and Ask can see inside your papers.
   Papers you open in the reader are read on their own.

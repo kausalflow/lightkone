@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { findDuplicates, findPublished, mergeInto, pickKeeper } from "../src/core/tidy";
+import { aliasIds, choicesFor, findDuplicates, findLikelyDuplicates, findPublished, mergedMark, mergeInto, pickKeeper, scanLibrary } from "../src/core/tidy";
+import { mergeLibraries } from "../src/core/merge";
 import type { Paper } from "../src/core/types";
 import { handle } from "../functions/api/published";
 
@@ -44,6 +45,88 @@ describe("duplicates", () => {
     const patch = mergeInto(keep, [old]);
     expect(patch).toMatchObject({ tags: ["ml", "rg"], folders: ["Physics"], notes: "second\n\nfirst", starred: true, abstract: "abs", added: "2020-01-01T00:00:00Z" });
     expect(patch.pdf).toBeUndefined();
+  });
+});
+
+describe("library health", () => {
+  it("skips pairs marked as not the same", () => {
+    const a = paper({ title: "Attention is all you need", arxiv: "1706.03762" });
+    const b = paper({ title: "Attention is all you need", arxiv: "1706.03762", distinct: [a.id] });
+    expect(findDuplicates([a, b])).toEqual([]);
+  });
+
+  it("finds likely duplicates by a near title and the same first author, but not parts of a series", () => {
+    const a = paper({ title: "Renormalization group flow of quantum gravity", authors: ["Reuter, M"], year: 1998 });
+    const b = paper({ title: "Renormalisation group flows of quantum gravity", authors: ["Reuter, Martin"], year: 1998 });
+    const other = paper({ title: "Renormalization group flow of quantum gravity", authors: ["Someone, E"], year: 1998 });
+    const p1 = paper({ title: "Nonperturbative evolution equation for quantum gravity I", authors: ["Wetterich, C"], year: 2001 });
+    const p2 = paper({ title: "Nonperturbative evolution equation for quantum gravity II", authors: ["Wetterich, C"], year: 2001 });
+    const far = paper({ title: "Renormalization group flow of quantum gravity", authors: ["Reuter, M"], year: 2010 });
+    const groups = findLikelyDuplicates([a, b, other, p1, p2, far]);
+    expect(groups.map((g) => g.map((p) => p.id))).toEqual([[a.id, b.id]]);
+    // Already a sure duplicate (same title, the other paper): not offered again as likely.
+    expect(findLikelyDuplicates([a, b], [[a, b]])).toEqual([]);
+    expect(findLikelyDuplicates([a, { ...b, distinct: [a.id] }])).toEqual([]);
+  });
+
+  it("keeps every file, old keys as aliases, and the picked details", () => {
+    const keep = paper({ key: "Reuter1998-rg", title: "Nonperturbative evolution equation", pdf: "papers/a.pdf", attachments: [{ path: "papers/s.pdf", name: "s.pdf", added: "2020-01-01" }] });
+    const other = paper({ key: "Reuter1998-ne", title: "Non-perturbative evolution equation for quantum gravity", year: 1998, pdf: "papers/b.pdf", html: "lightkone/pages/x.html", fields: { ids: "Old1" } });
+    const patch = mergeInto(keep, [other], { title: other.id });
+    expect(patch.title).toBe(other.title);
+    expect(patch.year).toBe(1998);
+    expect(patch.pdf).toBeUndefined();
+    expect(patch.html).toBe("lightkone/pages/x.html");
+    expect(patch.attachments!.map((a) => a.path)).toEqual(["papers/s.pdf", "papers/b.pdf"]);
+    expect(patch.fields!.ids).toBe("Old1,Reuter1998-ne");
+    // Taking the other copy's key keeps the keeper's as an alias instead.
+    const swapped = mergeInto(keep, [other], { key: other.id });
+    expect(swapped.key).toBe("Reuter1998-ne");
+    expect(swapped.fields!.ids).toBe("Old1,Reuter1998-rg");
+  });
+
+  it("offers a choice only where copies say different things", () => {
+    const a = paper({ title: "Deep residual learning", authors: ["He, K", "Zhang, X"], year: 2016, doi: "10.1109/CVPR.2016.90" });
+    const b = paper({ title: "Deep Residual Learning.", authors: ["He, K", "Zhang, X"], year: 2015, doi: "https://doi.org/10.1109/cvpr.2016.90", arxiv: "1512.03385" });
+    const choices = choicesFor(a, [a, b]);
+    expect(choices.map((c) => c.field)).toEqual(["year", "key"]);
+    expect(choices[0].options).toEqual([{ value: 2016, from: [a.id] }, { value: 2015, from: [b.id] }]);
+  });
+
+  it("marks merged copies, and finds chats on them through the keeper", () => {
+    const keep = paper({ title: "K" });
+    const gone = paper({ title: "K", ...mergedMark(keep.id, "2026-11-28T00:00:00Z") });
+    const back = paper({ title: "K", mergedInto: keep.id });
+    expect(aliasIds([keep, gone, back], keep.id)).toEqual([keep.id, gone.id]);
+  });
+
+  it("keeps distinct marks from both devices in a safe save", () => {
+    const base = paper({ title: "X" });
+    const ours = { ...base, distinct: ["a"] };
+    const theirs = { ...base, distinct: ["b"] };
+    const file = (p: typeof base) => ({ format: "lightkone-library" as const, version: 1 as const, papers: [p] });
+    expect(mergeLibraries(file(base), file(ours), file(theirs)).file.papers[0].distinct).toEqual(["a", "b"]);
+  });
+
+  it("scans for entries that need a look", () => {
+    const now = new Date("2026-11-28T00:00:00Z");
+    const ok = paper({ title: "A fine paper about something", year: 2020, doi: "10.1103/PhysRev.47.777", key: "Fine2020" });
+    const bare = paper({ title: "Notes from a talk I went to", year: 2021, key: "Bare2021" });
+    const gone = paper({ title: "A paper whose PDF went missing", year: 2019, pdf: "papers/gone.pdf", attachments: [{ path: "papers/here.pdf", name: "here.pdf", added: "x" }], key: "Gone2019" });
+    const odd = paper({ title: "Untitled", authors: [], year: 2031, doi: "doi.org/broken", arxiv: "not-an-id", key: "Fine2020" });
+    const noYear = paper({ title: "A paper without a year at all", url: "https://example.org", key: "NoYear" });
+    const old = paper({ title: "Hep-th style id paper", year: 1997, arxiv: "hep-th/9711200", key: "Old1997" });
+    const scan = scanLibrary([ok, bare, gone, odd, noYear, old], new Set(["papers/here.pdf"]), now);
+    const kinds = (p: typeof ok) => scan.issues.filter((i) => i.paper === p).map((i) => i.kind).sort();
+    expect(kinds(ok)).toEqual(["key-clash"]);
+    expect(kinds(bare)).toEqual(["no-source"]);
+    expect(scan.issues.find((i) => i.paper === gone)).toEqual({ kind: "missing-file", paper: gone, detail: "papers/gone.pdf" });
+    expect(kinds(odd)).toEqual(["bad-arxiv", "bad-doi", "key-clash", "no-authors", "no-title", "odd-year"]);
+    expect(kinds(noYear)).toEqual(["no-year"]);
+    expect(kinds(old)).toEqual([]);
+    expect(scan.filesChecked).toBe(true);
+    // Without a listing of storage, files are not judged.
+    expect(scanLibrary([gone], null, now).issues).toEqual([]);
   });
 });
 

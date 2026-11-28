@@ -47,9 +47,10 @@ import { useMath } from "./core/math";
 import { defaultBibPath, folderTargets, papersInFolder, runBibSync } from "./core/bibsync";
 import { githubStorage } from "./plugins/storage-github";
 import { crossref, doiOf as doiIn } from "./plugins/lookup";
-import { findDuplicates, findPublished, mergeInto, pickKeeper, type Published } from "./core/tidy";
+import { aliasIds, filesOf, findPublished, mergeInto, mergedMark, pickKeeper, type Picks, type Published } from "./core/tidy";
+import { LibraryScan, type Undo } from "./LibraryHealth";
 import { HEALTH_LABEL, SEVERITY, checkHealth, checkable, due, worst, type Health, type Notice } from "./core/health";
-import { annotationsPath } from "./core/annotations";
+import { annotationsPath, serializeAnnotations } from "./core/annotations";
 import { Icon, type IconName } from "./icons";
 import { site } from "./core/site";
 import { attachment, attachmentPath, fetchFile, fetchPdf, isPdfLink, pdfLinkFor, rememberPdfLink, sizeLabel, typeOf } from "./core/remotefile";
@@ -91,6 +92,50 @@ function download(name: string, text: string, type = "application/x-bibtex") {
   const a = Object.assign(document.createElement("a"), { href: url, download: name });
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Every file storage holds in the folders the papers' files are in, to find files gone missing. Null when storage can't list. */
+async function listStoredFiles(storage: StorageAdapter): Promise<Set<string> | null> {
+  const list = storage.listAll ?? storage.list;
+  if (!list) return null;
+  const dirs = new Set(library.papers.flatMap(filesOf).map((f) => (f.includes("/") ? `${f.split("/")[0]}/` : "")));
+  const out = new Set<string>();
+  for (const d of dirs) for (const k of await list.call(storage, d)) out.add(k);
+  return out;
+}
+
+/**
+ * Merge copies of a paper into one (Library health): the keeper takes what the
+ * others add, the others go to the trash marked as merged into it. When the
+ * main PDF comes from another copy, or the keeper has no highlights, the
+ * highlights come too. Returns how to undo it.
+ */
+async function mergePapers(storage: StorageAdapter, keep: Paper, others: Paper[], picks: Picks, save: () => void): Promise<Undo> {
+  const before = [keep, ...others].map((p) => structuredClone(p));
+  const patch = mergeInto(keep, others, picks);
+  const path = annotationsPath(keep.id);
+  const had = await storage.read(path).catch(() => null);
+  let wrote = false;
+  if (!had) {
+    const pdfFrom = !keep.pdf && patch.pdf ? others.find((o) => o.pdf === patch.pdf) : undefined;
+    for (const o of pdfFrom ? [pdfFrom, ...others.filter((x) => x !== pdfFrom)] : others) {
+      const notes = await storage.read(annotationsPath(o.id)).catch(() => null);
+      if (notes) {
+        await storage.write(path, new TextDecoder().decode(notes).replace(o.id, keep.id), "application/json");
+        wrote = true;
+        break;
+      }
+    }
+  }
+  library.update(keep.id, patch);
+  const now = new Date().toISOString();
+  others.forEach((o) => library.update(o.id, mergedMark(keep.id, now)));
+  save();
+  return async () => {
+    library.restore(before);
+    if (wrote) await (storage.remove ? storage.remove(path) : storage.write(path, serializeAnnotations(keep.id, []), "application/json"));
+    save();
+  };
 }
 
 const pdfOptions = (s: Settings): OpenPdfOptions => ({ email: s["pdfs.email"]?.trim(), service: s["pdfs.service"]?.trim() || undefined });
@@ -873,7 +918,7 @@ export function App() {
     historyQueue.current = historyQueue.current
       .then(async () => {
         const part = joined.current.get(c.id);
-        const id = part?.chat ?? chatsAbout(conversationsRef.current, paperId)[0]?.id;
+        const id = part?.chat ?? chatsAbout(conversationsRef.current, aliasIds(library.papers, paperId))[0]?.id;
         const run = id ? await loadConversation(store, id).catch(() => null) : null;
         if (!run) {
           // The first word about this paper starts its running chat.
@@ -902,7 +947,7 @@ export function App() {
   /** The latest summary in any of the paper's chats. */
   async function keptSummary(paperId: string): Promise<{ text: string; at: string; chat: string } | null> {
     if (!historyStore) return null;
-    for (const e of chatsAbout(conversationsRef.current, paperId)) {
+    for (const e of chatsAbout(conversationsRef.current, aliasIds(library.papers, paperId))) {
       const c = await loadConversation(historyStore, e.id);
       const turns = c?.turns ?? [];
       for (let i = turns.length - 2; i >= 0; i--) {
@@ -988,7 +1033,7 @@ export function App() {
     { id: "writing", group: "Write", label: "Writing helpers", icon: "book", hint: "What to cite for a sentence; a .bib for a manuscript", show: hasPapers, run: () => { setWritingTab("cite"); go("writing")(); } },
     { id: "manuscript", group: "Write", label: "Watch my manuscript", icon: "sync", hint: "Keep a LaTeX manuscript's .bib in step with what it cites", show: Boolean(storage), run: go("manuscript") },
     { id: "obsidian", group: "Write", label: "Export to Obsidian", icon: "file", hint: "Highlights and notes as Markdown notes", show: Boolean(storage), run: go("obsidian") },
-    { id: "tidy", group: "Organize", label: "Tidy up", icon: "broom", hint: "Duplicates, published versions of preprints, retractions and corrections", show: Boolean(storage), run: () => { setTidying(true); setSideOpen(false); } },
+    { id: "tidy", group: "Organize", label: "Library health", icon: "broom", hint: "Tidy up: scan for duplicates and entries with no link, PDF or details, merge duplicates, published versions of preprints, retractions", show: Boolean(storage), run: () => { setTidying(true); setSideOpen(false); } },
     { id: "offline", group: "Organize", label: "Offline papers", icon: "download", hint: "Choose PDFs to keep on this device, for reading with no network", show: Boolean(offlineStore && library.papers.some((p) => p.pdf)), run: go("offline") },
     { id: "shared", group: "Organize", label: "Shared libraries", icon: "users", hint: "Libraries shared with a group", show: true, run: go("shared") },
   ].filter((t) => t.show) as Tool[];
@@ -1325,6 +1370,7 @@ export function App() {
           result={result}
           lastAction={lastAction ?? undefined}
           onClose={() => setSelected(null)}
+          onOpenPaper={setSelected}
           onChange={(patch) => { library.update(paper.id, patch); scheduleSave(); }}
           onRemove={() => {
             if (!paper.trashed) {
@@ -1337,7 +1383,11 @@ export function App() {
             scheduleSave();
           }}
           onAction={(id, fresh) => runAction(id, paper, fresh)}
-          conversations={conversations.filter((e) => e.papers.includes(paper.id) || (Array.isArray(e.focus) && e.focus.includes(paper.id)))}
+          conversations={(() => {
+            // Chats about copies merged into this paper count as its own.
+            const ids = aliasIds(library.papers, paper.id);
+            return conversations.filter((e) => ids.some((id) => e.papers.includes(id) || (Array.isArray(e.focus) && e.focus.includes(id))));
+          })()}
           resultConv={resultConv}
           onHistory={(at) => openChats(at.id ? { open: at.id } : at.paperId ? { paperId: at.paperId } : {})}
           onRead={() => {
@@ -1540,22 +1590,35 @@ export function App() {
         <TidyPanel
           papers={library.papers}
           version={version}
-          onMerge={async (group) => {
-            const keep = pickKeeper(group);
-            const others = group.filter((p) => p !== keep);
-            // Highlights belong to a paper id: bring them over when the keeper has none.
-            if (!(await storage.read(annotationsPath(keep.id)).catch(() => null))) {
-              for (const o of others) {
-                const notes = await storage.read(annotationsPath(o.id)).catch(() => null);
-                if (notes) {
-                  await storage.write(annotationsPath(keep.id), new TextDecoder().decode(notes).replace(o.id, keep.id), "application/json");
-                  break;
-                }
-              }
+          readOnly={readOnly}
+          listFiles={() => listStoredFiles(storage)}
+          onMerge={(keep, others, picks) => mergePapers(storage, keep, others, picks, scheduleSave)}
+          onMergeAll={async (groups) => {
+            const undos: Undo[] = [];
+            for (const g of groups) {
+              const keep = pickKeeper(g);
+              undos.push(await mergePapers(storage, keep, g.filter((p) => p !== keep), {}, scheduleSave));
             }
-            library.update(keep.id, mergeInto(keep, others));
-            const now = new Date().toISOString();
-            others.forEach((o) => library.update(o.id, { trashed: now }));
+            return async () => {
+              for (const u of undos.reverse()) await u();
+            };
+          }}
+          onDistinct={(group) => {
+            const before = group.map((p) => structuredClone(p));
+            for (const p of group) library.update(p.id, { distinct: [...new Set([...(p.distinct ?? []), ...group.filter((o) => o !== p).map((o) => o.id)])] });
+            scheduleSave();
+            return async () => {
+              library.restore(before);
+              scheduleSave();
+            };
+          }}
+          onForgetFile={(p, path) => {
+            library.update(p.id, {
+              pdf: p.pdf === path ? undefined : p.pdf,
+              html: p.html === path ? undefined : p.html,
+              markdown: p.markdown === path ? undefined : p.markdown,
+              attachments: p.attachments?.some((a) => a.path === path) ? p.attachments.filter((a) => a.path !== path) : p.attachments,
+            });
             scheduleSave();
           }}
           onUpdate={(items) => {
@@ -1814,6 +1877,7 @@ function Detail(props: {
   result: ActionResult | null;
   lastAction?: string;
   onClose(): void;
+  onOpenPaper(id: string): void;
   onChange(patch: Partial<Paper>): void;
   onRemove(): void;
   onAction(id: string, fresh?: boolean): void;
@@ -1900,11 +1964,23 @@ function Detail(props: {
         </button>
       </div>
       <div class="detail-body">
-        {p.trashed && (
-          <p class="notice">
-            In the trash. <button class="link" onClick={() => props.onChange({ trashed: undefined })}>Restore</button>
-          </p>
-        )}
+        {p.trashed && (() => {
+          const into = p.mergedInto ? props.library.find((q) => q.id === p.mergedInto) : undefined;
+          return into ? (
+            <p class="notice">
+              Merged into “{into.title}”{into.trashed ? ", which is in the trash too" : ""}.{" "}
+              <button class="link" onClick={() => props.onOpenPaper(into.id)}>Open it</button>
+              {" · "}
+              <button class="link" title="Bring this copy back as a paper of its own" onClick={() => props.onChange({ trashed: undefined, mergedInto: undefined, distinct: [...new Set([...(p.distinct ?? []), into.id])] })}>
+                Take it back out
+              </button>
+            </p>
+          ) : (
+            <p class="notice">
+              In the trash. <button class="link" onClick={() => props.onChange({ trashed: undefined, mergedInto: undefined })}>Restore</button>
+            </p>
+          );
+        })()}
         <HealthNotices paper={p} />
         <p class="eyebrow">{[p.venue, p.year].filter(Boolean).join(" · ") || p.type}{p.by ? ` · added by ${p.by}` : ""}</p>
         <h2>{p.title}</h2>
@@ -2105,15 +2181,18 @@ function Detail(props: {
 function TidyPanel(props: {
   papers: Paper[];
   version: number;
-  onMerge(group: Paper[]): Promise<void>;
+  readOnly: boolean;
+  listFiles(): Promise<Set<string> | null>;
+  onMerge(keep: Paper, others: Paper[], picks: Picks): Promise<Undo>;
+  onMergeAll(groups: Paper[][]): Promise<Undo>;
+  onDistinct(group: Paper[]): Undo;
+  onForgetFile(paper: Paper, path: string): void;
   onUpdate(items: Published[]): void;
   onHealth(found: Map<string, Health>): void;
   onOpen(paperId: string): void;
   onClose(): void;
 }) {
-  const groups = useMemo(() => findDuplicates(props.papers), [props.version]);
   const preprints = props.papers.filter((p) => !p.trashed && p.arxiv && (!p.doi || /^10\.48550\//i.test(p.doi))).length;
-  const [merging, setMerging] = useState(false);
   const [progress, setProgress] = useState<[number, number] | null>(null);
   const [published, setPublished] = useState<Published[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -2122,12 +2201,6 @@ function TidyPanel(props: {
     props.onUpdate(items);
     setUpdated(updated + items.length);
     setPublished(published!.filter((x) => !items.includes(x)));
-  }
-
-  async function mergeAll(gs: Paper[][]) {
-    setMerging(true);
-    for (const g of gs) await props.onMerge(g);
-    setMerging(false);
   }
 
   async function check() {
@@ -2142,43 +2215,28 @@ function TidyPanel(props: {
     }
   }
 
-  const label = (p: Paper) => `${shortAuthors(p)}${p.year ? ` ${p.year}` : ""}${p.venue ? ` · ${p.venue}` : ""}${p.pdf ? " · PDF" : ""}`;
-
   return (
     <div class="overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
       <div class="panel wide tidy-panel">
-        <h2>Tidy up</h2>
+        <div class="ask-head panel-head">
+          <h2>Library health</h2>
+          <button class="icon-btn" onClick={props.onClose} aria-label="Close" title="Close">
+            <Icon name="x" />
+          </button>
+        </div>
 
-        <h3>Duplicates</h3>
-        {!groups.length ? (
-          <p class="muted">No duplicates found.</p>
-        ) : (
-          <>
-            <p class="muted small">
-              The same paper entered more than once: same DOI, arXiv id or title. Merging keeps the copy with a PDF (or the oldest) and brings over the
-              others' tags, folders, notes and missing details; the rest go to the trash.
-            </p>
-            <button class="primary" disabled={merging} onClick={() => mergeAll(groups)}>
-              {merging ? "Merging…" : `Merge all ${groups.length}`}
-            </button>
-            <ul class="dupes">
-              {groups.slice(0, 100).map((g) => {
-                const keep = pickKeeper(g);
-                return (
-                  <li key={g.map((p) => p.id).join()}>
-                    {g.map((p) => (
-                      <div key={p.id} class={p === keep ? "keep" : ""}>
-                        <span class="title">{p.title}</span>
-                        <span class="meta"> {label(p)}{p === keep ? " · keep" : ""}</span>
-                      </div>
-                    ))}
-                    <button class="small" disabled={merging} onClick={() => props.onMerge(g)}>Merge</button>
-                  </li>
-                );
-              })}
-            </ul>
-          </>
-        )}
+        <h3>Entries</h3>
+        <LibraryScan
+          papers={props.papers}
+          version={props.version}
+          readOnly={props.readOnly}
+          listFiles={props.listFiles}
+          onMerge={props.onMerge}
+          onMergeAll={props.onMergeAll}
+          onDistinct={props.onDistinct}
+          onForgetFile={props.onForgetFile}
+          onOpen={props.onOpen}
+        />
 
         <h3>Published versions</h3>
         <p class="muted small">
