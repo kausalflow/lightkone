@@ -90,13 +90,18 @@ Paperpile land in the folders their PDFs were filed under in Google Drive
 author folders Paperpile makes are not folders of yours and are skipped. On a
 phone, **Browse** opens the folders and tags.
 
-## Tidying up
+## Library health
 
-**Tidy up** in the sidebar finds the same paper entered twice (same DOI, arXiv
-id or title) and merges each group into the copy with a PDF, keeping every
-tag, folder and note; the others go to the trash. It also checks your arXiv
-preprints for published versions and fills in the journal, DOI, volume and
-pages, keeping citation keys as they are.
+**Library health** in the sidebar has a **Scan library** button that lists
+duplicates (sure, and possible ones with nearly the same title), papers with
+no link and no PDF, files missing from storage, citation keys used twice, and
+missing or odd titles, authors, years, DOIs and arXiv ids. **Merge…** on a
+group of duplicates lets you pick the copy to keep and whose details win
+where they differ; tags, folders, notes, every file and the old citation keys
+(as BibTeX `ids` aliases) come along, the other copies go to the trash marked
+as merged, and **Undo** puts it all back. It also checks your arXiv preprints
+for published versions and fills in the journal, DOI, volume and pages,
+keeping citation keys as they are, and lists retractions and corrections.
 
 ## LaTeX and Overleaf
 

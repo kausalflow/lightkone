@@ -271,10 +271,40 @@ papers** makes it steadier.
   used first.
 - **Star** the papers you come back to.
 - **Trash**: deleted papers wait there until you restore them or empty it.
-- **Tidy up** finds the same paper entered twice (same DOI, arXiv id or title)
-  and merges each group into one, keeping every tag, folder and note. It also
-  finds arXiv preprints that have since been published and fills in the
-  journal, DOI, volume and pages, keeping citation keys.
+- **Library health** (in the side bar under Organize; it used to be called
+  Tidy up) has a **Scan library** button that looks over every paper and
+  lists what needs a look:
+  - **Duplicates**: the same DOI, arXiv id or title. **Possible duplicates**:
+    the same first author and nearly the same title (a typo, British
+    spelling, a dropped word), but nothing shared to be sure. Parts of a
+    series (I and II) are not offered.
+  - **File missing from storage**: the paper points at a PDF, attachment or
+    saved page that is no longer in storage. **Forget file** takes it off the
+    paper.
+  - **No link and no PDF**: nothing to open, not even a DOI or web link.
+  - **Same citation key** on several papers, which LaTeX can't tell apart.
+  - No title, no authors, no year, an unlikely year, or a DOI or arXiv id
+    that doesn't look like one.
+
+  Tap a count at the top to jump to its list; **Open** shows the paper.
+  Nothing changes until you choose to.
+- **Merging duplicates**: **Merge…** on a group shows its copies. Pick the
+  copy to keep (it keeps its id, so its PDF, highlights and chats stay put)
+  and, where the copies disagree on title, authors, year, venue, DOI, arXiv
+  id, link, abstract or citation key, whose value wins. Everything else is
+  brought together: tags, folders, notes, the star, every file (the other
+  copies' PDFs go under Files), and missing details. The other copies'
+  citation keys stay on as aliases in the BibTeX `ids` field, so a
+  manuscript that cites an old key still works with BibLaTeX. The other
+  copies go to the trash marked as merged, and chats about them show on the
+  kept paper. **Undo** right after a merge puts everything back; later, open
+  a merged copy from the Trash and press **Take it back out**. **Not the
+  same** stops a group being offered again. **Merge all** merges every sure
+  duplicate, keeping the suggested copy (the one with a PDF, else with notes,
+  else the oldest).
+- **Published versions**, also on Library health, finds arXiv preprints that
+  have since been published and fills in the journal, DOI, volume and pages,
+  keeping citation keys.
 - **Paper health** marks a paper that has been retracted, corrected (an
   erratum or corrigendum), given an expression of concern, or withdrawn on
   arXiv. The notices come from Crossref, which carries both publishers'
@@ -283,5 +313,5 @@ papers** makes it steadier.
   shows in the list, and the paper's details say what the notice is, when it
   appeared and who reported it, with a link to it. Lightkone checks the
   papers not checked for a month a little after the library opens (switch it
-  off in Settings → Paper health), and **Tidy up** lists every paper with a
+  off in Settings → Paper health), and **Library health** lists every paper with a
   notice and can check the whole library at once.

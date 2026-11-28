@@ -20,7 +20,7 @@ export function canonical(v: unknown): string {
 }
 
 const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
-const SETS = new Set(["tags", "folders"]);
+const SETS = new Set(["tags", "folders", "distinct"]);
 
 /** Lists kept as sets: what either side added is in, what either side removed is out. */
 function mergeSet(base: string[] = [], ours: string[] = [], theirs: string[] = []): string[] {
